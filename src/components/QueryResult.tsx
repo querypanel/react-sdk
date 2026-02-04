@@ -1,8 +1,8 @@
 "use client";
 
-import type { VisualizationSpec } from "vega-embed";
 import type { QueryResult as QueryResultType, ThemeColors, ColorPreset, SqlModifications, VizModifications } from "../types";
-import { VegaChart } from "./VegaChart";
+import { VizSpecRenderer } from "./VizSpecRenderer";
+import type { VizSpec } from "./VizSpecRenderer";
 import { DataTable } from "./DataTable";
 import { ChartControls } from "./ChartControls";
 import { getColorsByPreset } from "../themes";
@@ -198,7 +198,7 @@ export function QueryResult({
     },
   };
 
-  const hasChart = result.chart?.vegaLiteSpec;
+  const hasChart = result.chart?.vizSpec;
   const hasData = result.rows && result.rows.length > 0 && result.fields;
 
   return (
@@ -236,8 +236,9 @@ export function QueryResult({
               />
             )}
             <div style={{ position: "relative" }}>
-              <VegaChart
-                spec={result.chart!.vegaLiteSpec as VisualizationSpec}
+              <VizSpecRenderer
+                spec={result.chart!.vizSpec as unknown as VizSpec}
+                data={result.rows || []}
                 colors={chartColors as ThemeColors}
               />
               {isLoading && (
@@ -288,7 +289,7 @@ export function QueryResult({
         </div>
       )}
 
-      {/* Vega Spec Card */}
+      {/* VizSpec Card */}
       {showSpec && hasChart && (
         <div style={styles.sqlCard}>
           <div style={styles.sqlHeader}>
@@ -297,12 +298,12 @@ export function QueryResult({
                 <polyline points="16 18 22 12 16 6" />
                 <polyline points="8 6 2 12 8 18" />
               </svg>
-              Vega-Lite Spec
+              VizSpec
             </div>
           </div>
           <div style={{ ...styles.sqlBody, maxHeight: "16rem", overflow: "auto" }}>
             <pre style={{ ...styles.pre, fontSize: "0.75rem" }}>
-              {JSON.stringify(result.chart!.vegaLiteSpec, null, 2)}
+              {JSON.stringify(result.chart!.vizSpec, null, 2)}
             </pre>
           </div>
         </div>

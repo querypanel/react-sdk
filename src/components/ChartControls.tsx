@@ -30,7 +30,8 @@ export interface ChartControlsProps {
 }
 
 const CHART_TYPES: { label: string; value: ChartType }[] = [
-  { label: "Bar", value: "bar" },
+  { label: "Column (Vertical)", value: "column" },
+  { label: "Bar (Horizontal)", value: "bar" },
   { label: "Line", value: "line" },
   { label: "Area", value: "area" },
   { label: "Scatter", value: "scatter" },

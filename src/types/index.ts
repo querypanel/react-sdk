@@ -1,10 +1,13 @@
-import type { VisualizationSpec } from "vega-embed";
-
-// Re-export vega types for convenience
-export type { VisualizationSpec };
+// VizSpec types are now exported from VizSpecRenderer component
 
 /** Chart type options */
-export type ChartType = "bar" | "line" | "area" | "scatter" | "pie";
+export type ChartType =
+  | "bar" // horizontal bars (categorical on Y-axis)
+  | "column" // vertical bars (categorical on X-axis)
+  | "line"
+  | "area"
+  | "scatter"
+  | "pie";
 
 /** Time granularity for date-based queries */
 export type TimeUnit = "day" | "week" | "month" | "quarter" | "year";
@@ -96,4 +99,25 @@ export interface PromptChip {
   key: string;
   icon?: React.ComponentType<{ className?: string }>;
   emoji?: string;
+}
+
+/** Dashboard from API */
+export interface Dashboard {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "deployed";
+  content_json: string | null;
+  widget_config: Record<string, unknown> | null;
+  editor_type: "blocknote" | "custom";
+  is_customer_fork: boolean;
+  forked_from_dashboard_id: string | null;
+  tenant_id: string | null;
+  datasource_id: string | null;
+  version: number;
+  deployed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
 }
