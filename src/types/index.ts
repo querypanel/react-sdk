@@ -108,6 +108,7 @@ export interface Dashboard {
   name: string;
   description: string | null;
   status: "draft" | "deployed";
+  dashboard_type?: "customer" | "internal";
   content_json: string | null;
   widget_config: Record<string, unknown> | null;
   editor_type: "blocknote" | "custom";

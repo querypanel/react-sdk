@@ -74,6 +74,11 @@ export function QuerypanelEmbedded({
       }
 
       const data: Dashboard = await response.json();
+      if (data.dashboard_type === "internal") {
+        setDashboard(null);
+        setIsFork(false);
+        throw new Error("This dashboard is not available for embedding.");
+      }
       setDashboard(data);
       setIsFork(data.is_customer_fork);
       onLoad?.(data);
@@ -281,6 +286,8 @@ export function QuerypanelEmbedded({
       ) : (
         <DashboardViewer
           content={dashboard.content_json || ""}
+          token={token}
+          apiBaseUrl={apiBaseUrl}
           darkMode={darkMode}
           className="min-h-[400px]"
         />
