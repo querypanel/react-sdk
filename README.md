@@ -97,6 +97,28 @@ function MyChart({ spec, data, fields }) {
 
 ## Components
 
+### `QuerypanelEmbedded`
+Embeds a deployed dashboard by calling your backend wrapper (not QueryPanel API directly from the browser).
+
+```tsx
+import { QuerypanelEmbedded } from "@querypanel/react-sdk";
+
+function CustomerPage() {
+  return (
+    <QuerypanelEmbedded
+      dashboardId="3ed3b98f-..."
+      apiBaseUrl="https://customer-api.example.com"
+      allowCustomization={true}
+    />
+  );
+}
+```
+
+Notes:
+- Browser requests go to your backend URL.
+- Backend handles auth and tenant context server-side.
+- `token` prop was removed; migrate to backend-managed auth/session.
+
 ### `QueryInput`
 Search input with prompt chips for quick queries.
 

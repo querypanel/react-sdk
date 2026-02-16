@@ -1,15 +1,28 @@
 import { useState, useEffect, useMemo } from "react";
+import type { Block } from "@blocknote/core";
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
+import type { ThemeColors } from "../types";
+import { defaultTheme, defaultColors } from "../themes";
+import { BlockNoteThemedView } from "./BlockNoteThemedView";
+import { createChartBlockSpec } from "./blocks/ChartBlock";
+import { ThemeProvider } from "../context/ThemeContext";
+import { normalizeBlockNoteContent } from "./blocknoteContent";
 
 export interface DashboardEditorProps {
   /** Initial BlockNote content as JSON string */
   initialContent: string;
+  /** Customer backend base URL */
+  apiBaseUrl?: string;
   /** Callback when save is clicked */
   onSave: (content: string) => Promise<void>;
   /** Whether to use dark theme */
   darkMode?: boolean;
+  /** Theme colors used by BlockNote UI */
+  themeColors?: ThemeColors;
+  /** Font family override for editor UI/text */
+  fontFamily?: string;
   /** Custom CSS class */
   className?: string;
 }
@@ -19,8 +32,11 @@ export interface DashboardEditorProps {
  */
 export function DashboardEditor({
   initialContent,
+  apiBaseUrl = "",
   onSave,
   darkMode = false,
+  themeColors = defaultColors,
+  fontFamily = defaultTheme.fontFamily,
   className = "",
 }: DashboardEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
@@ -30,7 +46,7 @@ export function DashboardEditor({
   const parsedContent = useMemo(() => {
     try {
       if (initialContent) {
-        return JSON.parse(initialContent);
+        return normalizeBlockNoteContent(JSON.parse(initialContent), darkMode);
       }
     } catch (e) {
       console.error("Failed to parse initial content:", e);
@@ -42,12 +58,28 @@ export function DashboardEditor({
         content: [],
       },
     ];
-  }, [initialContent]);
+  }, [initialContent, darkMode]);
+
+  const chartBlockSpec = useMemo(
+    () => createChartBlockSpec({ apiBaseUrl, colors: themeColors }),
+    [apiBaseUrl, themeColors]
+  );
+
+  const schema = useMemo(
+    () =>
+      BlockNoteSchema.create({
+        blockSpecs: {
+          ...defaultBlockSpecs,
+          chart: chartBlockSpec,
+        },
+      }),
+    [chartBlockSpec]
+  );
 
   // Create editor with parsed content
   const editor = useCreateBlockNote({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    initialContent: parsedContent as any,
+    schema,
+    initialContent: parsedContent as Block[],
   });
 
   useEffect(() => {
@@ -83,19 +115,28 @@ export function DashboardEditor({
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 rounded-lg transition-colors"
+          className="px-4 py-2 text-sm font-medium text-white disabled:opacity-60 rounded-lg transition-opacity"
+          style={{ backgroundColor: themeColors.primary }}
         >
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
       </div>
 
       {/* Editor */}
-      <div
-        className="border rounded-lg overflow-hidden"
-        data-theme={darkMode ? "dark" : "light"}
-      >
-        <BlockNoteView editor={editor} theme={darkMode ? "dark" : "light"} />
-      </div>
+      <ThemeProvider darkMode={darkMode}>
+        <div
+          className="border rounded-lg overflow-hidden"
+          data-theme={darkMode ? "dark" : "light"}
+          style={{ borderColor: themeColors.border }}
+        >
+          <BlockNoteThemedView
+            editor={editor}
+            darkMode={darkMode}
+            themeColors={themeColors}
+            fontFamily={fontFamily}
+          />
+        </div>
+      </ThemeProvider>
     </div>
   );
 }

@@ -100,6 +100,20 @@ export const oceanColors: ThemeColors = {
   error: "#EF4444",
 };
 
+/** Light-mode overrides for UI surfaces and text. Chart colors (primary, range, etc.) stay the same. */
+export function getColorsForMode(base: ThemeColors, darkMode: boolean): ThemeColors {
+  if (darkMode) return base;
+  return {
+    ...base,
+    text: "#0f172a",
+    muted: "#64748b",
+    grid: "rgba(15, 23, 42, 0.08)",
+    background: "#ffffff",
+    surface: "#f8fafc",
+    border: "rgba(15, 23, 42, 0.12)",
+  };
+}
+
 /** Get colors by preset name */
 export function getColorsByPreset(preset: ColorPreset): ThemeColors {
   switch (preset) {

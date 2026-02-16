@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { QueryResult } from "./QueryResult";
 import { defaultColors, sunsetColors } from "../themes";
-import type { QueryResultType } from "../types";
+import type { QueryResult as QueryResultType } from "../types";
 
 const meta: Meta<typeof QueryResult> = {
   title: "Components/QueryResult",

@@ -88,9 +88,10 @@ export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
 
   switch (chartType) {
     case "column":
-      return renderColumnChart(spec, limitedData, colors, commonMargin);
-    case "bar":
       return renderBarChart(spec, limitedData, colors, commonMargin);
+    case "bar":
+      // Keep parity with admin chart block, where "bar" is rendered vertically.
+      return renderColumnChart(spec, limitedData, colors, commonMargin);
     case "line":
       return renderLineChart(spec, limitedData, colors, commonMargin);
     case "area":
@@ -106,6 +107,72 @@ export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
   }
 }
 
+function isNumericValue(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function prepareCartesianData(
+  data: Array<Record<string, unknown>>,
+  xFieldInput?: string,
+  yFieldsInput?: AxisField[],
+): {
+  rows: Array<Record<string, unknown>>;
+  xField: string;
+  yFields: AxisField[];
+} {
+  if (data.length === 0) {
+    return {
+      rows: [],
+      xField: xFieldInput || "__category",
+      yFields: yFieldsInput ?? [],
+    };
+  }
+
+  const firstRow = data[0];
+  const keys = Object.keys(firstRow);
+  const numericKeys = keys.filter((key) => isNumericValue(firstRow[key]));
+  const nonNumericKeys = keys.filter((key) => !isNumericValue(firstRow[key]));
+
+  const initialYFields = (yFieldsInput ?? []).filter((field) =>
+    data.some((row) => isNumericValue(row[field.field])),
+  );
+
+  if (initialYFields.length > 0) {
+    const xField =
+      xFieldInput && keys.includes(xFieldInput)
+        ? xFieldInput
+        : nonNumericKeys[0] || xFieldInput || "__category";
+
+    const rows =
+      xField === "__category"
+        ? data.map((row, index) => ({ ...row, __category: String(index + 1) }))
+        : data;
+
+    return { rows, xField, yFields: initialYFields };
+  }
+
+  const fallbackNumericKey =
+    (xFieldInput && numericKeys.includes(xFieldInput) && xFieldInput) ||
+    numericKeys[0] ||
+    keys[0];
+
+  const rows = data.map((row, index) => ({
+    ...row,
+    __category: String(row[fallbackNumericKey] ?? index + 1),
+  }));
+
+  return {
+    rows,
+    xField: "__category",
+    yFields: [
+      {
+        field: fallbackNumericKey,
+        label: fallbackNumericKey,
+      },
+    ],
+  };
+}
+
 // Column Chart (Vertical Bars)
 function renderColumnChart(
   spec: ChartSpec,
@@ -114,14 +181,15 @@ function renderColumnChart(
   margin: { top: number; right: number; left: number; bottom: number }
 ) {
   const { x, y, stacking } = spec.encoding;
-  const yFields = Array.isArray(y) ? y : y ? [y] : [];
+  const rawYFields = Array.isArray(y) ? y : y ? [y] : [];
+  const normalized = prepareCartesianData(data, x?.field, rawYFields);
 
   return (
     <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data} margin={margin}>
+      <BarChart data={normalized.rows} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
-          dataKey={x?.field}
+          dataKey={normalized.xField}
           stroke={colors.text}
           tick={{ fill: colors.text }}
         />
@@ -134,12 +202,12 @@ function renderColumnChart(
           }}
         />
         <Legend />
-        {yFields.map((yField, idx) => (
+        {normalized.yFields.map((yField, idx) => (
           <Bar
             key={yField.field}
             dataKey={yField.field}
             name={yField.label || yField.field}
-            fill={colors.range[idx % colors.range.length]}
+            fill={idx === 0 ? colors.secondary : colors.range[idx % colors.range.length]}
             stackId={stacking === "stacked" || stacking === "percent" ? "stack" : undefined}
           />
         ))}
@@ -156,16 +224,16 @@ function renderBarChart(
   margin: { top: number; right: number; left: number; bottom: number }
 ) {
   const { x, y, stacking } = spec.encoding;
-  const xFields = Array.isArray(x) ? x : x ? [x] : [];
-  const yField = Array.isArray(y) ? y[0] : y;
+  const rawYFields = Array.isArray(y) ? y : y ? [y] : [];
+  const normalized = prepareCartesianData(data, x?.field, rawYFields);
 
   return (
     <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data} layout="vertical" margin={margin}>
+      <BarChart data={normalized.rows} layout="vertical" margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis type="number" stroke={colors.text} tick={{ fill: colors.text }} />
         <YAxis
-          dataKey={yField?.field}
+          dataKey={normalized.xField}
           type="category"
           stroke={colors.text}
           tick={{ fill: colors.text }}
@@ -178,7 +246,7 @@ function renderBarChart(
           }}
         />
         <Legend />
-        {xFields.map((xField, idx) => (
+        {normalized.yFields.map((xField, idx) => (
           <Bar
             key={xField.field}
             dataKey={xField.field}
@@ -345,8 +413,8 @@ function renderPieChart(
           outerRadius={120}
           label={(entry) => entry[nameField]}
         >
-          {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={colors.range[index % colors.range.length]} />
+          {data.map((_, index) => (
+            <Cell key={`cell-${nameField}-${String(data[index]?.[nameField] ?? index)}`} fill={colors.range[index % colors.range.length]} />
           ))}
         </Pie>
         <Tooltip

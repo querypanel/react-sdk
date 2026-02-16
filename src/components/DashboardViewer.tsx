@@ -2,20 +2,41 @@ import { useEffect, useState, useMemo } from "react";
 import type { Block } from "@blocknote/core";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
-import { defaultColors } from "../themes";
+import { defaultColors, defaultTheme } from "../themes";
+import type { ThemeColors } from "../types";
+import { BlockNoteThemedView } from "./BlockNoteThemedView";
+import { ThemeProvider } from "../context/ThemeContext";
+import { normalizeBlockNoteContent } from "./blocknoteContent";
+
+function getViewerStyles(): string {
+  return `
+    .bn-container {
+      min-height: 100%;
+      border-color: transparent;
+    }
+    .bn-editor {
+      min-height: 100%;
+    }
+    .ProseMirror {
+      min-height: 100%;
+      padding: 1.25rem;
+    }
+  `;
+}
 
 export interface DashboardViewerProps {
   /** BlockNote content as JSON string */
   content: string;
-  /** JWT token for data fetching */
-  token: string;
-  /** API base URL */
+  /** Customer backend base URL */
   apiBaseUrl?: string;
   /** Whether to use dark theme */
   darkMode?: boolean;
+  /** Theme colors used by BlockNote UI and chart blocks */
+  themeColors?: ThemeColors;
+  /** Font family override for editor UI/text */
+  fontFamily?: string;
   /** Custom CSS class */
   className?: string;
 }
@@ -25,9 +46,10 @@ export interface DashboardViewerProps {
  */
 export function DashboardViewer({
   content,
-  token,
-  apiBaseUrl = "https://api.querypanel.com",
+  apiBaseUrl = "",
   darkMode = false,
+  themeColors = defaultColors,
+  fontFamily = defaultTheme.fontFamily,
   className = "",
 }: DashboardViewerProps) {
   const [mounted, setMounted] = useState(false);
@@ -36,7 +58,7 @@ export function DashboardViewer({
   const parsedContent = useMemo(() => {
     try {
       if (content) {
-        return JSON.parse(content);
+        return normalizeBlockNoteContent(JSON.parse(content), darkMode);
       }
     } catch (e) {
       console.error("Failed to parse dashboard content:", e);
@@ -48,12 +70,13 @@ export function DashboardViewer({
         content: [],
       },
     ];
-  }, [content]);
+  }, [content, darkMode]);
 
   const chartBlockSpec = useMemo(
-    () => createChartBlockSpec({ apiBaseUrl, token, colors: defaultColors }),
-    [apiBaseUrl, token]
+    () => createChartBlockSpec({ apiBaseUrl, colors: themeColors }),
+    [apiBaseUrl, themeColors]
   );
+  const viewerStyles = useMemo(() => getViewerStyles(), []);
 
   const schema = useMemo(
     () =>
@@ -90,8 +113,17 @@ export function DashboardViewer({
   }
 
   return (
-    <div className={className} data-theme={darkMode ? "dark" : "light"}>
-      <BlockNoteView editor={editor} editable={false} theme={darkMode ? "dark" : "light"} />
-    </div>
+    <ThemeProvider darkMode={darkMode}>
+      <div className={className} data-theme={darkMode ? "dark" : "light"}>
+        <style>{viewerStyles}</style>
+        <BlockNoteThemedView
+          editor={editor}
+          editable={false}
+          darkMode={darkMode}
+          themeColors={themeColors}
+          fontFamily={fontFamily}
+        />
+      </div>
+    </ThemeProvider>
   );
 }

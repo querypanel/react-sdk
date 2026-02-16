@@ -2,16 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { QuerypanelEmbedded } from "./QuerypanelEmbedded";
 import type { Dashboard } from "../types";
 
-/**
- * Creates a mock JWT token with embedded payload
- */
-function createMockJWT(payload: Record<string, unknown>): string {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payloadStr = btoa(JSON.stringify(payload));
-  const signature = "mock-signature";
-  return `${header}.${payloadStr}.${signature}`;
-}
-
 // Mock dashboard content
 const mockDashboardContent = JSON.stringify([
   {
@@ -179,8 +169,10 @@ const meta: Meta<typeof QuerypanelEmbedded> = {
       
       // Store cleanup for later
       if (typeof window !== "undefined") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__storybookMockCleanup = cleanup;
+        const storybookWindow = window as Window & {
+          __storybookMockCleanup?: () => void;
+        };
+        storybookWindow.__storybookMockCleanup = cleanup;
       }
       
       return <Story />;
@@ -194,10 +186,6 @@ type Story = StoryObj<typeof QuerypanelEmbedded>;
 export const ReadOnly: Story = {
   args: {
     dashboardId: "mock-dashboard-id",
-    token: createMockJWT({
-      organizationId: "org-123",
-      userId: "user-456",
-    }),
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: false,
     darkMode: false,
@@ -205,7 +193,7 @@ export const ReadOnly: Story = {
   parameters: {
     docs: {
       description: {
-        story: "Read-only dashboard view without customization options.",
+        story: "Read-only dashboard view through a customer backend API wrapper.",
       },
     },
   },
@@ -214,23 +202,55 @@ export const ReadOnly: Story = {
 export const WithCustomization: Story = {
   args: {
     dashboardId: "mock-dashboard-id",
-
-    token: createMockJWT({
-      organizationId: "org-123",
-      userId: "user-456",
-      tenantId: "customer-123",
-    }),
-
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: true,
     darkMode: false,
-    colorPreset: "ocean"
+    colorPreset: "ocean",
   },
   parameters: {
     docs: {
       description: {
         story:
-          "Dashboard with customization enabled. Customers can fork and edit their own copy.",
+          "Dashboard with customization enabled. Customers can fork and edit via backend-wrapped endpoints.",
+      },
+    },
+  },
+};
+
+export const CustomTheme: Story = {
+  args: {
+    dashboardId: "mock-dashboard-id",
+    apiBaseUrl: "https://mock-api.querypanel.com",
+    allowCustomization: true,
+    darkMode: true,
+
+    theme: {
+      name: "custom-rose",
+      colors: {
+        primary: "#e11d48",
+        secondary: "#fb7185",
+        tertiary: "#f97316",
+        accent: "#ec4899",
+        range: ["#e11d48", "#fb7185", "#f97316", "#ec4899", "#06b6d4", "#22c55e", "#eab308", "#8b5cf6"],
+        text: "#ffe4e6",
+        muted: "#fecdd3",
+        grid: "rgba(225,29,72,0.14)",
+        background: "#18050d",
+        surface: "rgba(24,5,13,0.82)",
+        border: "rgba(251,113,133,0.35)",
+        error: "#ef4444",
+      },
+      fontFamily: "Georgia, Cambria, serif",
+      borderRadius: "0.75rem",
+    },
+
+    colorPreset: "default"
+  },
+  parameters: {
+    backgrounds: { default: "dark" },
+    docs: {
+      description: {
+        story: "Dashboard with a fully custom theme applied to the BlockNote editor surface and menus.",
       },
     },
   },
@@ -239,11 +259,6 @@ export const WithCustomization: Story = {
 export const DarkMode: Story = {
   args: {
     dashboardId: "mock-dashboard-id",
-    token: createMockJWT({
-      organizationId: "org-123",
-      userId: "user-456",
-      tenantId: "customer-123",
-    }),
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: true,
     darkMode: true,
@@ -261,11 +276,6 @@ export const DarkMode: Story = {
 export const WithCallbacks: Story = {
   args: {
     dashboardId: "mock-dashboard-id",
-    token: createMockJWT({
-      organizationId: "org-123",
-      userId: "user-456",
-      tenantId: "customer-123",
-    }),
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: true,
     onLoad: (dashboard) => {
@@ -291,11 +301,6 @@ export const CustomerFork: Story = {
   name: "Customer Fork",
   args: {
     dashboardId: "mock-dashboard-id",
-    token: createMockJWT({
-      organizationId: "org-123",
-      userId: "user-456",
-      tenantId: "customer-123",
-    }),
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: true,
     darkMode: false,

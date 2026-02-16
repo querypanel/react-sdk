@@ -1,17 +1,27 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useState } from "react";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
-import type { ThemeColors } from "../types";
+import { useThemeContext } from "../../context/ThemeContext";
+import { getColorsForMode } from "../../themes";
+import type { ThemeColors } from "../../types";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
-  token: string;
   colors: ThemeColors;
+  /** Override URL for run-sql (e.g. /api/dashboards/run-sql for admin). If not set, uses apiBaseUrl + /query/run-sql */
+  runSqlUrl?: string;
 };
 
-export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOptions) {
+function isVizSpec(value: unknown): value is VizSpec {
+  if (!value || typeof value !== "object") return false;
+  const kind = (value as { kind?: unknown }).kind;
+  return kind === "chart" || kind === "table" || kind === "metric";
+}
+
+export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl }: ChartBlockOptions) {
   return createReactBlockSpec(
     {
       type: "chart",
@@ -22,6 +32,9 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
         },
         title: {
           default: "Chart",
+        },
+        rationale: {
+          default: "",
         },
         sql: {
           default: "",
@@ -40,20 +53,49 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
         previewTenantId: {
           default: "",
         },
+        tenantId: {
+          default: "",
+        },
+        width: {
+          default: "100%",
+        },
+        height: {
+          default: 400,
+        },
       },
       content: "none",
     },
     {
       render: (props) => {
+        const { darkMode } = useThemeContext();
+        const resolvedColors = getColorsForMode(colors, darkMode);
         const [data, setData] = useState<Array<Record<string, unknown>> | null>(null);
         const [error, setError] = useState<string | null>(null);
         const [isLoading, setIsLoading] = useState(false);
 
+        const chartHeight = (() => {
+          const raw = props.block.props.height;
+          if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+          if (typeof raw === "string") {
+            const parsed = Number.parseInt(raw, 10);
+            if (Number.isFinite(parsed)) return parsed;
+          }
+          return 400;
+        })();
+
         const parsedSpec = useMemo(() => {
           if (!props.block.props.chartSpec) return null;
           try {
-            return JSON.parse(props.block.props.chartSpec) as VizSpec & {
+            const rawSpec = JSON.parse(props.block.props.chartSpec) as VizSpec & {
               data?: Array<Record<string, unknown>>;
+            };
+
+            if (!isVizSpec(rawSpec)) {
+              throw new Error("Unsupported chart specification");
+            }
+            return {
+              spec: rawSpec,
+              embeddedData: Array.isArray(rawSpec.data) ? rawSpec.data : [],
             };
           } catch (err) {
             setError(err instanceof Error ? err.message : "Invalid chart spec");
@@ -79,8 +121,8 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
 
         useEffect(() => {
           if (!parsedSpec) return;
-          if (Array.isArray(parsedSpec.data) && parsedSpec.data.length > 0) {
-            setData(parsedSpec.data);
+          if (Array.isArray(parsedSpec.embeddedData) && parsedSpec.embeddedData.length > 0) {
+            setData(parsedSpec.embeddedData);
             return;
           }
 
@@ -89,21 +131,28 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
             return;
           }
 
+          const url = runSqlUrl ?? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql`;
+          const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
+          const previewTenantId =
+            props.block.props.previewTenantId?.trim() || props.block.props.tenantId?.trim() || undefined;
+
           let cancelled = false;
           const fetchData = async () => {
             setIsLoading(true);
             setError(null);
             try {
-              const response = await fetch(`${apiBaseUrl}/query/run-sql`, {
+              const response = await fetch(url, {
                 method: "POST",
+                credentials: "include",
                 headers: {
                   "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                   sql: props.block.props.sql,
                   datasourceIds,
                   params: sqlParams,
+                  ...(tenantFieldName && { tenantFieldName }),
+                  ...(previewTenantId && { previewTenantId }),
                 }),
               });
 
@@ -130,11 +179,31 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
           return () => {
             cancelled = true;
           };
-        }, [apiBaseUrl, token, datasourceIds, sqlParams, parsedSpec, props.block.props.sql]);
+        }, [
+          runSqlUrl,
+          apiBaseUrl,
+          datasourceIds,
+          sqlParams,
+          parsedSpec,
+          props.block.props.sql,
+          props.block.props.tenantFieldName,
+          props.block.props.previewTenantId,
+          props.block.props.tenantId,
+        ]);
 
         if (!parsedSpec) {
           return (
-            <div style={{ padding: "1rem", color: colors.error }}>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                padding: "1rem",
+                color: resolvedColors.error,
+                background: resolvedColors.surface,
+                border: `1px solid ${resolvedColors.border}`,
+                borderRadius: "0.75rem",
+              }}
+            >
               Invalid chart specification
             </div>
           );
@@ -142,7 +211,17 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
 
         if (isLoading && !data) {
           return (
-            <div style={{ padding: "1rem", color: colors.muted }}>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                padding: "1rem",
+                color: resolvedColors.muted,
+                background: resolvedColors.surface,
+                border: `1px solid ${resolvedColors.border}`,
+                borderRadius: "0.75rem",
+              }}
+            >
               Loading chart data...
             </div>
           );
@@ -150,19 +229,88 @@ export function createChartBlockSpec({ apiBaseUrl, token, colors }: ChartBlockOp
 
         if (error) {
           return (
-            <div style={{ padding: "1rem", color: colors.error }}>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                padding: "1rem",
+                color: resolvedColors.error,
+                background: resolvedColors.surface,
+                border: `1px solid ${resolvedColors.border}`,
+                borderRadius: "0.75rem",
+              }}
+            >
               {error}
             </div>
           );
         }
 
         return (
-          <div style={{ padding: "0.5rem" }}>
-            <VizSpecRenderer
-              spec={parsedSpec as VizSpec}
-              data={data ?? []}
-              colors={colors}
-            />
+          <div
+            style={{
+              width: "100%",
+              minWidth: 0,
+              padding: "0.75rem",
+              boxSizing: "border-box",
+              background: resolvedColors.surface,
+              border: `1px solid ${resolvedColors.border}`,
+              borderRadius: "0.75rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.5rem",
+                color: resolvedColors.text,
+              }}
+            >
+              <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                {props.block.props.title || "Chart"}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
+                {datasourceIds.length > 0
+                  ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
+                  : ""}
+              </div>
+            </div>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                height: `${chartHeight}px`,
+                borderRadius: "0.5rem",
+                background: resolvedColors.background,
+                border: `1px solid ${resolvedColors.border}`,
+                padding: "0.5rem",
+                boxSizing: "border-box",
+              }}
+            >
+              <VizSpecRenderer
+                spec={parsedSpec.spec}
+                data={data ?? []}
+                colors={resolvedColors}
+              />
+            </div>
+            {props.block.props.rationale ? (
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  padding: "0.75rem",
+                  borderRadius: "0.5rem",
+                  border: `1px solid ${resolvedColors.border}`,
+                  color: resolvedColors.muted,
+                  fontSize: "0.8rem",
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ marginBottom: "0.25rem", fontWeight: 600, color: resolvedColors.text }}>
+                  Rationale
+                </div>
+                {props.block.props.rationale}
+              </div>
+            ) : null}
           </div>
         );
       },

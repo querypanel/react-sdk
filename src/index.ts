@@ -16,6 +16,11 @@ export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { QuerypanelEmbedded, type QuerypanelEmbeddedProps } from "./components/QuerypanelEmbedded";
 export { DashboardViewer, type DashboardViewerProps } from "./components/DashboardViewer";
 export { DashboardEditor, type DashboardEditorProps } from "./components/DashboardEditor";
+export { DashboardAiEditor, type DashboardAiEditorProps } from "./components/DashboardAiEditor";
+export { AIChartModal, type AIChartModalProps } from "./components/AIChartModal";
+export { DatasourceSelector, type DatasourceSelectorProps } from "./components/DatasourceSelector";
+export { DeploySuccessModal, type DeploySuccessModalProps } from "./components/DeploySuccessModal";
+export { BlockNoteThemedView, type BlockNoteThemedViewProps } from "./components/BlockNoteThemedView";
 
 // Utilities
 export { formatValue } from "./utils/formatters";
@@ -51,5 +56,9 @@ export {
   emeraldColors,
   oceanColors,
   getColorsByPreset,
+  getColorsForMode,
   createTheme,
 } from "./themes";
+
+// Theme context (for chart blocks and other theme-aware components)
+export { ThemeProvider, useThemeContext } from "./context/ThemeContext";
