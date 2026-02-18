@@ -17,6 +17,8 @@ import { AIChartModal } from "./AIChartModal";
 import { DeploySuccessModal } from "./DeploySuccessModal";
 import { ThemeProvider } from "../context/ThemeContext";
 
+const EMPTY_HEADERS: Record<string, string> = {};
+
 const editorStyles = `
   .bn-container {
     min-height: calc(100vh - 16rem);
@@ -108,7 +110,7 @@ export function DashboardAiEditor({
   darkMode,
   themeColors = defaultColors,
   fontFamily,
-  headers = {},
+  headers = EMPTY_HEADERS,
   className = "",
   contentResetKey,
 }: DashboardAiEditorProps) {
@@ -165,8 +167,9 @@ export function DashboardAiEditor({
         apiBaseUrl: apiBaseUrl || "",
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
+        headers,
       }),
-    [apiBaseUrl, themeColors, resolvedRunSqlUrl]
+    [apiBaseUrl, themeColors, resolvedRunSqlUrl, headers]
   );
 
   const schema = useMemo(
@@ -377,6 +380,7 @@ export function DashboardAiEditor({
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
           datasourcesUrl={resolvedDatasourcesUrl}
           headers={headers}
+          darkMode={effectiveDarkMode}
         />
       )}
 

@@ -147,6 +147,10 @@ const meta: Meta<typeof QuerypanelEmbedded> = {
   title: "Components/QuerypanelEmbedded",
   component: QuerypanelEmbedded,
   tags: ["autodocs"],
+  args: {
+    apiBaseUrl: "https://mock-api.querypanel.com",
+    jwt: "demo.jwt.token",
+  },
   parameters: {
     layout: "padded",
   },

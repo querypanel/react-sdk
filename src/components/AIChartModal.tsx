@@ -55,6 +55,8 @@ export interface AIChartModalProps {
   datasourcesUrl?: string;
   /** Extra headers for API requests (e.g. x-organization-id is always sent) */
   headers?: Record<string, string>;
+  /** Whether to render dark theme styles for inline-styled children */
+  darkMode?: boolean;
 }
 
 type Message = {
@@ -78,6 +80,7 @@ const quickPrompts = [
 ];
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
+const EMPTY_HEADERS: Record<string, string> = {};
 
 function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +216,8 @@ export function AIChartModal({
   generateChartUrl = "/api/ai/generate-chart",
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
   datasourcesUrl = "/api/datasources",
-  headers = {},
+  headers = EMPTY_HEADERS,
+  darkMode = false,
 }: AIChartModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -391,6 +395,7 @@ export function AIChartModal({
                 onSelectionChange={setSelectedDatasourceIds}
                 datasourcesUrl={datasourcesUrl}
                 headers={headers}
+                darkMode={darkMode}
               />
               <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
                 <input

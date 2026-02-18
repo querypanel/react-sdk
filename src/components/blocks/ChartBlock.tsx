@@ -7,13 +7,23 @@ import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import type { ThemeColors } from "../../types";
+import { runDedupedRequest } from "../../utils/requestDedup";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
   colors: ThemeColors;
   /** Override URL for run-sql (e.g. /api/dashboards/run-sql for admin). If not set, uses apiBaseUrl + /query/run-sql */
   runSqlUrl?: string;
+  headers?: Record<string, string>;
 };
+
+const EMPTY_HEADERS: Record<string, string> = {};
+
+function getHeadersSignature(headers: Record<string, string>) {
+  return JSON.stringify(
+    Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
+  );
+}
 
 function isVizSpec(value: unknown): value is VizSpec {
   if (!value || typeof value !== "object") return false;
@@ -21,7 +31,7 @@ function isVizSpec(value: unknown): value is VizSpec {
   return kind === "chart" || kind === "table" || kind === "metric";
 }
 
-export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl }: ChartBlockOptions) {
+export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = EMPTY_HEADERS }: ChartBlockOptions) {
   return createReactBlockSpec(
     {
       type: "chart",
@@ -119,6 +129,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl }: ChartBlo
           }
         }, [props.block.props.datasourceIds]);
 
+        // biome-ignore lint/correctness/useExhaustiveDependencies: values come from createChartBlockSpec closure
         useEffect(() => {
           if (!parsedSpec) return;
           if (Array.isArray(parsedSpec.embeddedData) && parsedSpec.embeddedData.length > 0) {
@@ -135,31 +146,36 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl }: ChartBlo
           const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
           const previewTenantId =
             props.block.props.previewTenantId?.trim() || props.block.props.tenantId?.trim() || undefined;
+          const requestPayload = {
+            sql: props.block.props.sql,
+            datasourceIds,
+            params: sqlParams,
+            ...(tenantFieldName && { tenantFieldName }),
+            ...(previewTenantId && { previewTenantId }),
+          };
+          const requestKey = `run-sql:${url}:${JSON.stringify(requestPayload)}:${getHeadersSignature(headers)}`;
 
           let cancelled = false;
           const fetchData = async () => {
             setIsLoading(true);
             setError(null);
             try {
-              const response = await fetch(url, {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  sql: props.block.props.sql,
-                  datasourceIds,
-                  params: sqlParams,
-                  ...(tenantFieldName && { tenantFieldName }),
-                  ...(previewTenantId && { previewTenantId }),
-                }),
-              });
+              const payload = await runDedupedRequest(requestKey, async () => {
+                const response = await fetch(url, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...headers,
+                  },
+                  body: JSON.stringify(requestPayload),
+                });
 
-              const payload = await response.json().catch(() => ({}));
-              if (!response.ok) {
-                throw new Error(payload?.error || "Failed to load chart data");
-              }
+                const parsed = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                  throw new Error(parsed?.error || "Failed to load chart data");
+                }
+                return parsed;
+              });
 
               if (!cancelled) {
                 setData(Array.isArray(payload?.rows) ? payload.rows : []);
@@ -180,8 +196,6 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl }: ChartBlo
             cancelled = true;
           };
         }, [
-          runSqlUrl,
-          apiBaseUrl,
           datasourceIds,
           sqlParams,
           parsedSpec,

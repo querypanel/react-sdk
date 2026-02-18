@@ -3,12 +3,15 @@ import { DashboardAiEditor } from "./DashboardAiEditor";
 import type { Dashboard } from "../types";
 import type { ColorPreset, Theme } from "../types";
 import { createTheme, getColorsByPreset } from "../themes";
+import { runDedupedRequest } from "../utils/requestDedup";
 
 export interface QuerypanelEmbeddedProps {
   /** Dashboard ID to display */
   dashboardId: string;
-  /** Customer backend base URL (same-origin or backend domain) */
-  apiBaseUrl?: string;
+  /** QueryPanel API base URL (querypanel-sdk endpoint) */
+  apiBaseUrl: string;
+  /** Customer JWT generated server-side (RS256) */
+  jwt: string;
 
   /** Enable customer customization (copy-on-write) */
   allowCustomization?: boolean;
@@ -31,7 +34,8 @@ export interface QuerypanelEmbeddedProps {
  */
 export function QuerypanelEmbedded({
   dashboardId,
-  apiBaseUrl = "",
+  apiBaseUrl,
+  jwt,
   allowCustomization = false,
   colorPreset = "default",
   theme,
@@ -48,6 +52,19 @@ export function QuerypanelEmbedded({
   const [editorResetKey, setEditorResetKey] = useState(0);
 
   const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+  const authHeaders = useMemo(
+    () => ({
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
+    }),
+    [jwt]
+  );
+  const editorHeaders = useMemo(
+    () => ({
+      Authorization: `Bearer ${jwt}`,
+    }),
+    [jwt]
+  );
   const resolvedTheme = useMemo(
     () =>
       createTheme({
@@ -106,20 +123,19 @@ export function QuerypanelEmbedded({
     setError(null);
 
     try {
-      // Backend resolves auth/tenant context server-side.
-      const response = await fetch(
-        `${normalizedApiBaseUrl}/dashboards/${dashboardId}/for-tenant`,
-        {
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+      const url = `${normalizedApiBaseUrl}/dashboards/${dashboardId}/for-tenant`;
+      const requestKey = `dashboard-for-tenant:${url}:${jwt}`;
+      const data = await runDedupedRequest<Dashboard>(requestKey, async () => {
+        const response = await fetch(url, {
+          headers: authHeaders,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch dashboard: ${response.statusText}`);
         }
-      );
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard: ${response.statusText}`);
-      }
-
-      const data: Dashboard = await response.json();
+        return response.json() as Promise<Dashboard>;
+      });
       if (data.dashboard_type === "internal") {
         setDashboard(null);
         setIsFork(false);
@@ -135,7 +151,7 @@ export function QuerypanelEmbedded({
     } finally {
       setLoading(false);
     }
-  }, [normalizedApiBaseUrl, dashboardId, onLoad, onError]);
+  }, [normalizedApiBaseUrl, dashboardId, onLoad, onError, authHeaders]);
 
   useEffect(() => {
     fetchDashboard();
@@ -144,13 +160,9 @@ export function QuerypanelEmbedded({
   // Fork the dashboard
   const handleFork = async () => {
     try {
-      // Backend resolves auth/tenant context server-side.
       const response = await fetch(`${normalizedApiBaseUrl}/dashboards/${dashboardId}/fork`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: authHeaders,
         body: JSON.stringify({}),
       });
 
@@ -175,13 +187,9 @@ export function QuerypanelEmbedded({
     if (!dashboard) return;
 
     try {
-      // Backend resolves auth/tenant context server-side.
       const response = await fetch(`${normalizedApiBaseUrl}/dashboards/forks/${dashboard.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: authHeaders,
         body: JSON.stringify({
           content_json: content,
         }),
@@ -210,15 +218,11 @@ export function QuerypanelEmbedded({
     }
 
     try {
-      // Backend resolves auth/tenant context server-side.
       const response = await fetch(
         `${normalizedApiBaseUrl}/dashboards/forks/${dashboard.id}/rollback`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
+          headers: authHeaders,
           body: JSON.stringify({}),
         }
       );
@@ -345,6 +349,7 @@ export function QuerypanelEmbedded({
         editable={isEditing}
         contentResetKey={editorResetKey}
         apiBaseUrl={normalizedApiBaseUrl || undefined}
+        headers={editorHeaders}
         darkMode={darkMode}
         themeColors={resolvedTheme.colors}
         fontFamily={resolvedTheme.fontFamily}
