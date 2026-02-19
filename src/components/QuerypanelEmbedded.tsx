@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { DashboardAiEditor } from "./DashboardAiEditor";
 import type { Dashboard } from "../types";
 import type { ColorPreset, Theme } from "../types";
@@ -50,6 +50,8 @@ export function QuerypanelEmbedded({
   const [isEditing, setIsEditing] = useState(false);
   const [isFork, setIsFork] = useState(false);
   const [editorResetKey, setEditorResetKey] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const editorSaveRef = useRef<(() => void | Promise<void>) | null>(null);
 
   const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
   const authHeaders = useMemo(
@@ -325,14 +327,34 @@ export function QuerypanelEmbedded({
               </>
             )}
             {isEditing && (
-              <button
-                type="button"
-                onClick={exitEditMode}
-                className="px-4 py-2 text-sm font-semibold rounded-lg border transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={toolbarStyles.secondaryButton}
-              >
-                Cancel
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const save = editorSaveRef.current;
+                    if (!save) return;
+                    setIsSaving(true);
+                    try {
+                      await save();
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg border transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60"
+                  style={toolbarStyles.primaryButton}
+                >
+                  {isSaving ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exitEditMode}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg border transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                  style={toolbarStyles.secondaryButton}
+                >
+                  Cancel
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -346,8 +368,10 @@ export function QuerypanelEmbedded({
         dashboardId={dashboard.id}
         dashboardType={dashboard.dashboard_type ?? "customer"}
         showDeployButton={false}
+        showSaveButton={false}
         editable={isEditing}
         contentResetKey={editorResetKey}
+        saveRef={editorSaveRef}
         apiBaseUrl={normalizedApiBaseUrl || undefined}
         headers={editorHeaders}
         darkMode={darkMode}

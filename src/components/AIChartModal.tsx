@@ -47,9 +47,7 @@ export interface AIChartModalProps {
   dashboardId: string;
   initialPrompt?: string;
   dashboardType?: "customer" | "internal";
-  /** URL for mock chart generation (default: /api/ai/generate-chart) */
-  generateChartUrl?: string;
-  /** URL for real SQL chart generation (default: /api/ai/generate-chart-with-sql) */
+  /** URL for SQL chart generation (default: /api/ai/generate-chart-with-sql) */
   generateChartWithSqlUrl?: string;
   /** URL for datasources (default: /api/datasources) */
   datasourcesUrl?: string;
@@ -213,7 +211,6 @@ export function AIChartModal({
   dashboardId,
   initialPrompt,
   dashboardType = "customer",
-  generateChartUrl = "/api/ai/generate-chart",
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
@@ -223,7 +220,6 @@ export function AIChartModal({
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDatasourceIds, setSelectedDatasourceIds] = useState<string[]>([]);
-  const [useMockData, setUseMockData] = useState(false);
   const [tenantFieldName, setTenantFieldName] = useState("tenant_id");
   const [previewTenantId, setPreviewTenantId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -271,12 +267,7 @@ export function AIChartModal({
     setIsLoading(true);
 
     try {
-      const endpoint =
-        useMockData || selectedDatasourceIds.length === 0
-          ? generateChartUrl
-          : generateChartWithSqlUrl;
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(generateChartWithSqlUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -286,7 +277,7 @@ export function AIChartModal({
         body: JSON.stringify({
           prompt: messageText,
           dashboardId,
-          datasourceIds: useMockData ? undefined : selectedDatasourceIds,
+          datasourceIds: selectedDatasourceIds.length > 0 ? selectedDatasourceIds : undefined,
           tenantFieldName: tenantFieldName.trim() || undefined,
           previewTenantId: previewTenantId.trim() || undefined,
           conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -397,15 +388,6 @@ export function AIChartModal({
                 headers={headers}
                 darkMode={darkMode}
               />
-              <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useMockData}
-                  onChange={(e) => setUseMockData(e.target.checked)}
-                  className="rounded border-gray-300"
-                />
-                Use mock data
-              </label>
             </div>
 
             {dashboardType === "customer" && (

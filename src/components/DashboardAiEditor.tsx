@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { RocketIcon, SparklesIcon } from "lucide-react";
+import { RocketIcon, Save, SparklesIcon } from "lucide-react";
 import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems } from "@blocknote/core";
 import {
   useCreateBlockNote,
@@ -68,14 +68,14 @@ export interface DashboardAiEditorProps {
   dashboardType?: "customer" | "internal";
   /** Show deploy button (admin flow) */
   showDeployButton?: boolean;
+  /** Show save button in editor toolbar. Set false when parent provides Save (e.g. embed toolbar). */
+  showSaveButton?: boolean;
   /** Whether editor is editable. Set false for viewer mode. */
   editable?: boolean;
   /** Customer/embed API base URL. When empty, uses admin defaults (/api/...) */
   apiBaseUrl?: string;
   /** Override run-sql URL (e.g. /api/dashboards/run-sql for admin) */
   runSqlUrl?: string;
-  /** Override AI generate-chart URL */
-  generateChartUrl?: string;
   /** Override AI generate-chart-with-sql URL */
   generateChartWithSqlUrl?: string;
   /** Override datasources URL */
@@ -92,6 +92,8 @@ export interface DashboardAiEditorProps {
   className?: string;
   /** Optional reset key to force reloading initialContent */
   contentResetKey?: string | number;
+  /** Optional ref to trigger save from parent (e.g. toolbar Save button) */
+  saveRef?: React.MutableRefObject<(() => void | Promise<void>) | null>;
 }
 
 export function DashboardAiEditor({
@@ -101,10 +103,10 @@ export function DashboardAiEditor({
   dashboardId,
   dashboardType = "customer",
   showDeployButton = true,
+  showSaveButton = true,
   editable = true,
   apiBaseUrl = "",
   runSqlUrl,
-  generateChartUrl = "/api/ai/generate-chart",
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
   datasourcesUrl = "/api/datasources",
   darkMode,
@@ -113,8 +115,10 @@ export function DashboardAiEditor({
   headers = EMPTY_HEADERS,
   className = "",
   contentResetKey,
+  saveRef,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [showDeploySuccess, setShowDeploySuccess] = useState(false);
@@ -157,7 +161,6 @@ export function DashboardAiEditor({
   const effectiveDarkMode = darkMode !== undefined ? darkMode : detectedDarkMode;
 
   const resolvedRunSqlUrl = runSqlUrl ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql` : "/api/dashboards/run-sql");
-  const resolvedGenerateChartUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/ai/generate-chart` : generateChartUrl;
   const resolvedGenerateChartWithSqlUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/ai/generate-chart-with-sql` : generateChartWithSqlUrl;
   const resolvedDatasourcesUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/datasources` : datasourcesUrl;
 
@@ -300,6 +303,26 @@ export function DashboardAiEditor({
     }
   };
 
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const cleanedDocument = stripDataFromChartBlocks();
+      const content = JSON.stringify(cleanedDocument);
+      await onSave(content);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [stripDataFromChartBlocks, onSave]);
+
+  useEffect(() => {
+    if (saveRef) {
+      saveRef.current = handleSave;
+      return () => {
+        saveRef.current = null;
+      };
+    }
+  }, [saveRef, handleSave]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -322,21 +345,39 @@ export function DashboardAiEditor({
     <>
       <style>{editorStyles}</style>
       <div className={`space-y-4 ${className}`}>
-        {showDeployButton && editable && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleDeploy}
-              disabled={isDeploying}
-              className="px-4 py-2 text-sm font-semibold rounded-lg transition-opacity disabled:opacity-60"
-              style={{
-                background: "linear-gradient(to right, #9333ea, #4f46e5, #9333ea)",
-                color: "#fff",
-              }}
-            >
-              <RocketIcon className="w-4 h-4 inline-block mr-2 align-middle" />
-              {isDeploying ? "Deploying..." : "Deploy to Customers"}
-            </button>
+        {editable && (showDeployButton || showSaveButton) && (
+          <div className="flex justify-end gap-2">
+            {!showDeployButton && showSaveButton && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg border transition-opacity disabled:opacity-60"
+                style={{
+                  backgroundColor: themeColors.primary,
+                  color: "#fff",
+                  borderColor: themeColors.primary,
+                }}
+              >
+                <Save className="w-4 h-4 inline-block mr-2 align-middle" />
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            )}
+            {showDeployButton && (
+              <button
+                type="button"
+                onClick={handleDeploy}
+                disabled={isDeploying}
+                className="px-4 py-2 text-sm font-semibold rounded-lg transition-opacity disabled:opacity-60"
+                style={{
+                  background: "linear-gradient(to right, #9333ea, #4f46e5, #9333ea)",
+                  color: "#fff",
+                }}
+              >
+                <RocketIcon className="w-4 h-4 inline-block mr-2 align-middle" />
+                {isDeploying ? "Deploying..." : "Deploy to Customers"}
+              </button>
+            )}
           </div>
         )}
 
@@ -376,7 +417,6 @@ export function DashboardAiEditor({
           organizationId={organizationId}
           dashboardId={dashboardId}
           dashboardType={dashboardType}
-          generateChartUrl={resolvedGenerateChartUrl}
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
           datasourcesUrl={resolvedDatasourcesUrl}
           headers={headers}

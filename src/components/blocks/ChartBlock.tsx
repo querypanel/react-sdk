@@ -160,8 +160,10 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
             setIsLoading(true);
             setError(null);
             try {
-              const payload = await runDedupedRequest(requestKey, async () => {
-                const response = await fetch(url, {
+              const payload = await runDedupedRequest(
+                requestKey,
+                async () => {
+                  const response = await fetch(url, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -175,7 +177,9 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
                   throw new Error(parsed?.error || "Failed to load chart data");
                 }
                 return parsed;
-              });
+              },
+                { cacheMs: 60_000 }
+              );
 
               if (!cancelled) {
                 setData(Array.isArray(payload?.rows) ? payload.rows : []);
