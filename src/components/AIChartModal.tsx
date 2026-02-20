@@ -80,7 +80,13 @@ const quickPrompts = [
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
 
-function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
+function ChartPreview({
+  chartSpec,
+  darkMode = false,
+}: {
+  chartSpec: unknown;
+  darkMode?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
 
   let chartType = "bar";
@@ -110,10 +116,10 @@ function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
           alignItems: "center",
           justifyContent: "center",
           fontSize: 12,
-          color: "#dc2626",
-          background: "#fef2f2",
+          color: darkMode ? "#fca5a5" : "#dc2626",
+          background: darkMode ? "rgba(239,68,68,0.18)" : "#fef2f2",
           borderRadius: 4,
-          border: "1px solid #fecaca",
+          border: darkMode ? "1px solid rgba(239,68,68,0.35)" : "1px solid #fecaca",
           padding: 8,
         }}
       >
@@ -376,22 +382,36 @@ export function AIChartModal({
 
       <div className="fixed inset-0 z-50 flex items-center justify-center p-6 pointer-events-none">
         <div
-          className="w-full max-w-4xl h-[82vh] bg-white dark:bg-gray-950 rounded-xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-800 pointer-events-auto overflow-hidden"
+          className={`w-full max-w-4xl h-[82vh] bg-white dark:bg-gray-950 rounded-xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-800 pointer-events-auto overflow-hidden ${darkMode ? "dark" : ""}`}
           role="dialog"
           aria-modal="true"
         >
           {/* Header */}
-          <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 dark:from-blue-950/30 dark:via-purple-950/30 dark:to-pink-950/30 space-y-3">
+          <div
+            className={`px-5 py-3 border-b space-y-3 ${
+              darkMode
+                ? "border-gray-800 bg-gradient-to-r from-blue-950/40 via-purple-950/40 to-pink-950/40"
+                : "border-gray-200 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50"
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
                   <SparklesIcon className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  <h2
+                    className={`text-base font-semibold ${
+                      darkMode ? "text-gray-100" : "text-gray-900"
+                    }`}
+                  >
                     AI Chart Generator
                   </h2>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                  <p
+                    className={`text-xs ${
+                      darkMode ? "text-gray-400" : "text-gray-600"
+                    }`}
+                  >
                     Describe your visualization in natural language
                   </p>
                 </div>
@@ -399,7 +419,11 @@ export function AIChartModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="h-8 w-8 p-0 rounded hover:bg-white/80 dark:hover:bg-gray-800 flex items-center justify-center"
+                className={`h-8 w-8 p-0 rounded flex items-center justify-center ${
+                  darkMode
+                    ? "hover:bg-gray-800 text-gray-300"
+                    : "hover:bg-white/80 text-gray-700"
+                }`}
               >
                 <XIcon className="w-4 h-4" />
               </button>
@@ -510,7 +534,7 @@ export function AIChartModal({
                             </button>
                           </div>
                           <div className="bg-white dark:bg-gray-950 rounded border border-gray-200 dark:border-gray-800 p-2 overflow-hidden">
-                            <ChartPreview chartSpec={message.chartSpec} />
+                            <ChartPreview chartSpec={message.chartSpec} darkMode={darkMode} />
                           </div>
                         </div>
                       )}
