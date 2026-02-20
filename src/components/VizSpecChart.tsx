@@ -83,23 +83,26 @@ export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
     ? data.slice(0, spec.encoding.limit)
     : data;
 
+  // Coerce quantitative fields from string to number so bars/lines render (API/embed often return strings)
+  const normalizedData = normalizeQuantitativeData(limitedData, spec.encoding);
+
   // Common props for all charts
   const commonMargin = { top: 20, right: 30, left: 20, bottom: 20 };
 
   switch (chartType) {
     case "column":
-      return renderBarChart(spec, limitedData, colors, commonMargin);
+      return renderBarChart(spec, normalizedData, colors, commonMargin);
     case "bar":
       // Keep parity with admin chart block, where "bar" is rendered vertically.
-      return renderColumnChart(spec, limitedData, colors, commonMargin);
+      return renderColumnChart(spec, normalizedData, colors, commonMargin);
     case "line":
-      return renderLineChart(spec, limitedData, colors, commonMargin);
+      return renderLineChart(spec, normalizedData, colors, commonMargin);
     case "area":
-      return renderAreaChart(spec, limitedData, colors, commonMargin);
+      return renderAreaChart(spec, normalizedData, colors, commonMargin);
     case "scatter":
-      return renderScatterChart(spec, limitedData, colors, commonMargin);
+      return renderScatterChart(spec, normalizedData, colors, commonMargin);
     case "pie":
-      return renderPieChart(spec, limitedData, colors);
+      return renderPieChart(spec, normalizedData, colors);
     default: {
       const _exhaustiveCheck: never = chartType;
       return <div>Unsupported chart type: {_exhaustiveCheck}</div>;
@@ -108,7 +111,33 @@ export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
 }
 
 function isNumericValue(value: unknown): boolean {
-  return typeof value === "number" && Number.isFinite(value);
+  if (typeof value === "number" && Number.isFinite(value)) return true;
+  if (typeof value === "string" && value !== "" && Number.isFinite(Number(value))) return true;
+  return false;
+}
+
+/** Coerce encoding quantitative fields from string to number so bars/lines render (API often returns strings). */
+function normalizeQuantitativeData(
+  data: Array<Record<string, unknown>>,
+  encoding: ChartEncoding,
+): Array<Record<string, unknown>> {
+  const yFields = Array.isArray(encoding.y) ? encoding.y : encoding.y ? [encoding.y] : [];
+  const quantitativeFields = new Set<string>();
+  if (encoding.x?.type === "quantitative" && encoding.x.field) quantitativeFields.add(encoding.x.field);
+  for (const f of yFields) {
+    if (f.type === "quantitative" && f.field) quantitativeFields.add(f.field);
+  }
+  if (quantitativeFields.size === 0) return data;
+  return data.map((row) => {
+    const out = { ...row };
+    for (const field of quantitativeFields) {
+      const v = out[field];
+      if (typeof v === "string" && v !== "" && Number.isFinite(Number(v))) {
+        out[field] = Number(v);
+      }
+    }
+    return out;
+  });
 }
 
 function prepareCartesianData(

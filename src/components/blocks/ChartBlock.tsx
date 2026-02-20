@@ -209,6 +209,13 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
           props.block.props.tenantId,
         ]);
 
+        // Use embedded data immediately when present so first paint shows the chart (no wait for useEffect)
+        const hasEmbeddedData =
+          Array.isArray(parsedSpec?.embeddedData) && parsedSpec.embeddedData.length > 0;
+        const effectiveData = hasEmbeddedData && parsedSpec
+          ? parsedSpec.embeddedData
+          : (data ?? []);
+
         if (!parsedSpec) {
           return (
             <div
@@ -227,7 +234,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
           );
         }
 
-        if (isLoading && !data) {
+        if (isLoading && !hasEmbeddedData && !data) {
           return (
             <div
               style={{
@@ -307,7 +314,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
             >
               <VizSpecRenderer
                 spec={parsedSpec.spec}
-                data={data ?? []}
+                data={effectiveData}
                 colors={resolvedColors}
               />
             </div>

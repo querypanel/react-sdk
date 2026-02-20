@@ -125,28 +125,54 @@ function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
     );
   }
 
+  // Use encoding from vizspec when present (kind === "chart"), so x/y map correctly
+  const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec as string) : chartSpec;
+  const encoding = spec?.kind === "chart" ? spec.encoding : null;
+  const xField = encoding?.x?.field;
+  const yField = encoding?.y?.field;
+  const yType = encoding?.y?.type;
+
+  const categoryKey =
+    typeof xField === "string" && xField in (chartData[0] ?? {})
+      ? xField
+      : (chartData[0] as Record<string, unknown>).category
+        ? "category"
+        : (chartData[0] as Record<string, unknown>).date
+          ? "date"
+          : Object.keys(chartData[0])[0];
   const dataKey =
-    Object.keys(chartData[0]).find((k) => k !== "category" && k !== "date") || "value";
-  const categoryKey = (chartData[0] as Record<string, unknown>).category
-    ? "category"
-    : (chartData[0] as Record<string, unknown>).date
-      ? "date"
-      : Object.keys(chartData[0])[0];
+    typeof yField === "string" && yField in (chartData[0] ?? {})
+      ? yField
+      : Object.keys(chartData[0]).find((k) => k !== "category" && k !== "date") || "value";
+
+  // Coerce quantitative y values to numbers so bars/lines render (API often returns strings)
+  const chartDataNormalized =
+    yType === "quantitative" && dataKey
+      ? chartData.map((row) => {
+          const r = { ...row } as Record<string, unknown>;
+          const v = r[dataKey];
+          if (typeof v === "string" && v !== "" && Number.isFinite(Number(v))) {
+            r[dataKey] = Number(v);
+          }
+          return r;
+        })
+      : chartData;
 
   const renderChart = () => {
+    const data = chartDataNormalized;
     if (chartType === "pie" || chartType === "arc") {
       return (
         <PieChart>
           <Tooltip />
           <Pie
-            data={chartData}
+            data={data}
             dataKey={dataKey}
             nameKey={categoryKey}
             cx="50%"
             cy="50%"
             outerRadius={60}
           >
-            {chartData.map((entry, index) => {
+            {data.map((entry, index) => {
               const item = entry as Record<string, unknown>;
               const key = String(item[categoryKey] ?? item.category ?? item.date ?? index);
               return <Cell key={key} fill={COLORS[index % COLORS.length]} />;
@@ -157,7 +183,7 @@ function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
     }
     if (chartType === "line") {
       return (
-        <LineChart data={chartData}>
+        <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
           <YAxis tick={{ fontSize: 10 }} />
@@ -168,7 +194,7 @@ function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
     }
     if (chartType === "area") {
       return (
-        <AreaChart data={chartData}>
+        <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
           <YAxis tick={{ fontSize: 10 }} />
@@ -184,7 +210,7 @@ function ChartPreview({ chartSpec }: { chartSpec: unknown }) {
       );
     }
     return (
-      <BarChart data={chartData}>
+      <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
         <YAxis tick={{ fontSize: 10 }} />
