@@ -1,5 +1,5 @@
 import { DataTable } from "./DataTable";
-import { formatValue } from "../utils/formatters";
+import { formatValue, formatTimestampForDisplay } from "../utils/formatters";
 import type { ThemeColors } from "../types";
 
 // VizSpec types (copied from querypanel-sdk for now)
@@ -78,13 +78,13 @@ export function VizSpecTable({ spec, data, colors }: VizSpecTableProps) {
   // Apply limit if specified
   const limitedData = limit ? sortedData.slice(0, limit) : sortedData;
 
-  // Custom cell renderer with formatting
+  // Custom cell renderer with formatting (timestamps in browser's local format)
   const renderCell = (value: unknown, field: string) => {
     const column = columns.find((c) => c.field === field);
     if (column?.format) {
       return formatValue(value, column.format);
     }
-    return value === null || value === undefined ? "—" : String(value);
+    return formatTimestampForDisplay(value);
   };
 
   return (

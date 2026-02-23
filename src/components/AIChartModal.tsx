@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { DatasourceSelector } from "./DatasourceSelector";
+import { formatTimestampForDisplay } from "../utils/formatters";
 
 export interface AIChartModalProps {
   isOpen: boolean;
@@ -231,7 +232,7 @@ function ChartPreview({
     if (chartType === "pie" || chartType === "arc") {
       return (
         <PieChart>
-          <Tooltip />
+          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
           <Pie
             data={data}
             dataKey={dataKey}
@@ -239,6 +240,7 @@ function ChartPreview({
             cx="50%"
             cy="50%"
             outerRadius={60}
+            label={({ name }) => formatTimestampForDisplay(name)}
           >
             {data.map((entry, index) => {
               const item = entry as Record<string, unknown>;
@@ -253,9 +255,9 @@ function ChartPreview({
       return (
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
+          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
           <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip />
+          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
           <Line type="monotone" dataKey={dataKey} stroke={COLORS[0]} strokeWidth={2} dot={false} />
         </LineChart>
       );
@@ -264,9 +266,9 @@ function ChartPreview({
       return (
         <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
+          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
           <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip />
+          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
           <Area
             type="monotone"
             dataKey={dataKey}
@@ -280,9 +282,9 @@ function ChartPreview({
     return (
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-        <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} />
+        <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
         <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip />
+        <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
         <Bar dataKey={dataKey} fill={COLORS[0]} radius={[4, 4, 0, 0]} />
       </BarChart>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ThemeColors } from "../types";
+import { formatTimestampForDisplay } from "../utils/formatters";
 
 export interface DataTableProps {
   /** Array of row data */
@@ -102,7 +103,7 @@ export function DataTable({
                   <td key={field} style={styles.td}>
                     {renderCell
                       ? renderCell(row[field], field, row)
-                      : String(row[field] ?? "")}
+                      : formatTimestampForDisplay(row[field])}
                   </td>
                 ))}
               </tr>

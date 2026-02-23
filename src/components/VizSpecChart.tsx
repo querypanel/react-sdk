@@ -18,6 +18,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { ThemeColors } from "../types";
+import { formatTimestampForDisplay } from "../utils/formatters";
 
 // VizSpec types (copied from querypanel-sdk for now)
 type FieldType = "quantitative" | "temporal" | "ordinal" | "nominal" | "boolean";
@@ -227,6 +228,7 @@ function renderColumnChart(
           dataKey={normalized.xField}
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
         <Tooltip
@@ -235,6 +237,7 @@ function renderColumnChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
         <Legend />
         {normalized.yFields.map((yField, idx) => (
@@ -272,6 +275,7 @@ function renderBarChart(
           type="category"
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <Tooltip
           contentStyle={{
@@ -279,6 +283,7 @@ function renderBarChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
         <Legend />
         {normalized.yFields.map((xField, idx) => (
@@ -313,6 +318,7 @@ function renderLineChart(
           dataKey={x?.field}
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
         <Tooltip
@@ -321,6 +327,7 @@ function renderLineChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
         <Legend />
         {yFields.map((yField, idx) => (
@@ -357,6 +364,7 @@ function renderAreaChart(
           dataKey={x?.field}
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
         <Tooltip
@@ -365,6 +373,7 @@ function renderAreaChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
         <Legend />
         {yFields.map((yField, idx) => (
@@ -402,11 +411,13 @@ function renderScatterChart(
           dataKey={x?.field}
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <YAxis
           dataKey={yField?.field}
           stroke={colors.text}
           tick={{ fill: colors.text }}
+          tickFormatter={formatTimestampForDisplay}
         />
         <Tooltip
           contentStyle={{
@@ -414,6 +425,7 @@ function renderScatterChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
         <Legend />
         <Scatter
@@ -450,7 +462,7 @@ function renderPieChart(
           cx="50%"
           cy="50%"
           outerRadius={120}
-          label={(entry) => entry[nameField]}
+          label={({ name }) => formatTimestampForDisplay(name)}
         >
           {data.map((_, index) => (
             <Cell key={`cell-${nameField}-${String(data[index]?.[nameField] ?? index)}`} fill={colors.range[index % colors.range.length]} />
@@ -462,8 +474,9 @@ function renderPieChart(
             border: `1px solid ${colors.border}`,
             borderRadius: "4px",
           }}
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
         />
-        <Legend />
+        <Legend formatter={(value) => formatTimestampForDisplay(value)} />
       </PieChart>
     </ResponsiveContainer>
   );
