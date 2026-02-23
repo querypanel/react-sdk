@@ -55,6 +55,14 @@ export interface AIChartModalProps {
   headers?: Record<string, string>;
   /** Whether to render dark theme styles for inline-styled children */
   darkMode?: boolean;
+  /** When set, only these datasource IDs are shown (e.g. from dashboard.available_datasource_ids). */
+  availableDatasourceIds?: string[] | null;
+  /** Default tenant field name (e.g. from dashboard.tenant_field_name). */
+  defaultTenantFieldName?: string | null;
+  /** Per-datasource tenant field name (e.g. from dashboard.tenant_field_by_datasource). Overrides default for the selected datasource. */
+  tenantFieldByDatasource?: Record<string, string> | null;
+  /** When true, hide tenant field name and preview tenant ID inputs (e.g. in customer embed; tenant comes from JWT only). */
+  hideTenantInputs?: boolean;
 }
 
 type Message = {
@@ -247,12 +255,28 @@ export function AIChartModal({
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
   darkMode = false,
+  availableDatasourceIds,
+  defaultTenantFieldName,
+  tenantFieldByDatasource,
+  hideTenantInputs = false,
 }: AIChartModalProps) {
+  const getResolvedTenantField = (
+    selectedIds: string[],
+    byDs: Record<string, string> | null | undefined,
+    defaultName: string | null | undefined
+  ) => {
+    const firstId = selectedIds[0];
+    if (firstId && byDs && byDs[firstId]?.trim()) return byDs[firstId].trim();
+    return defaultName?.trim() || "tenant_id";
+  };
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDatasourceIds, setSelectedDatasourceIds] = useState<string[]>([]);
-  const [tenantFieldName, setTenantFieldName] = useState("tenant_id");
+  const [tenantFieldName, setTenantFieldName] = useState(() =>
+    getResolvedTenantField([], tenantFieldByDatasource, defaultTenantFieldName)
+  );
   const [previewTenantId, setPreviewTenantId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -283,6 +307,17 @@ export function AIChartModal({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen) {
+      const firstId = selectedDatasourceIds[0];
+      const resolved =
+        firstId && tenantFieldByDatasource?.[firstId]?.trim()
+          ? tenantFieldByDatasource[firstId].trim()
+          : defaultTenantFieldName?.trim() || "tenant_id";
+      setTenantFieldName(resolved);
+    }
+  }, [isOpen, defaultTenantFieldName, tenantFieldByDatasource, selectedDatasourceIds]);
+
   const handleSendMessage = async (prompt?: string) => {
     const messageText = prompt || inputValue.trim();
     if (!messageText || isLoading) return;
@@ -311,7 +346,7 @@ export function AIChartModal({
           dashboardId,
           datasourceIds: selectedDatasourceIds.length > 0 ? selectedDatasourceIds : undefined,
           tenantFieldName: tenantFieldName.trim() || undefined,
-          previewTenantId: previewTenantId.trim() || undefined,
+          ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
           conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
@@ -356,7 +391,7 @@ export function AIChartModal({
       selectedDatasourceIds,
       message.sqlParams,
       tenantFieldName.trim() || undefined,
-      previewTenantId.trim() || undefined
+      hideTenantInputs ? undefined : previewTenantId.trim() || undefined
     );
   };
 
@@ -437,10 +472,11 @@ export function AIChartModal({
                 datasourcesUrl={datasourcesUrl}
                 headers={headers}
                 darkMode={darkMode}
+                allowedIds={availableDatasourceIds}
               />
             </div>
 
-            {dashboardType === "customer" && (
+            {dashboardType === "customer" && !hideTenantInputs && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label htmlFor="ai-modal-tenant-field" className="text-xs text-muted-foreground">

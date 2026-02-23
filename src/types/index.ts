@@ -116,6 +116,12 @@ export interface Dashboard {
   forked_from_dashboard_id: string | null;
   tenant_id: string | null;
   datasource_id: string | null;
+  /** Datasource IDs allowed for this dashboard when customers add/modify charts. Null = all org datasources. */
+  available_datasource_ids?: string[] | null;
+  /** Default column name for tenant isolation. Used when no per-datasource override is set. */
+  tenant_field_name?: string | null;
+  /** Per-datasource tenant column name: { [datasourceId]: "tenant_id" | "customer_id" }. Overrides tenant_field_name per datasource. */
+  tenant_field_by_datasource?: Record<string, string> | null;
   version: number;
   deployed_at: string | null;
   created_at: string;

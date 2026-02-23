@@ -24,6 +24,8 @@ export interface DatasourceSelectorProps {
   headers?: Record<string, string>;
   /** Whether to render dark theme styles */
   darkMode?: boolean;
+  /** When set, only show these datasource IDs (e.g. dashboard's available_datasource_ids). Empty/undefined = show all. */
+  allowedIds?: string[] | null;
 }
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -41,6 +43,7 @@ export function DatasourceSelector({
   datasourcesUrl = "/api/datasources",
   headers,
   darkMode = false,
+  allowedIds,
 }: DatasourceSelectorProps) {
   const [datasources, setDatasources] = useState<Datasource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +80,11 @@ export function DatasourceSelector({
     }
   }, [organizationId, datasourcesUrl, headersSignature]);
 
+  const filteredDatasources =
+    allowedIds && allowedIds.length > 0
+      ? datasources.filter((ds) => allowedIds.includes(ds.id))
+      : datasources;
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -94,7 +102,7 @@ export function DatasourceSelector({
     onSelectionChange(newSelection);
   };
 
-  const selectedDatasources = datasources.filter((ds) => selectedIds.includes(ds.id));
+  const selectedDatasources = filteredDatasources.filter((ds) => selectedIds.includes(ds.id));
   const colors = darkMode
     ? {
         mutedText: "#94a3b8",
@@ -130,7 +138,7 @@ export function DatasourceSelector({
     );
   }
 
-  if (datasources.length === 0) {
+  if (filteredDatasources.length === 0) {
     return (
       <div
         style={{
@@ -142,7 +150,7 @@ export function DatasourceSelector({
         }}
       >
         <DatabaseIcon size={16} />
-        No datasources configured
+        {allowedIds && allowedIds.length > 0 ? "No allowed datasources for this dashboard" : "No datasources configured"}
       </div>
     );
   }
@@ -206,7 +214,7 @@ export function DatasourceSelector({
             Data Sources
           </div>
           <div style={{ borderTop: `1px solid ${colors.border}`, margin: "0.25rem 0" }} />
-          {datasources.map((ds) => (
+          {filteredDatasources.map((ds) => (
             <label
               key={ds.id}
               style={{

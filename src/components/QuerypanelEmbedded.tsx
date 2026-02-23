@@ -244,6 +244,16 @@ export function QuerypanelEmbedded({
     }
   };
 
+  // Embed: restrict AI assistant to dashboard's available datasources (normalize from API shape)
+  const embedAvailableDatasourceIds = useMemo(() => {
+    if (!dashboard) return undefined;
+    const raw =
+      dashboard.available_datasource_ids ??
+      (dashboard as unknown as Record<string, unknown>).availableDatasourceIds;
+    if (!Array.isArray(raw) || raw.length === 0) return undefined;
+    return raw.filter((id): id is string => typeof id === "string");
+  }, [dashboard]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -360,7 +370,7 @@ export function QuerypanelEmbedded({
         </div>
       )}
 
-      {/* Content */}
+      {/* Content: restrict AI modal to dashboard's available datasources only (customer embed) */}
       <DashboardAiEditor
         initialContent={dashboard.content_json || ""}
         onSave={handleSave}
@@ -377,6 +387,10 @@ export function QuerypanelEmbedded({
         darkMode={darkMode}
         themeColors={resolvedTheme.colors}
         fontFamily={resolvedTheme.fontFamily}
+        availableDatasourceIds={embedAvailableDatasourceIds}
+        tenantFieldName={dashboard.tenant_field_name ?? undefined}
+        tenantFieldByDatasource={dashboard.tenant_field_by_datasource ?? undefined}
+        hideTenantInputsInAiModal={true}
         className="min-h-[400px]"
       />
     </div>

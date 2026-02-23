@@ -94,6 +94,16 @@ export interface DashboardAiEditorProps {
   contentResetKey?: string | number;
   /** Optional ref to trigger save from parent (e.g. toolbar Save button) */
   saveRef?: React.MutableRefObject<(() => void | Promise<void>) | null>;
+  /** Optional extra content in toolbar (e.g. "Datasources & tenant" button) */
+  toolbarExtra?: React.ReactNode;
+  /** When set, only these datasource IDs are offered in AI chart modal (e.g. from dashboard.available_datasource_ids). */
+  availableDatasourceIds?: string[] | null;
+  /** Default tenant field name in AI chart modal (e.g. from dashboard.tenant_field_name). */
+  tenantFieldName?: string | null;
+  /** Per-datasource tenant field name (e.g. from dashboard.tenant_field_by_datasource). Overrides tenantFieldName for each datasource. */
+  tenantFieldByDatasource?: Record<string, string> | null;
+  /** When true, AI modal does not show tenant field / preview tenant ID (e.g. customer embed; tenant from JWT only). */
+  hideTenantInputsInAiModal?: boolean;
 }
 
 export function DashboardAiEditor({
@@ -116,6 +126,11 @@ export function DashboardAiEditor({
   className = "",
   contentResetKey,
   saveRef,
+  toolbarExtra,
+  availableDatasourceIds,
+  tenantFieldName: tenantFieldNameProp,
+  tenantFieldByDatasource,
+  hideTenantInputsInAiModal = false,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -345,8 +360,9 @@ export function DashboardAiEditor({
     <>
       <style>{editorStyles}</style>
       <div className={`space-y-4 ${className}`}>
-        {editable && (showDeployButton || showSaveButton) && (
-          <div className="flex justify-end gap-2">
+        {editable && (showDeployButton || showSaveButton || toolbarExtra) && (
+          <div className="flex justify-end gap-2 flex-wrap">
+            {toolbarExtra}
             {!showDeployButton && showSaveButton && (
               <button
                 type="button"
@@ -421,6 +437,10 @@ export function DashboardAiEditor({
           datasourcesUrl={resolvedDatasourcesUrl}
           headers={headers}
           darkMode={effectiveDarkMode}
+          availableDatasourceIds={availableDatasourceIds}
+          defaultTenantFieldName={tenantFieldNameProp}
+          tenantFieldByDatasource={tenantFieldByDatasource}
+          hideTenantInputs={hideTenantInputsInAiModal}
         />
       )}
 
