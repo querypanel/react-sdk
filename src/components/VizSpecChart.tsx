@@ -116,7 +116,7 @@ function isNumericValue(value: unknown): boolean {
   return false;
 }
 
-/** Coerce encoding quantitative fields from string to number so bars/lines render (API often returns strings). */
+/** Coerce encoding quantitative fields from string to number so bars/lines/pie render (API often returns strings). */
 function normalizeQuantitativeData(
   data: Array<Record<string, unknown>>,
   encoding: ChartEncoding,
@@ -126,6 +126,12 @@ function normalizeQuantitativeData(
   if (encoding.x?.type === "quantitative" && encoding.x.field) quantitativeFields.add(encoding.x.field);
   for (const f of yFields) {
     if (f.type === "quantitative" && f.field) quantitativeFields.add(f.field);
+  }
+  // Pie: coerce value field from tooltips (e.g. order_count)
+  if (encoding.chartType === "pie" && encoding.tooltips?.length) {
+    for (const t of encoding.tooltips) {
+      if (t.type === "quantitative" && t.field) quantitativeFields.add(t.field);
+    }
   }
   if (quantitativeFields.size === 0) return data;
   return data.map((row) => {
@@ -420,15 +426,19 @@ function renderScatterChart(
   );
 }
 
-// Pie Chart
+// Pie Chart (backend uses encoding.series for slice label, tooltips[0] or y for slice value)
 function renderPieChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors
 ) {
-  const { x, y } = spec.encoding;
-  const nameField = x?.field || "name";
-  const valueField = Array.isArray(y) ? y[0]?.field : y?.field || "value";
+  const { x, y, series, tooltips } = spec.encoding;
+  const nameField =
+    series?.field || x?.field || "name";
+  const valueField =
+    (tooltips && tooltips.length > 0 ? tooltips[0].field : undefined) ||
+    (Array.isArray(y) ? y[0]?.field : y?.field) ||
+    "value";
 
   return (
     <ResponsiveContainer width="100%" height={400}>

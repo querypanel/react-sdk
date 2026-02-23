@@ -88,6 +88,12 @@ const quickPrompts = [
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
 
+function isNumericChartValue(value: unknown): boolean {
+  if (typeof value === "number" && Number.isFinite(value)) return true;
+  if (typeof value === "string" && value !== "" && Number.isFinite(Number(value))) return true;
+  return false;
+}
+
 function ChartPreview({
   chartSpec,
   darkMode = false,
@@ -139,29 +145,77 @@ function ChartPreview({
     );
   }
 
-  // Use encoding from vizspec when present (kind === "chart"), so x/y map correctly
+  // Use encoding from vizspec when present (kind === "chart"), so x/y/series/tooltips map correctly
   const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec as string) : chartSpec;
   const encoding = spec?.kind === "chart" ? spec.encoding : null;
   const xField = encoding?.x?.field;
   const yField = encoding?.y?.field;
   const yType = encoding?.y?.type;
+  const seriesRef = encoding?.series;
+  const seriesField =
+    typeof seriesRef === "string"
+      ? seriesRef
+      : (seriesRef && typeof seriesRef === "object" && "field" in seriesRef && typeof (seriesRef as { field?: unknown }).field === "string")
+        ? (seriesRef as { field: string }).field
+        : undefined;
+  const tooltipFields = Array.isArray(encoding?.tooltips) ? encoding.tooltips : [];
+  const firstTooltipField =
+    tooltipFields.length > 0 && typeof tooltipFields[0] === "object" && tooltipFields[0] !== null && "field" in tooltipFields[0]
+      ? (tooltipFields[0] as { field?: string }).field
+      : undefined;
 
-  const categoryKey =
-    typeof xField === "string" && xField in (chartData[0] ?? {})
-      ? xField
-      : (chartData[0] as Record<string, unknown>).category
-        ? "category"
-        : (chartData[0] as Record<string, unknown>).date
-          ? "date"
-          : Object.keys(chartData[0])[0];
-  const dataKey =
-    typeof yField === "string" && yField in (chartData[0] ?? {})
-      ? yField
-      : Object.keys(chartData[0]).find((k) => k !== "category" && k !== "date") || "value";
+  const firstRow = chartData[0] ?? {};
+  const firstRowKeys = Object.keys(firstRow);
 
-  // Coerce quantitative y values to numbers so bars/lines render (API often returns strings)
+  // For pie, backend uses encoding.series (slice label) and tooltips[0] (slice size)
+  const isPie = chartType === "pie" || chartType === "arc";
+  let categoryKey: string;
+  let dataKey: string;
+  if (isPie) {
+    if (typeof seriesField === "string" && seriesField in firstRow) {
+      categoryKey = seriesField;
+    } else {
+      categoryKey = firstRowKeys.find((k) => !isNumericChartValue(firstRow[k])) ?? firstRowKeys[0] ?? "name";
+    }
+    if (typeof firstTooltipField === "string" && firstTooltipField in firstRow) {
+      dataKey = firstTooltipField;
+    } else if (typeof yField === "string" && yField in firstRow) {
+      dataKey = yField;
+    } else {
+      dataKey = firstRowKeys.find((k) => isNumericChartValue(firstRow[k])) ?? firstRowKeys.find((k) => k !== categoryKey) ?? "value";
+    }
+  } else {
+    categoryKey =
+      typeof xField === "string" && xField in firstRow
+        ? xField
+        : "category" in firstRow
+          ? "category"
+          : "date" in firstRow
+            ? "date"
+            : firstRowKeys[0] ?? "category";
+    dataKey =
+      typeof yField === "string" && yField in firstRow
+        ? yField
+        : firstRowKeys.find((k) => k !== "category" && k !== "date") ?? "value";
+  }
+  if (isPie && categoryKey === dataKey && firstRowKeys.length > 1) {
+    const valueKey = firstRowKeys.find((k) => isNumericChartValue(firstRow[k]));
+    const labelKey = firstRowKeys.find((k) => !isNumericChartValue(firstRow[k]));
+    if (valueKey && labelKey) {
+      dataKey = valueKey;
+      categoryKey = labelKey;
+    } else {
+      const other = firstRowKeys.find((k) => k !== dataKey);
+      if (other !== undefined) categoryKey = other;
+    }
+  }
+
+  // Coerce quantitative values to numbers (API often returns strings); for pie always coerce value field
+  const valueNeedsCoerce =
+    yType === "quantitative" ||
+    (isPie && (tooltipFields[0]?.type === "quantitative" || isNumericChartValue(firstRow[dataKey])));
   const chartDataNormalized =
-    yType === "quantitative" && dataKey
+    valueNeedsCoerce && dataKey
       ? chartData.map((row) => {
           const r = { ...row } as Record<string, unknown>;
           const v = r[dataKey];
