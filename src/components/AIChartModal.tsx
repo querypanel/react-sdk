@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   XIcon,
   SendIcon,
@@ -31,6 +32,7 @@ import {
 } from "recharts";
 import { DatasourceSelector } from "./DatasourceSelector";
 import { formatTimestampForDisplay } from "../utils/formatters";
+import "./AIChartModal.css";
 
 export interface AIChartModalProps {
   isOpen: boolean;
@@ -64,6 +66,10 @@ export interface AIChartModalProps {
   tenantFieldByDatasource?: Record<string, string> | null;
   /** When true, hide tenant field name and preview tenant ID inputs (e.g. in customer embed; tenant comes from JWT only). */
   hideTenantInputs?: boolean;
+  /** Whitelabel: modal title (default: "AI Chart Generator") */
+  title?: string;
+  /** Whitelabel: empty-state heading (default: "Create a Chart") */
+  createTitle?: string;
 }
 
 type Message = {
@@ -77,13 +83,19 @@ type Message = {
   timestamp: Date;
 };
 
-const quickPrompts = [
-  { icon: BarChart3Icon, text: "Show sales by region", color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
-  { icon: LineChartIcon, text: "User growth over time", color: "text-green-600", bg: "bg-green-50 dark:bg-green-950/20" },
-  { icon: PieChartIcon, text: "Revenue by product category", color: "text-purple-600", bg: "bg-purple-50 dark:bg-purple-950/20" },
-  { icon: TrendingUpIcon, text: "Monthly conversion rates", color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-950/20" },
-  { icon: ActivityIcon, text: "Daily active users", color: "text-pink-600", bg: "bg-pink-50 dark:bg-pink-950/20" },
-  { icon: AreaChartIcon, text: "Customer retention cohort", color: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/20" },
+const quickPrompts: Array<{
+  icon: typeof BarChart3Icon;
+  text: string;
+  iconColor: string;
+  bgLight: string;
+  bgDark: string;
+}> = [
+  { icon: BarChart3Icon, text: "Show sales by region", iconColor: "#2563eb", bgLight: "rgb(239 246 255)", bgDark: "rgba(30, 58, 138, 0.2)" },
+  { icon: LineChartIcon, text: "User growth over time", iconColor: "#16a34a", bgLight: "rgb(240 253 244)", bgDark: "rgba(22, 101, 52, 0.2)" },
+  { icon: PieChartIcon, text: "Revenue by product category", iconColor: "#9333ea", bgLight: "rgb(250 245 255)", bgDark: "rgba(88, 28, 135, 0.2)" },
+  { icon: TrendingUpIcon, text: "Monthly conversion rates", iconColor: "#ea580c", bgLight: "rgb(255 247 237)", bgDark: "rgba(194, 65, 12, 0.2)" },
+  { icon: ActivityIcon, text: "Daily active users", iconColor: "#db2777", bgLight: "rgb(253 242 248)", bgDark: "rgba(157, 23, 77, 0.2)" },
+  { icon: AreaChartIcon, text: "Customer retention cohort", iconColor: "#4f46e5", bgLight: "rgb(238 242 255)", bgDark: "rgba(49, 46, 129, 0.2)" },
 ];
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
@@ -315,7 +327,11 @@ export function AIChartModal({
   defaultTenantFieldName,
   tenantFieldByDatasource,
   hideTenantInputs = false,
+  title: titleProp,
+  createTitle: createTitleProp,
 }: AIChartModalProps) {
+  const modalTitle = titleProp ?? "AI Chart Generator";
+  const createTitle = createTitleProp ?? "Create a Chart";
   const getResolvedTenantField = (
     selectedIds: string[],
     byDs: Record<string, string> | null | undefined,
@@ -336,6 +352,34 @@ export function AIChartModal({
   const [previewTenantId, setPreviewTenantId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync with document theme when modal is open so switching theme (e.g. next-themes) updates the header immediately.
+  const [docDarkMode, setDocDarkMode] = useState(false);
+  useLayoutEffect(() => {
+    if (!isOpen || typeof document === "undefined") return;
+    const html = document.documentElement;
+    const detect = () =>
+      html.classList.contains("dark") ||
+      html.getAttribute("data-theme") === "dark" ||
+      html.style.colorScheme === "dark";
+    setDocDarkMode(detect());
+    const observer = new MutationObserver(() => setDocDarkMode(detect()));
+    observer.observe(html, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "style"],
+    });
+    return () => observer.disconnect();
+  }, [isOpen]);
+
+  // When open, use document theme so toggling theme updates the modal; otherwise use prop.
+  // Read from document on render when open so first paint has correct theme (no flash).
+  const docDarkLive =
+    isOpen &&
+    typeof document !== "undefined" &&
+    (document.documentElement.classList.contains("dark") ||
+      document.documentElement.getAttribute("data-theme") === "dark" ||
+      document.documentElement.style.colorScheme === "dark");
+  const effectiveDarkMode = isOpen ? (docDarkLive ?? docDarkMode) : (darkMode ?? false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -462,47 +506,26 @@ export function AIChartModal({
 
   if (!isOpen) return null;
 
-  return (
-    <>
+  const modalContent = (
+    <div data-qp-ai-modal data-theme={effectiveDarkMode ? "dark" : "light"}>
       <button
         type="button"
-        className="fixed inset-0 bg-black/60 z-50 animate-in fade-in-0 duration-200 cursor-default"
+        className="qp-ai-modal-backdrop"
         onClick={onClose}
         aria-label="Close modal"
       />
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 pointer-events-none">
-        <div
-          className={`w-full max-w-4xl h-[82vh] bg-white dark:bg-gray-950 rounded-xl shadow-2xl flex flex-col border border-gray-200 dark:border-gray-800 pointer-events-auto overflow-hidden ${darkMode ? "dark" : ""}`}
-          role="dialog"
-          aria-modal="true"
-        >
-          {/* Header */}
-          <div
-            className={`px-5 py-3 border-b space-y-3 ${
-              darkMode
-                ? "border-gray-800 bg-gradient-to-r from-blue-950/40 via-purple-950/40 to-pink-950/40"
-                : "border-gray-200 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                  <SparklesIcon className="w-4 h-4 text-white" />
+      <div className="qp-ai-modal-wrap">
+        <div className="qp-ai-modal-dialog" role="dialog" aria-modal="true">
+          <div className="qp-ai-modal-header">
+            <div className="qp-ai-modal-header-inner">
+              <div className="qp-ai-modal-header-brand">
+                <div className="qp-ai-modal-header-icon">
+                  <SparklesIcon className="w-4 h-4" style={{ color: "#fff" }} />
                 </div>
                 <div>
-                  <h2
-                    className={`text-base font-semibold ${
-                      darkMode ? "text-gray-100" : "text-gray-900"
-                    }`}
-                  >
-                    AI Chart Generator
-                  </h2>
-                  <p
-                    className={`text-xs ${
-                      darkMode ? "text-gray-400" : "text-gray-600"
-                    }`}
-                  >
+                  <h2 className="qp-ai-modal-title">{modalTitle}</h2>
+                  <p className="qp-ai-modal-subtitle">
                     Describe your visualization in natural language
                   </p>
                 </div>
@@ -510,32 +533,29 @@ export function AIChartModal({
               <button
                 type="button"
                 onClick={onClose}
-                className={`h-8 w-8 p-0 rounded flex items-center justify-center ${
-                  darkMode
-                    ? "hover:bg-gray-800 text-gray-300"
-                    : "hover:bg-white/80 text-gray-700"
-                }`}
+                className="qp-ai-modal-close"
+                aria-label="Close"
               >
                 <XIcon className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="qp-ai-modal-datasource-row">
               <DatasourceSelector
                 organizationId={organizationId}
                 selectedIds={selectedDatasourceIds}
                 onSelectionChange={setSelectedDatasourceIds}
                 datasourcesUrl={datasourcesUrl}
                 headers={headers}
-                darkMode={darkMode}
+                darkMode={effectiveDarkMode}
                 allowedIds={availableDatasourceIds}
               />
             </div>
 
             {dashboardType === "customer" && !hideTenantInputs && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label htmlFor="ai-modal-tenant-field" className="text-xs text-muted-foreground">
+              <div className="qp-ai-modal-grid-2">
+                <div>
+                  <label htmlFor="ai-modal-tenant-field" className="qp-ai-modal-label">
                     Tenant field name (optional)
                   </label>
                   <input
@@ -544,11 +564,11 @@ export function AIChartModal({
                     value={tenantFieldName}
                     onChange={(e) => setTenantFieldName(e.target.value)}
                     placeholder="tenant_id"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
+                    className="qp-ai-modal-input"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label htmlFor="ai-modal-preview-tenant" className="text-xs text-muted-foreground">
+                <div>
+                  <label htmlFor="ai-modal-preview-tenant" className="qp-ai-modal-label">
                     Preview as tenant ID (optional)
                   </label>
                   <input
@@ -557,27 +577,24 @@ export function AIChartModal({
                     value={previewTenantId}
                     onChange={(e) => setPreviewTenantId(e.target.value)}
                     placeholder="tenant_a"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
+                    className="qp-ai-modal-input"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Two Column Layout */}
-          <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 flex flex-col border-r border-gray-200 dark:border-gray-800">
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="qp-ai-modal-body">
+            <div className="qp-ai-modal-main">
+              <div className="qp-ai-modal-messages">
                 {messages.length === 0 && (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center max-w-md">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 flex items-center justify-center">
-                        <SparklesIcon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                  <div className="qp-ai-modal-empty">
+                    <div className="qp-ai-modal-empty-inner">
+                      <div className="qp-ai-modal-empty-icon-wrap">
+                        <SparklesIcon className="qp-ai-modal-empty-icon w-8 h-8" />
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                        Create a Chart
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <h3 className="qp-ai-modal-empty-title">{createTitle}</h3>
+                      <p className="qp-ai-modal-empty-text">
                         Choose a quick start option or describe your own visualization
                       </p>
                     </div>
@@ -587,46 +604,28 @@ export function AIChartModal({
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex gap-3 ${
-                      message.role === "user" ? "flex-row-reverse" : ""
-                    }`}
+                    className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                   >
-                    <div
-                      className={`flex-1 space-y-2 ${
-                        message.role === "user" ? "flex flex-col items-end" : ""
-                      }`}
-                    >
-                      <div
-                        className={`inline-block px-4 py-2 rounded-lg text-sm max-w-[90%] ${
-                          message.role === "assistant"
-                            ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                            : "bg-blue-600 text-white"
-                        }`}
-                      >
-                        {message.content}
-                      </div>
+                    <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
+                      <div>{message.content}</div>
 
                       {Boolean(message.chartSpec) && (
-                        <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800 space-y-2 max-w-[90%]">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                                <BarChart3Icon className="w-3 h-3 text-white" />
-                              </div>
-                              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                Ready to add
-                              </span>
+                        <div className="qp-ai-modal-chart-card">
+                          <div className="qp-ai-modal-chart-card-head">
+                            <div className="qp-ai-modal-chart-card-badge">
+                              <BarChart3Icon className="w-3 h-3" style={{ color: "#fff" }} />
                             </div>
+                            <span className="qp-ai-modal-chart-card-title">Ready to add</span>
                             <button
                               type="button"
                               onClick={() => handleAddChartToEditor(message)}
-                              className="h-7 px-3 text-xs font-medium rounded bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                              className="qp-ai-modal-add-chart-btn"
                             >
                               Add Chart
                             </button>
                           </div>
-                          <div className="bg-white dark:bg-gray-950 rounded border border-gray-200 dark:border-gray-800 p-2 overflow-hidden">
-                            <ChartPreview chartSpec={message.chartSpec} darkMode={darkMode} />
+                          <div className="qp-ai-modal-chart-card-preview">
+                            <ChartPreview chartSpec={message.chartSpec} darkMode={effectiveDarkMode} />
                           </div>
                         </div>
                       )}
@@ -635,71 +634,69 @@ export function AIChartModal({
                 ))}
 
                 {isLoading && (
-                  <div className="flex gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800">
-                    <LoaderIcon className="w-3 h-3 animate-spin text-blue-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Thinking...</span>
+                  <div className="qp-ai-modal-loading">
+                    <LoaderIcon className="qp-ai-modal-spin" style={{ color: "#2563eb", width: 12, height: 12 }} />
+                    <span className="qp-ai-modal-loading-text">Thinking...</span>
                   </div>
                 )}
 
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-                <div className="flex gap-2">
-                  <textarea
-                    ref={textareaRef}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="E.g., 'Show quarterly revenue as a line chart'"
-                    className="flex-1 min-h-[40px] max-h-32 resize-none text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900"
-                    rows={1}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSendMessage()}
-                    disabled={!inputValue.trim() || isLoading}
-                    className="h-[40px] w-[40px] p-0 rounded bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shrink-0 flex items-center justify-center disabled:opacity-50"
-                  >
-                    <SendIcon className="w-4 h-4 text-white" />
-                  </button>
-                </div>
+              <div className="qp-ai-modal-footer">
+                <textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="E.g., 'Show quarterly revenue as a line chart'"
+                  className="qp-ai-modal-textarea"
+                  rows={1}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage()}
+                  disabled={!inputValue.trim() || isLoading}
+                  className="qp-ai-modal-send"
+                >
+                  <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
+                </button>
               </div>
             </div>
 
-            <div className="w-64 bg-gray-50 dark:bg-gray-900/50 p-3 overflow-y-auto">
-              <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">
-                Quick Start
-              </h3>
-              <div className="space-y-2">
+            <div className="qp-ai-modal-sidebar">
+              <h3 className="qp-ai-modal-sidebar-title">Quick Start</h3>
+              <div className="qp-ai-modal-prompts">
                 {quickPrompts.map((prompt) => (
                   <button
                     key={prompt.text}
                     type="button"
                     onClick={() => handleSendMessage(prompt.text)}
                     disabled={isLoading}
-                    className={`w-full flex items-center gap-2 p-2 rounded-lg border border-gray-200 dark:border-gray-800 text-left transition-all hover:shadow-sm hover:border-gray-300 dark:hover:border-gray-700 ${prompt.bg} ${
-                      isLoading ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className="qp-ai-modal-prompt-btn"
+                    style={{
+                      backgroundColor: effectiveDarkMode ? prompt.bgDark : prompt.bgLight,
+                    }}
                   >
-                    <div className="w-7 h-7 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center shrink-0">
-                      <prompt.icon className={`w-4 h-4 ${prompt.color}`} />
+                    <div className="qp-ai-modal-prompt-icon-wrap">
+                      <prompt.icon className="w-4 h-4" style={{ color: prompt.iconColor }} />
                     </div>
-                    <span className="text-xs text-gray-700 dark:text-gray-300 leading-tight">
-                      {prompt.text}
-                    </span>
+                    <span className="qp-ai-modal-prompt-text">{prompt.text}</span>
                   </button>
                 ))}
               </div>
-              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Be specific about data, chart type, and styling for best results
-                </p>
+              <div className="qp-ai-modal-sidebar-hint">
+                <p>Be specific about data, chart type, and styling for best results</p>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
+
+  if (typeof document === "undefined" || !document.body) {
+    return modalContent;
+  }
+  return createPortal(modalContent, document.body);
 }

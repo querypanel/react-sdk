@@ -1,5 +1,6 @@
 "use client";
 
+import "@blocknote/mantine/style.css";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { RocketIcon, Save, SparklesIcon } from "lucide-react";
 import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems } from "@blocknote/core";
@@ -9,7 +10,7 @@ import {
   SuggestionMenuController,
 } from "@blocknote/react";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
-import type { ThemeColors } from "../types";
+import type { ThemeColors, EmbedBranding } from "../types";
 import { defaultColors } from "../themes";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
@@ -104,6 +105,8 @@ export interface DashboardAiEditorProps {
   tenantFieldByDatasource?: Record<string, string> | null;
   /** When true, AI modal does not show tenant field / preview tenant ID (e.g. customer embed; tenant from JWT only). */
   hideTenantInputsInAiModal?: boolean;
+  /** Whitelabel strings for embed (e.g. AI modal title). Passed from QuerypanelEmbedded branding. */
+  embedBranding?: EmbedBranding;
 }
 
 export function DashboardAiEditor({
@@ -131,6 +134,7 @@ export function DashboardAiEditor({
   tenantFieldName: tenantFieldNameProp,
   tenantFieldByDatasource,
   hideTenantInputsInAiModal = false,
+  embedBranding,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -441,6 +445,8 @@ export function DashboardAiEditor({
           defaultTenantFieldName={tenantFieldNameProp}
           tenantFieldByDatasource={tenantFieldByDatasource}
           hideTenantInputs={hideTenantInputsInAiModal}
+          title={embedBranding?.aiChartModalTitle}
+          createTitle={embedBranding?.aiChartModalCreateTitle}
         />
       )}
 

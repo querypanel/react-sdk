@@ -18,6 +18,8 @@
 /out/
 **/dist/
 
+# storybook build output
+storybook-static/
 
 # production
 /build

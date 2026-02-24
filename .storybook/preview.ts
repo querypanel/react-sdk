@@ -1,4 +1,7 @@
 import type { Preview } from "@storybook/react";
+// BlockNote editor and block node styles (required for dashboard/editor stories)
+import "@blocknote/mantine/style.css";
+import "./preview.css";
 
 const preview: Preview = {
   parameters: {

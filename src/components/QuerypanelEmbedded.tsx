@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { DashboardAiEditor } from "./DashboardAiEditor";
-import type { Dashboard } from "../types";
+import type { Dashboard, EmbedBranding } from "../types";
 import type { ColorPreset, Theme } from "../types";
 import { createTheme, getColorsByPreset } from "../themes";
 import { runDedupedRequest } from "../utils/requestDedup";
@@ -23,6 +23,9 @@ export interface QuerypanelEmbeddedProps {
   /** Use dark mode */
   darkMode?: boolean;
 
+  /** Whitelabel: override user-visible strings (toolbar, AI modal). Omit fields to keep defaults. */
+  branding?: EmbedBranding;
+
   /** Callbacks */
   onError?: (error: Error) => void;
   onLoad?: (dashboard: Dashboard) => void;
@@ -40,10 +43,23 @@ export function QuerypanelEmbedded({
   colorPreset = "default",
   theme,
   darkMode = false,
+  branding,
   onError,
   onLoad,
   onCustomize,
 }: QuerypanelEmbeddedProps) {
+  const strings = {
+    customizedBadge: branding?.customizedBadge ?? "Customized",
+    customizeButton: branding?.customizeButton ?? "Customize Dashboard",
+    editButton: branding?.editButton ?? "Edit",
+    resetButton: branding?.resetButton ?? "Reset to Original",
+    saveButton: branding?.saveButton ?? "Save",
+    savingLabel: branding?.savingLabel ?? "Saving...",
+    cancelButton: branding?.cancelButton ?? "Cancel",
+    resetConfirmMessage:
+      branding?.resetConfirmMessage ??
+      "Reset to original dashboard? Your customizations will be lost.",
+  };
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -215,7 +231,7 @@ export function QuerypanelEmbedded({
   const handleRollback = async () => {
     if (!dashboard) return;
 
-    if (!confirm("Reset to original dashboard? Your customizations will be lost.")) {
+    if (!confirm(strings.resetConfirmMessage)) {
       return;
     }
 
@@ -301,7 +317,7 @@ export function QuerypanelEmbedded({
                 className="px-2 py-1 text-xs font-semibold rounded-md border"
                 style={toolbarStyles.badge}
               >
-                Customized
+                {strings.customizedBadge}
               </span>
             )}
           </div>
@@ -313,7 +329,7 @@ export function QuerypanelEmbedded({
                 className="px-4 py-2 text-sm font-semibold rounded-lg border transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                 style={toolbarStyles.primaryButton}
               >
-                Customize Dashboard
+                {strings.customizeButton}
               </button>
             )}
             {!isEditing && isFork && (
@@ -324,7 +340,7 @@ export function QuerypanelEmbedded({
                   className="px-4 py-2 text-sm font-semibold rounded-lg border transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                   style={toolbarStyles.primaryButton}
                 >
-                  Edit
+                  {strings.editButton}
                 </button>
                 <button
                   type="button"
@@ -332,7 +348,7 @@ export function QuerypanelEmbedded({
                   className="px-4 py-2 text-sm font-semibold rounded-lg border transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                   style={toolbarStyles.dangerButton}
                 >
-                  Reset to Original
+                  {strings.resetButton}
                 </button>
               </>
             )}
@@ -354,7 +370,7 @@ export function QuerypanelEmbedded({
                   className="px-4 py-2 text-sm font-semibold rounded-lg border transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60"
                   style={toolbarStyles.primaryButton}
                 >
-                  {isSaving ? "Saving..." : "Save"}
+                  {isSaving ? strings.savingLabel : strings.saveButton}
                 </button>
                 <button
                   type="button"
@@ -362,7 +378,7 @@ export function QuerypanelEmbedded({
                   className="px-4 py-2 text-sm font-semibold rounded-lg border transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                   style={toolbarStyles.secondaryButton}
                 >
-                  Cancel
+                  {strings.cancelButton}
                 </button>
               </>
             )}
@@ -391,6 +407,7 @@ export function QuerypanelEmbedded({
         tenantFieldName={dashboard.tenant_field_name ?? undefined}
         tenantFieldByDatasource={dashboard.tenant_field_by_datasource ?? undefined}
         hideTenantInputsInAiModal={true}
+        embedBranding={branding}
         className="min-h-[400px]"
       />
     </div>

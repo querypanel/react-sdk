@@ -1,5 +1,7 @@
 // Import BlockNote styles globally
 import "@blocknote/mantine/style.css";
+// Modal and other component styles (so hosts get CSS when they import the SDK)
+import "./components/AIChartModal.css";
 
 // Components
 export { VizSpecRenderer, type VizSpecRendererProps, type VizSpec } from "./components/VizSpecRenderer";
@@ -46,6 +48,7 @@ export type {
   QueryPanelConfig,
   PromptChip,
   Dashboard,
+  EmbedBranding,
 } from "./types";
 
 // Themes

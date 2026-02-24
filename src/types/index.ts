@@ -101,6 +101,33 @@ export interface PromptChip {
   emoji?: string;
 }
 
+/**
+ * Optional overrides for user-visible strings in QuerypanelEmbedded (whitelabel).
+ * Omit any field to keep the default text.
+ */
+export interface EmbedBranding {
+  /** Toolbar badge when the user has a customized fork (default: "Customized") */
+  customizedBadge?: string;
+  /** Button to start customizing (default: "Customize Dashboard") */
+  customizeButton?: string;
+  /** Button to enter edit mode (default: "Edit") */
+  editButton?: string;
+  /** Button to reset fork to original (default: "Reset to Original") */
+  resetButton?: string;
+  /** Save button label (default: "Save") */
+  saveButton?: string;
+  /** Save button label while saving (default: "Saving...") */
+  savingLabel?: string;
+  /** Cancel button label (default: "Cancel") */
+  cancelButton?: string;
+  /** Confirm dialog message for reset (default: "Reset to original dashboard? Your customizations will be lost.") */
+  resetConfirmMessage?: string;
+  /** AI Chart modal title (default: "AI Chart Generator") */
+  aiChartModalTitle?: string;
+  /** AI Chart modal empty-state heading (default: "Create a Chart") */
+  aiChartModalCreateTitle?: string;
+}
+
 /** Dashboard from API */
 export interface Dashboard {
   id: string;

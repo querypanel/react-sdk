@@ -208,14 +208,15 @@ export const WithCustomization: Story = {
     dashboardId: "mock-dashboard-id",
     apiBaseUrl: "https://mock-api.querypanel.com",
     allowCustomization: true,
-    darkMode: false,
+    darkMode: true,
     colorPreset: "ocean",
   },
   parameters: {
+    backgrounds: { default: "dark" },
     docs: {
       description: {
         story:
-          "Dashboard with customization enabled. Customers can fork and edit via backend-wrapped endpoints.",
+          "Dashboard with customization enabled. Customers can fork and edit via backend-wrapped endpoints. AI Chart Generator modal matches product (dark theme).",
       },
     },
   },
