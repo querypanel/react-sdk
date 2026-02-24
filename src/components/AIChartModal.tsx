@@ -1,19 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useId } from "react";
 import { createPortal } from "react-dom";
-import {
-  XIcon,
-  SendIcon,
-  LoaderIcon,
-  BarChart3Icon,
-  LineChartIcon,
-  PieChartIcon,
-  AreaChartIcon,
-  TrendingUpIcon,
-  ActivityIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { XIcon, SendIcon, LoaderIcon, BarChart3Icon, SparklesIcon } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -82,21 +71,6 @@ type Message = {
   sqlParams?: Record<string, unknown> | null;
   timestamp: Date;
 };
-
-const quickPrompts: Array<{
-  icon: typeof BarChart3Icon;
-  text: string;
-  iconColor: string;
-  bgLight: string;
-  bgDark: string;
-}> = [
-  { icon: BarChart3Icon, text: "Show sales by region", iconColor: "#2563eb", bgLight: "rgb(239 246 255)", bgDark: "rgba(30, 58, 138, 0.2)" },
-  { icon: LineChartIcon, text: "User growth over time", iconColor: "#16a34a", bgLight: "rgb(240 253 244)", bgDark: "rgba(22, 101, 52, 0.2)" },
-  { icon: PieChartIcon, text: "Revenue by product category", iconColor: "#9333ea", bgLight: "rgb(250 245 255)", bgDark: "rgba(88, 28, 135, 0.2)" },
-  { icon: TrendingUpIcon, text: "Monthly conversion rates", iconColor: "#ea580c", bgLight: "rgb(255 247 237)", bgDark: "rgba(194, 65, 12, 0.2)" },
-  { icon: ActivityIcon, text: "Daily active users", iconColor: "#db2777", bgLight: "rgb(253 242 248)", bgDark: "rgba(157, 23, 77, 0.2)" },
-  { icon: AreaChartIcon, text: "Customer retention cohort", iconColor: "#4f46e5", bgLight: "rgb(238 242 255)", bgDark: "rgba(49, 46, 129, 0.2)" },
-];
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -332,6 +306,7 @@ export function AIChartModal({
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Chart Generator";
   const createTitle = createTitleProp ?? "Create a Chart";
+
   const getResolvedTenantField = (
     selectedIds: string[],
     byDs: Record<string, string> | null | undefined,
@@ -350,8 +325,11 @@ export function AIChartModal({
     getResolvedTenantField([], tenantFieldByDatasource, defaultTenantFieldName)
   );
   const [previewTenantId, setPreviewTenantId] = useState("");
+  const [querypanelSessionId, setQuerypanelSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const tenantFieldId = useId();
+  const previewTenantIdFieldId = useId();
 
   // Sync with document theme when modal is open so switching theme (e.g. next-themes) updates the header immediately.
   const [docDarkMode, setDocDarkMode] = useState(false);
@@ -383,7 +361,7 @@ export function AIChartModal({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages]);
 
   useEffect(() => {
     if (isOpen && textareaRef.current) {
@@ -403,6 +381,7 @@ export function AIChartModal({
         setMessages([]);
         setInputValue("");
         setIsLoading(false);
+        setQuerypanelSessionId(null);
       }, 300);
     }
   }, [isOpen]);
@@ -448,6 +427,7 @@ export function AIChartModal({
           tenantFieldName: tenantFieldName.trim() || undefined,
           ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
           conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
+          ...(querypanelSessionId ? { querypanelSessionId } : {}),
         }),
       });
 
@@ -469,6 +449,7 @@ export function AIChartModal({
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      if (data.sessionId) setQuerypanelSessionId(data.sessionId);
     } catch {
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
@@ -555,11 +536,11 @@ export function AIChartModal({
             {dashboardType === "customer" && !hideTenantInputs && (
               <div className="qp-ai-modal-grid-2">
                 <div>
-                  <label htmlFor="ai-modal-tenant-field" className="qp-ai-modal-label">
+                  <label htmlFor={tenantFieldId} className="qp-ai-modal-label">
                     Tenant field name (optional)
                   </label>
                   <input
-                    id="ai-modal-tenant-field"
+                    id={tenantFieldId}
                     type="text"
                     value={tenantFieldName}
                     onChange={(e) => setTenantFieldName(e.target.value)}
@@ -568,11 +549,11 @@ export function AIChartModal({
                   />
                 </div>
                 <div>
-                  <label htmlFor="ai-modal-preview-tenant" className="qp-ai-modal-label">
+                  <label htmlFor={previewTenantIdFieldId} className="qp-ai-modal-label">
                     Preview as tenant ID (optional)
                   </label>
                   <input
-                    id="ai-modal-preview-tenant"
+                    id={previewTenantIdFieldId}
                     type="text"
                     value={previewTenantId}
                     onChange={(e) => setPreviewTenantId(e.target.value)}
@@ -595,7 +576,7 @@ export function AIChartModal({
                       </div>
                       <h3 className="qp-ai-modal-empty-title">{createTitle}</h3>
                       <p className="qp-ai-modal-empty-text">
-                        Choose a quick start option or describe your own visualization
+                        Describe your visualization in natural language
                       </p>
                     </div>
                   </div>
@@ -661,32 +642,6 @@ export function AIChartModal({
                 >
                   <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
                 </button>
-              </div>
-            </div>
-
-            <div className="qp-ai-modal-sidebar">
-              <h3 className="qp-ai-modal-sidebar-title">Quick Start</h3>
-              <div className="qp-ai-modal-prompts">
-                {quickPrompts.map((prompt) => (
-                  <button
-                    key={prompt.text}
-                    type="button"
-                    onClick={() => handleSendMessage(prompt.text)}
-                    disabled={isLoading}
-                    className="qp-ai-modal-prompt-btn"
-                    style={{
-                      backgroundColor: effectiveDarkMode ? prompt.bgDark : prompt.bgLight,
-                    }}
-                  >
-                    <div className="qp-ai-modal-prompt-icon-wrap">
-                      <prompt.icon className="w-4 h-4" style={{ color: prompt.iconColor }} />
-                    </div>
-                    <span className="qp-ai-modal-prompt-text">{prompt.text}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="qp-ai-modal-sidebar-hint">
-                <p>Be specific about data, chart type, and styling for best results</p>
               </div>
             </div>
           </div>
