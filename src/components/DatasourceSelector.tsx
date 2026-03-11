@@ -7,7 +7,7 @@ import { runDedupedRequest } from "../utils/requestDedup";
 type Datasource = {
   id: string;
   name: string;
-  dialect: "postgres" | "clickhouse";
+  dialect: "postgres" | "clickhouse" | "bigquery";
   has_password?: boolean;
 };
 
@@ -78,7 +78,7 @@ export function DatasourceSelector({
       const requestKey = `datasources:${datasourcesUrl}:${organizationId}:${headersSignature}`;
       void runDedupedRequest(requestKey, fetchDatasources);
     }
-  }, [organizationId, datasourcesUrl, headersSignature]);
+  }, [organizationId, datasourcesUrl, headersSignature, extraHeaders]);
 
   const filteredDatasources =
     allowedIds && allowedIds.length > 0

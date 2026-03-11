@@ -14,6 +14,8 @@ type ChartBlockOptions = {
   colors: ThemeColors;
   /** Override URL for run-sql (e.g. /api/dashboards/run-sql for admin). If not set, uses apiBaseUrl + /query/run-sql */
   runSqlUrl?: string;
+  organizationId?: string;
+  dashboardId?: string;
   headers?: Record<string, string>;
 };
 
@@ -31,7 +33,7 @@ function isVizSpec(value: unknown): value is VizSpec {
   return kind === "chart" || kind === "table" || kind === "metric";
 }
 
-export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = EMPTY_HEADERS }: ChartBlockOptions) {
+export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizationId, dashboardId, headers = EMPTY_HEADERS }: ChartBlockOptions) {
   return createReactBlockSpec(
     {
       type: "chart",
@@ -149,6 +151,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
           const requestPayload = {
             sql: props.block.props.sql,
             datasourceIds,
+            ...(dashboardId ? { dashboardId } : {}),
             params: sqlParams,
             ...(tenantFieldName && { tenantFieldName }),
             ...(previewTenantId && { previewTenantId }),
@@ -167,6 +170,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, headers = 
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
+                    ...(organizationId ? { "x-organization-id": organizationId } : {}),
                     ...headers,
                   },
                   body: JSON.stringify(requestPayload),

@@ -189,9 +189,11 @@ export function DashboardAiEditor({
         apiBaseUrl: apiBaseUrl || "",
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
+        organizationId,
+        dashboardId,
         headers,
       }),
-    [apiBaseUrl, themeColors, resolvedRunSqlUrl, headers]
+    [apiBaseUrl, themeColors, resolvedRunSqlUrl, organizationId, dashboardId, headers]
   );
 
   const schema = useMemo(
