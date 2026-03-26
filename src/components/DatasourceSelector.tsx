@@ -18,6 +18,8 @@ export interface DatasourceSelectorProps {
   selectedIds: string[];
   /** Callback when selection changes */
   onSelectionChange: (ids: string[]) => void;
+  /** Selection mode */
+  selectionMode?: "single" | "multiple";
   /** URL to fetch datasources from (default: /api/datasources) */
   datasourcesUrl?: string;
   /** Optional extra headers for the fetch request */
@@ -40,6 +42,7 @@ export function DatasourceSelector({
   organizationId,
   selectedIds,
   onSelectionChange,
+  selectionMode = "multiple",
   datasourcesUrl = "/api/datasources",
   headers,
   darkMode = false,
@@ -96,9 +99,14 @@ export function DatasourceSelector({
   }, []);
 
   const handleToggle = (id: string) => {
-    const newSelection = selectedIds.includes(id)
-      ? selectedIds.filter((sid) => sid !== id)
-      : [...selectedIds, id];
+    const newSelection =
+      selectionMode === "single"
+        ? selectedIds.includes(id)
+          ? []
+          : [id]
+        : selectedIds.includes(id)
+          ? selectedIds.filter((sid) => sid !== id)
+          : [...selectedIds, id];
     onSelectionChange(newSelection);
   };
 
@@ -227,7 +235,7 @@ export function DatasourceSelector({
               }}
             >
               <input
-                type="checkbox"
+                type={selectionMode === "single" ? "radio" : "checkbox"}
                 checked={selectedIds.includes(ds.id)}
                 onChange={() => handleToggle(ds.id)}
                 style={{

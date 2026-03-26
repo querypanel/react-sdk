@@ -353,16 +353,9 @@
 
 [data-qp-ai-modal] .qp-ai-modal-loading {
   display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-loading {
-  background: rgb(243 244 246);
-}
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-loading {
-  background: rgb(31 41 55);
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.125rem 0;
 }
 
 [data-qp-ai-modal][data-theme="light"] .qp-ai-modal-loading-text { color: #4b5563; }
@@ -370,6 +363,7 @@
 
 [data-qp-ai-modal] .qp-ai-modal-loading-text {
   font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 [data-qp-ai-modal] .qp-ai-modal-footer {
