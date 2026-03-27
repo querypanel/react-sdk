@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import type { Block } from "@blocknote/core";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
-import "@blocknote/mantine/style.css";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { defaultColors, defaultTheme } from "../themes";
 import type { ThemeColors } from "../types";

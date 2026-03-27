@@ -1,7 +1,7 @@
 "use client";
 
-import "@blocknote/mantine/style.css";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import type { Block } from "@blocknote/core";
 import { RocketIcon, Save, SparklesIcon } from "lucide-react";
 import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems } from "@blocknote/core";
 import {
@@ -17,8 +17,24 @@ import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { AIChartModal } from "./AIChartModal";
 import { DeploySuccessModal } from "./DeploySuccessModal";
 import { ThemeProvider } from "../context/ThemeContext";
+import { normalizeBlockNoteContent } from "./blocknoteContent";
 
 const EMPTY_HEADERS: Record<string, string> = {};
+
+function getSafeInitialBlocks(initialContent: string, darkMode: boolean) {
+  try {
+    if (initialContent) {
+      const parsed = normalizeBlockNoteContent(JSON.parse(initialContent), darkMode);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.error("Failed to parse initial content:", error);
+  }
+
+  return [{ type: "paragraph", content: [] }];
+}
 
 const editorStyles = `
   .bn-container {
@@ -207,30 +223,21 @@ export function DashboardAiEditor({
     [chartBlockSpec]
   );
 
+  const contentSignature = `${String(contentResetKey ?? "")}::${initialContent}::${effectiveDarkMode ? "dark" : "light"}`;
+  const parsedInitialContent = useMemo(
+    () => getSafeInitialBlocks(initialContent, effectiveDarkMode) as Block[],
+    [initialContent, effectiveDarkMode]
+  );
+
   const editor = useCreateBlockNote({
     schema,
-  });
+    initialContent: parsedInitialContent,
+  }, [schema, contentSignature]);
 
   useEffect(() => {
-    if (!editor || !mounted) return;
-
-    const signature = `${String(contentResetKey ?? "")}::${initialContent}`;
-    if (lastLoadedSignatureRef.current === signature) return;
-
-    const loadContent = async () => {
-      try {
-        const parsedContent = initialContent
-          ? JSON.parse(initialContent)
-          : [{ type: "paragraph", content: [] }];
-        await editor.replaceBlocks(editor.document, parsedContent);
-        lastLoadedSignatureRef.current = signature;
-      } catch (e) {
-        console.error("Failed to load initial content:", e);
-      }
-    };
-
-    void loadContent();
-  }, [editor, mounted, initialContent, contentResetKey]);
+    if (!mounted) return;
+    lastLoadedSignatureRef.current = contentSignature;
+  }, [mounted, contentSignature]);
 
   const insertAIChartItem = useCallback(
     (): DefaultReactSuggestionItem => ({

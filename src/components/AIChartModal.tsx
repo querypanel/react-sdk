@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useLayoutEffect, useId } from "react";
 import { createPortal } from "react-dom";
-import { XIcon, SendIcon, LoaderIcon, BarChart3Icon, SparklesIcon } from "lucide-react";
+import { XIcon, SendIcon, BarChart3Icon, SparklesIcon } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -72,8 +72,91 @@ type Message = {
   timestamp: Date;
 };
 
+type MastraStreamChunk = {
+  type?: string;
+  textDelta?: string;
+  toolName?: string;
+  result?: unknown;
+  response?: {
+    messages?: Array<{
+      role?: string;
+      content?: Array<{
+        type?: string;
+        text?: string;
+        result?: unknown;
+        toolName?: string;
+      }>;
+    }>;
+    uiMessages?: Array<{
+      role?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  };
+};
+
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
+
+function isMastraAgentStreamUrl(url: string) {
+  return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
+}
+
+function mapGeneratedParams(params: unknown) {
+  if (!Array.isArray(params)) {
+    return null;
+  }
+
+  return params.reduce<Record<string, unknown>>((acc, param, index) => {
+    if (!param || typeof param !== "object") {
+      return acc;
+    }
+
+    const record = param as Record<string, unknown>;
+    const value = record.value;
+    if (value === undefined) {
+      return acc;
+    }
+
+    const key =
+      (typeof record.name === "string" && record.name.trim()) ||
+      (typeof record.placeholder === "string" && record.placeholder.trim()) ||
+      (typeof record.position === "number" && String(record.position)) ||
+      String(index + 1);
+
+    acc[key.replace(/[{}]/g, "").replace(/(.+):.*$/, "$1").replace(/^[:$]/, "").trim()] = value;
+    return acc;
+  }, {});
+}
+
+function extractAssistantTextFromChunk(chunk: MastraStreamChunk) {
+  const assistantMessage = chunk.response?.messages?.find((message) => message.role === "assistant");
+  const textPart = assistantMessage?.content?.find((part) => part.type === "text" && typeof part.text === "string");
+  return textPart?.text;
+}
+
+function formatToolStatus(toolName: string) {
+  switch (toolName) {
+    case "search_schema":
+    case "search_relevant_schema":
+      return "Searching schema";
+    case "generate_sql":
+      return "Generating SQL";
+    case "execute_sql":
+      return "Running SQL";
+    case "generate_visualization":
+      return "Building chart";
+    default:
+      return toolName
+        .split("_")
+        .filter(Boolean)
+        .map((part, index) =>
+          index === 0
+            ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase().replace(/s$/, "ing")
+            : part.toLowerCase()
+        )
+        .join(" ");
+  }
+}
 
 function isNumericChartValue(value: unknown): boolean {
   if (typeof value === "number" && Number.isFinite(value)) return true;
@@ -306,6 +389,7 @@ export function AIChartModal({
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Chart Generator";
   const createTitle = createTitleProp ?? "Create a Chart";
+  const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
 
   const getResolvedTenantField = (
     selectedIds: string[],
@@ -320,6 +404,7 @@ export function AIChartModal({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [transientStatus, setTransientStatus] = useState<string | null>(null);
   const [selectedDatasourceIds, setSelectedDatasourceIds] = useState<string[]>([]);
   const [tenantFieldName, setTenantFieldName] = useState(() =>
     getResolvedTenantField([], tenantFieldByDatasource, defaultTenantFieldName)
@@ -381,6 +466,7 @@ export function AIChartModal({
         setMessages([]);
         setInputValue("");
         setIsLoading(false);
+        setTransientStatus(null);
         setQuerypanelSessionId(null);
       }, 300);
     }
@@ -400,6 +486,18 @@ export function AIChartModal({
   const handleSendMessage = async (prompt?: string) => {
     const messageText = prompt || inputValue.trim();
     if (!messageText || isLoading) return;
+    if (useMastraStream && selectedDatasourceIds.length !== 1) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          content: "Select exactly one datasource before generating a chart with the native Mastra agent.",
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -411,46 +509,212 @@ export function AIChartModal({
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setIsLoading(true);
+    setTransientStatus("Thinking");
+    let assistantMessageId: string | null = null;
 
     try {
-      const response = await fetch(generateChartWithSqlUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-organization-id": organizationId,
-          ...headers,
-        },
-        body: JSON.stringify({
-          prompt: messageText,
-          dashboardId,
-          datasourceIds: selectedDatasourceIds.length > 0 ? selectedDatasourceIds : undefined,
-          tenantFieldName: tenantFieldName.trim() || undefined,
-          ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
-          conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
-          ...(querypanelSessionId ? { querypanelSessionId } : {}),
-        }),
-      });
+      if (useMastraStream) {
+        const threadId = querypanelSessionId || `chart-${dashboardId}-${Date.now()}`;
+        const currentAssistantMessageId = `assistant-${Date.now()}`;
+        assistantMessageId = currentAssistantMessageId;
+        const resourceId = `dashboard-${organizationId}-${dashboardId}`;
 
-      if (!response.ok) {
-        throw new Error("Failed to generate chart");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: currentAssistantMessageId,
+            role: "assistant",
+            content: "",
+            sqlParams: null,
+            timestamp: new Date(),
+          },
+        ]);
+        setQuerypanelSessionId(threadId);
+
+        const response = await fetch(generateChartWithSqlUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-organization-id": organizationId,
+            ...headers,
+          },
+          body: JSON.stringify({
+            messages: messageText,
+            memory: {
+              thread: threadId,
+              resource: resourceId,
+            },
+            requestContext: {
+              organizationId,
+              datasourceId: selectedDatasourceIds[0],
+              ...(hideTenantInputs ? {} : { tenantId: previewTenantId.trim() || undefined }),
+            },
+            savePerStep: true,
+          }),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error("Failed to generate chart");
+        }
+
+        const decoder = new TextDecoder();
+        const reader = response.body.getReader();
+        let buffer = "";
+        let streamDone = false;
+
+        const updateAssistantMessage = (updates: Partial<Message> | ((current: Message) => Message)) => {
+          setMessages((prev) =>
+            prev.map((message) => {
+              if (message.id !== currentAssistantMessageId) {
+                return message;
+              }
+
+              return typeof updates === "function" ? updates(message) : { ...message, ...updates };
+            })
+          );
+        };
+
+        const applyMastraChunk = (chunk: MastraStreamChunk) => {
+          if (typeof chunk.toolName === "string" && chunk.toolName.trim().length > 0) {
+            setTransientStatus(formatToolStatus(chunk.toolName));
+          }
+
+          if (chunk.type === "text-delta" && chunk.textDelta) {
+            setTransientStatus(null);
+            updateAssistantMessage((current) => ({
+              ...current,
+              content: `${current.content}${chunk.textDelta}`,
+            }));
+            return;
+          }
+
+          if (chunk.type === "tool-result" && chunk.toolName === "generate_sql" && chunk.result && typeof chunk.result === "object") {
+            const result = chunk.result as Record<string, unknown>;
+            updateAssistantMessage((current) => ({
+              ...current,
+              sql: typeof result.sql === "string" ? result.sql : current.sql,
+              rationale: typeof result.rationale === "string" ? result.rationale : current.rationale,
+              sqlParams: mapGeneratedParams(result.params) ?? current.sqlParams ?? null,
+            }));
+            return;
+          }
+
+          if (chunk.type === "tool-result" && chunk.toolName === "generate_visualization" && chunk.result && typeof chunk.result === "object") {
+            const result = chunk.result as Record<string, unknown>;
+            setTransientStatus(null);
+            updateAssistantMessage((current) => ({
+              ...current,
+              chartSpec: result.spec ?? current.chartSpec,
+              rationale:
+                typeof result.notes === "string" && result.notes.trim().length > 0
+                  ? result.notes
+                  : current.rationale,
+            }));
+            return;
+          }
+
+          if (chunk.type === "step-finish") {
+            setTransientStatus(null);
+            const assistantText = extractAssistantTextFromChunk(chunk);
+            if (assistantText && assistantText.trim().length > 0) {
+              updateAssistantMessage((current) => ({
+                ...current,
+                content: current.content.trim().length > 0 ? current.content : assistantText,
+              }));
+            }
+          }
+        };
+
+        while (!streamDone) {
+          const { done, value } = await reader.read();
+          streamDone = done;
+          buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+          let boundaryIndex = buffer.indexOf("\n\n");
+          while (boundaryIndex !== -1) {
+            const rawEvent = buffer.slice(0, boundaryIndex);
+            buffer = buffer.slice(boundaryIndex + 2);
+            boundaryIndex = buffer.indexOf("\n\n");
+
+            const payload = rawEvent
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trim())
+              .join("\n");
+
+            if (!payload) {
+              continue;
+            }
+
+            if (payload === "[DONE]") {
+              streamDone = true;
+              break;
+            }
+
+            try {
+              applyMastraChunk(JSON.parse(payload) as MastraStreamChunk);
+            } catch (error) {
+              console.error("Failed to parse Mastra stream chunk:", error);
+            }
+          }
+        }
+
+        updateAssistantMessage((current) => ({
+          ...current,
+          content:
+            current.content.trim().length > 0
+              ? current.content
+              : current.chartSpec
+                ? "I've created a chart for you."
+                : "I processed your request.",
+        }));
+        setTransientStatus(null);
+      } else {
+        const response = await fetch(generateChartWithSqlUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-organization-id": organizationId,
+            ...headers,
+          },
+          body: JSON.stringify({
+            prompt: messageText,
+            dashboardId,
+            datasourceIds: selectedDatasourceIds.length > 0 ? selectedDatasourceIds : undefined,
+            tenantFieldName: tenantFieldName.trim() || undefined,
+            ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
+            conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
+            ...(querypanelSessionId ? { querypanelSessionId } : {}),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate chart");
+        }
+
+        const data = await response.json();
+
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: data.message || "I've created a chart for you!",
+          chartSpec: data.chartSpec,
+          rationale: data.rationale,
+          sql: data.sql,
+          sqlParams: (data.params as Record<string, unknown> | null) ?? null,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        setTransientStatus(null);
+        if (data.sessionId) setQuerypanelSessionId(data.sessionId);
       }
-
-      const data = await response.json();
-
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: data.message || "I've created a chart for you!",
-        chartSpec: data.chartSpec,
-        rationale: data.rationale,
-        sql: data.sql,
-        sqlParams: (data.params as Record<string, unknown> | null) ?? null,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      if (data.sessionId) setQuerypanelSessionId(data.sessionId);
     } catch {
+      setTransientStatus(null);
+      setMessages((prev) =>
+        prev.filter((message) => message.id !== assistantMessageId)
+      );
+
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: "assistant",
@@ -526,6 +790,7 @@ export function AIChartModal({
                 organizationId={organizationId}
                 selectedIds={selectedDatasourceIds}
                 onSelectionChange={setSelectedDatasourceIds}
+                selectionMode={useMastraStream ? "single" : "multiple"}
                 datasourcesUrl={datasourcesUrl}
                 headers={headers}
                 darkMode={effectiveDarkMode}
@@ -582,42 +847,50 @@ export function AIChartModal({
                   </div>
                 )}
 
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
-                  >
-                    <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
-                      <div>{message.content}</div>
+                {messages.map((message) => {
+                  const hasVisibleAssistantState =
+                    message.content.trim().length > 0 || Boolean(message.chartSpec);
 
-                      {Boolean(message.chartSpec) && (
-                        <div className="qp-ai-modal-chart-card">
-                          <div className="qp-ai-modal-chart-card-head">
-                            <div className="qp-ai-modal-chart-card-badge">
-                              <BarChart3Icon className="w-3 h-3" style={{ color: "#fff" }} />
+                  if (message.role === "assistant" && !hasVisibleAssistantState) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
+                    >
+                      <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
+                        {message.content.trim().length > 0 && <div>{message.content}</div>}
+
+                        {Boolean(message.chartSpec) && (
+                          <div className="qp-ai-modal-chart-card">
+                            <div className="qp-ai-modal-chart-card-head">
+                              <div className="qp-ai-modal-chart-card-badge">
+                                <BarChart3Icon className="w-3 h-3" style={{ color: "#fff" }} />
+                              </div>
+                              <span className="qp-ai-modal-chart-card-title">Ready to add</span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddChartToEditor(message)}
+                                className="qp-ai-modal-add-chart-btn"
+                              >
+                                Add Chart
+                              </button>
                             </div>
-                            <span className="qp-ai-modal-chart-card-title">Ready to add</span>
-                            <button
-                              type="button"
-                              onClick={() => handleAddChartToEditor(message)}
-                              className="qp-ai-modal-add-chart-btn"
-                            >
-                              Add Chart
-                            </button>
+                            <div className="qp-ai-modal-chart-card-preview">
+                              <ChartPreview chartSpec={message.chartSpec} darkMode={effectiveDarkMode} />
+                            </div>
                           </div>
-                          <div className="qp-ai-modal-chart-card-preview">
-                            <ChartPreview chartSpec={message.chartSpec} darkMode={effectiveDarkMode} />
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
-                {isLoading && (
+                {isLoading && transientStatus && (
                   <div className="qp-ai-modal-loading">
-                    <LoaderIcon className="qp-ai-modal-spin" style={{ color: "#2563eb", width: 12, height: 12 }} />
-                    <span className="qp-ai-modal-loading-text">Thinking...</span>
+                    <span className="qp-ai-modal-loading-text">{transientStatus}</span>
                   </div>
                 )}
 
