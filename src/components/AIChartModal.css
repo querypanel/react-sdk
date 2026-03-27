@@ -17,14 +17,14 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  z-index: 50;
+  z-index: 2000;
   cursor: default;
 }
 
 [data-qp-ai-modal] .qp-ai-modal-wrap {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 2001;
   display: flex;
   align-items: center;
   justify-content: center;
