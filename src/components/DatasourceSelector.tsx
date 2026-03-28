@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { DatabaseIcon, ChevronDownIcon } from "lucide-react";
 import { runDedupedRequest } from "../utils/requestDedup";
 
@@ -83,10 +83,27 @@ export function DatasourceSelector({
     }
   }, [organizationId, datasourcesUrl, headersSignature, extraHeaders]);
 
-  const filteredDatasources =
-    allowedIds && allowedIds.length > 0
-      ? datasources.filter((ds) => allowedIds.includes(ds.id))
-      : datasources;
+  const filteredDatasources = useMemo(
+    () =>
+      allowedIds && allowedIds.length > 0
+        ? datasources.filter((ds) => allowedIds.includes(ds.id))
+        : datasources,
+    [datasources, allowedIds]
+  );
+
+  // When only one datasource exists (after dashboard allowlist), select it by default.
+  useEffect(() => {
+    if (loading || !organizationId) return;
+    if (filteredDatasources.length !== 1) return;
+    if (selectedIds.length > 0) return;
+    onSelectionChange([filteredDatasources[0].id]);
+  }, [
+    loading,
+    organizationId,
+    filteredDatasources,
+    selectedIds.length,
+    onSelectionChange,
+  ]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
