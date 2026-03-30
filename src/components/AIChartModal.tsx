@@ -372,6 +372,7 @@ function ChartPreview({
   chartSpec: unknown;
   darkMode?: boolean;
 }) {
+  const isNarrowChart = useAiChartModalNarrowLayout();
   const parsed = useMemo(() => {
     try {
       const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec) : chartSpec;
@@ -424,21 +425,32 @@ function ChartPreview({
 
   const { error, spec, chartType, chartData } = parsed;
 
+  const gridStroke = darkMode ? "#3f3f46" : "#e2e8f0";
+  const tickFill = darkMode ? "#a1a1aa" : "#64748b";
+  const tickFontSize = isNarrowChart ? 12 : 10;
+  const xAxisAngle = isNarrowChart && chartData.length > 3 ? -38 : 0;
+  const xAxisHeight = isNarrowChart ? (chartData.length > 5 ? 64 : chartData.length > 3 ? 52 : 32) : 30;
+  const chartMargins = isNarrowChart
+    ? { top: 10, right: 6, left: 2, bottom: chartData.length > 3 ? Math.max(36, xAxisHeight - 8) : 16 }
+    : { top: 6, right: 8, left: 0, bottom: 6 };
+  const tooltipContentStyle = isNarrowChart
+    ? { fontSize: 13, padding: "10px 12px", borderRadius: 10 }
+    : undefined;
+
   if (error || !chartData || chartData.length === 0) {
     return (
       <div
+        className={`qp-ai-modal-chart-preview qp-ai-modal-chart-preview-empty${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
         style={{
-          width: "100%",
-          height: 180,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 12,
+          fontSize: isNarrowChart ? 13 : 12,
           color: darkMode ? "#fca5a5" : "#dc2626",
           background: darkMode ? "rgba(239,68,68,0.18)" : "#fef2f2",
-          borderRadius: 4,
+          borderRadius: isNarrowChart ? 10 : 4,
           border: darkMode ? "1px solid rgba(239,68,68,0.35)" : "1px solid #fecaca",
-          padding: 8,
+          padding: isNarrowChart ? 14 : 8,
         }}
       >
         <div style={{ textAlign: "center" }}>
@@ -545,15 +557,26 @@ function ChartPreview({
     if (chartType === "pie" || chartType === "arc") {
       return (
         <PieChart>
-          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
+          <Tooltip
+            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+            contentStyle={tooltipContentStyle}
+          />
           <Pie
             data={data}
             dataKey={dataKey}
             nameKey={categoryKey}
             cx="50%"
             cy="50%"
-            outerRadius={60}
-            label={({ name }) => formatTimestampForDisplay(name)}
+            innerRadius={isNarrowChart ? "18%" : 0}
+            outerRadius={isNarrowChart ? "78%" : 60}
+            paddingAngle={isNarrowChart ? 1.5 : 0}
+            label={
+              isNarrowChart
+                ? ({ name, percent }) =>
+                    `${formatTimestampForDisplay(name)} ${((percent ?? 0) * 100).toFixed(0)}%`
+                : ({ name }) => formatTimestampForDisplay(name)
+            }
+            labelLine={isNarrowChart}
           >
             {data.map((entry, index) => {
               const item = entry as Record<string, unknown>;
@@ -566,45 +589,105 @@ function ChartPreview({
     }
     if (chartType === "line") {
       return (
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
-          <Line type="monotone" dataKey={dataKey} stroke={COLORS[0]} strokeWidth={2} dot={false} />
+        <LineChart data={data} margin={chartMargins}>
+          <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+          <XAxis
+            dataKey={categoryKey}
+            tick={{ fontSize: tickFontSize, fill: tickFill }}
+            tickFormatter={formatTimestampForDisplay}
+            angle={xAxisAngle}
+            textAnchor={xAxisAngle ? "end" : "middle"}
+            height={xAxisHeight}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: tickFontSize, fill: tickFill }}
+            width={isNarrowChart ? 44 : 36}
+            tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
+          />
+          <Tooltip
+            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+            contentStyle={tooltipContentStyle}
+          />
+          <Line
+            type="monotone"
+            dataKey={dataKey}
+            stroke={COLORS[0]}
+            strokeWidth={isNarrowChart ? 2.5 : 2}
+            dot={isNarrowChart ? { r: 3, strokeWidth: 1, fill: COLORS[0] } : false}
+            activeDot={{ r: isNarrowChart ? 6 : 5 }}
+          />
         </LineChart>
       );
     }
     if (chartType === "area") {
       return (
-        <AreaChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
+        <AreaChart data={data} margin={chartMargins}>
+          <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+          <XAxis
+            dataKey={categoryKey}
+            tick={{ fontSize: tickFontSize, fill: tickFill }}
+            tickFormatter={formatTimestampForDisplay}
+            angle={xAxisAngle}
+            textAnchor={xAxisAngle ? "end" : "middle"}
+            height={xAxisHeight}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: tickFontSize, fill: tickFill }}
+            width={isNarrowChart ? 44 : 36}
+            tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
+          />
+          <Tooltip
+            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+            contentStyle={tooltipContentStyle}
+          />
           <Area
             type="monotone"
             dataKey={dataKey}
             stroke={COLORS[0]}
             fill={COLORS[0]}
             fillOpacity={0.6}
+            strokeWidth={isNarrowChart ? 2 : 1.5}
           />
         </AreaChart>
       );
     }
     return (
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-        <XAxis dataKey={categoryKey} tick={{ fontSize: 10 }} tickFormatter={formatTimestampForDisplay} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip formatter={(value, name) => [formatTimestampForDisplay(value), name]} />
-        <Bar dataKey={dataKey} fill={COLORS[0]} radius={[4, 4, 0, 0]} />
+      <BarChart data={data} margin={chartMargins} barCategoryGap={isNarrowChart ? "18%" : "10%"}>
+        <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+        <XAxis
+          dataKey={categoryKey}
+          tick={{ fontSize: tickFontSize, fill: tickFill }}
+          tickFormatter={formatTimestampForDisplay}
+          angle={xAxisAngle}
+          textAnchor={xAxisAngle ? "end" : "middle"}
+          height={xAxisHeight}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fontSize: tickFontSize, fill: tickFill }}
+          width={isNarrowChart ? 44 : 36}
+          tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
+        />
+        <Tooltip
+          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          contentStyle={tooltipContentStyle}
+        />
+        <Bar
+          dataKey={dataKey}
+          fill={COLORS[0]}
+          radius={isNarrowChart ? [6, 6, 2, 2] : [4, 4, 0, 0]}
+          maxBarSize={isNarrowChart ? 48 : 56}
+        />
       </BarChart>
     );
   };
 
   return (
-    <div style={{ width: "100%", height: 180 }}>
+    <div
+      className={`qp-ai-modal-chart-preview${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
+    >
       <ResponsiveContainer width="100%" height="100%">
         {renderChart()}
       </ResponsiveContainer>
