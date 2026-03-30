@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect, useId, useMemo } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   XIcon,
@@ -11,6 +19,8 @@ import {
   CircleCheckIcon,
   CircleAlertIcon,
   LoaderCircleIcon,
+  SlidersHorizontalIcon,
+  ChevronUpIcon,
 } from "lucide-react";
 import {
   Bar,
@@ -31,6 +41,18 @@ import {
 import { DatasourceSelector } from "./DatasourceSelector";
 import { formatTimestampForDisplay } from "../utils/formatters";
 import "./AIChartModal.css";
+
+/** Option for the SQL / chart LLM model selector (OpenAI model id as `value`). */
+export type AIChartModelOption = { value: string; label: string };
+
+/** Sensible defaults; override via `chartModelOptions` if your deployment uses different ids. */
+export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
+  { value: "gpt-5.4-mini", label: "GPT-5.4 mini" },
+  { value: "gpt-5.4", label: "GPT-5.4" },
+  { value: "gpt-4.1", label: "GPT-4.1" },
+  { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+  { value: "", label: "Server default" },
+];
 
 export interface AIChartModalProps {
   isOpen: boolean;
@@ -68,6 +90,10 @@ export interface AIChartModalProps {
   title?: string;
   /** Whitelabel: empty-state heading (default: "Create a Chart") */
   createTitle?: string;
+  /** Model dropdown options (`value` = OpenAI model id, empty string = server default). */
+  chartModelOptions?: AIChartModelOption[];
+  /** Initial selected model `value` when the modal opens (default: `gpt-5.4-mini`) */
+  defaultChartModel?: string;
 }
 
 type Message = {
@@ -128,6 +154,39 @@ type SqlExecutionArtifact = {
 
 function isMastraAgentStreamUrl(url: string) {
   return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
+}
+
+const AI_CHART_MODAL_NARROW_QUERY = "(max-width: 52rem)";
+
+function subscribeAiChartModalNarrow(onChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia(AI_CHART_MODAL_NARROW_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+function getAiChartModalNarrowSnapshot() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia(AI_CHART_MODAL_NARROW_QUERY).matches;
+}
+
+function useAiChartModalNarrowLayout() {
+  return useSyncExternalStore(
+    subscribeAiChartModalNarrow,
+    getAiChartModalNarrowSnapshot,
+    () => false
+  );
+}
+
+/**
+ * Mastra stream resolves models like AI Gateway (`provider/model`, e.g. `openai/gpt-5.4-mini`).
+ * The v2 SQL pipeline uses bare OpenAI ids via @ai-sdk/openai — keep those unchanged for generate-chart-with-sql.
+ */
+function normalizeModelForMastraStreamBody(model: string): string {
+  const t = model.trim();
+  if (!t) return "";
+  if (t.includes("/")) return t;
+  return `openai/${t}`;
 }
 
 function mapGeneratedParams(params: unknown) {
@@ -571,6 +630,8 @@ export function AIChartModal({
   hideTenantInputs = false,
   title: titleProp,
   createTitle: createTitleProp,
+  chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
+  defaultChartModel = "gpt-5.4-mini",
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Chart Generator";
   const createTitle = createTitleProp ?? "Create a Chart";
@@ -599,10 +660,21 @@ export function AIChartModal({
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [activeAssistantMessageId, setActiveAssistantMessageId] = useState<string | null>(null);
   const [lastSqlExecution, setLastSqlExecution] = useState<SqlExecutionArtifact | null>(null);
+  const [chartModel, setChartModel] = useState(() => {
+    const allowed = new Set(chartModelOptions.map((o) => o.value));
+    return allowed.has(defaultChartModel) ? defaultChartModel : (chartModelOptions[0]?.value ?? "");
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const promptInputRef = useRef<HTMLInputElement>(null);
   const tenantFieldId = useId();
   const previewTenantIdFieldId = useId();
+  const chartModelId = useId();
+  const mobileSettingsSheetTitleId = useId();
+  const mobileSettingsDoneRef = useRef<HTMLButtonElement>(null);
+  const mobileSettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileSheetWasOpenRef = useRef(false);
+  const isNarrowLayout = useAiChartModalNarrowLayout();
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   // Sync with document theme when modal is open so switching theme (e.g. next-themes) updates the header immediately.
   const [docDarkMode, setDocDarkMode] = useState(false);
@@ -637,8 +709,8 @@ export function AIChartModal({
   }, [messages]);
 
   useEffect(() => {
-    if (isOpen && textareaRef.current) {
-      setTimeout(() => textareaRef.current?.focus(), 100);
+    if (isOpen && promptInputRef.current) {
+      setTimeout(() => promptInputRef.current?.focus(), 100);
     }
   }, [isOpen]);
 
@@ -649,7 +721,17 @@ export function AIChartModal({
   }, [isOpen, initialPrompt, messages.length]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const allowed = new Set(chartModelOptions.map((o) => o.value));
+    const next = allowed.has(defaultChartModel)
+      ? defaultChartModel
+      : (chartModelOptions[0]?.value ?? "");
+    setChartModel(next);
+  }, [isOpen, defaultChartModel, chartModelOptions]);
+
+  useEffect(() => {
     if (!isOpen) {
+      setMobileSettingsOpen(false);
       setTimeout(() => {
         setMessages([]);
         setInputValue("");
@@ -662,6 +744,43 @@ export function AIChartModal({
       }, 300);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isNarrowLayout) setMobileSettingsOpen(false);
+  }, [isNarrowLayout]);
+
+  useEffect(() => {
+    if (!isNarrowLayout || !mobileSettingsOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setMobileSettingsOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [isNarrowLayout, mobileSettingsOpen]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      mobileSheetWasOpenRef.current = false;
+      return;
+    }
+    if (!isNarrowLayout) {
+      mobileSheetWasOpenRef.current = false;
+      return;
+    }
+    if (mobileSettingsOpen) {
+      mobileSheetWasOpenRef.current = true;
+      mobileSettingsDoneRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (mobileSheetWasOpenRef.current) {
+      mobileSheetWasOpenRef.current = false;
+      mobileSettingsTriggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [isOpen, isNarrowLayout, mobileSettingsOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -744,6 +863,9 @@ export function AIChartModal({
               ...(hideTenantInputs ? {} : { tenantId: previewTenantId.trim() || undefined }),
             },
             savePerStep: true,
+            ...(chartModel.trim()
+              ? { model: normalizeModelForMastraStreamBody(chartModel) }
+              : {}),
           }),
         });
 
@@ -984,6 +1106,7 @@ export function AIChartModal({
             ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
             conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
             ...(querypanelSessionId ? { querypanelSessionId } : {}),
+            ...(chartModel.trim() ? { model: chartModel.trim() } : {}),
           }),
         });
 
@@ -1044,19 +1167,86 @@ export function AIChartModal({
     );
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSendMessage();
     } else if (e.key === "Escape") {
+      if (isNarrowLayout && mobileSettingsOpen) {
+        e.preventDefault();
+        setMobileSettingsOpen(false);
+        return;
+      }
       onClose();
     }
   };
 
   if (!isOpen) return null;
 
+  const tenantSettingsVisible = dashboardType === "customer" && !hideTenantInputs;
+  const datasourceSummaryShort =
+    selectedDatasourceIds.length === 0
+      ? "Tap to choose a datasource"
+      : selectedDatasourceIds.length === 1
+        ? "1 datasource selected"
+        : `${selectedDatasourceIds.length} datasources selected`;
+
+  const settingsPaneInner = (
+    <>
+      <div className="qp-ai-modal-settings-block">
+        <span className="qp-ai-modal-settings-heading">Datasource</span>
+        <DatasourceSelector
+          organizationId={organizationId}
+          selectedIds={selectedDatasourceIds}
+          onSelectionChange={setSelectedDatasourceIds}
+          selectionMode={useMastraStream ? "single" : "multiple"}
+          datasourcesUrl={datasourcesUrl}
+          headers={headers}
+          darkMode={effectiveDarkMode}
+          allowedIds={availableDatasourceIds}
+          fullWidth
+        />
+      </div>
+
+      {tenantSettingsVisible && (
+        <div className="qp-ai-modal-settings-block qp-ai-modal-settings-tenant">
+          <div>
+            <label htmlFor={tenantFieldId} className="qp-ai-modal-label">
+              Tenant field name (optional)
+            </label>
+            <input
+              id={tenantFieldId}
+              type="text"
+              value={tenantFieldName}
+              onChange={(e) => setTenantFieldName(e.target.value)}
+              placeholder="tenant_id"
+              className="qp-ai-modal-input"
+            />
+          </div>
+          <div>
+            <label htmlFor={previewTenantIdFieldId} className="qp-ai-modal-label">
+              Preview as tenant ID (optional)
+            </label>
+            <input
+              id={previewTenantIdFieldId}
+              type="text"
+              value={previewTenantId}
+              onChange={(e) => setPreviewTenantId(e.target.value)}
+              placeholder="tenant_a"
+              className="qp-ai-modal-input"
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   const modalContent = (
-    <div data-qp-ai-modal data-theme={effectiveDarkMode ? "dark" : "light"}>
+    <div
+      data-qp-ai-modal
+      data-theme={effectiveDarkMode ? "dark" : "light"}
+      data-qp-ai-mobile-sheet-open={isNarrowLayout && mobileSettingsOpen ? "true" : undefined}
+    >
       <button
         type="button"
         className="qp-ai-modal-backdrop"
@@ -1102,54 +1292,15 @@ export function AIChartModal({
               </button>
               </div>
             </div>
-
-            <div className="qp-ai-modal-datasource-row">
-              <DatasourceSelector
-                organizationId={organizationId}
-                selectedIds={selectedDatasourceIds}
-                onSelectionChange={setSelectedDatasourceIds}
-                selectionMode={useMastraStream ? "single" : "multiple"}
-                datasourcesUrl={datasourcesUrl}
-                headers={headers}
-                darkMode={effectiveDarkMode}
-                allowedIds={availableDatasourceIds}
-              />
-            </div>
-
-            {dashboardType === "customer" && !hideTenantInputs && (
-              <div className="qp-ai-modal-grid-2">
-                <div>
-                  <label htmlFor={tenantFieldId} className="qp-ai-modal-label">
-                    Tenant field name (optional)
-                  </label>
-                  <input
-                    id={tenantFieldId}
-                    type="text"
-                    value={tenantFieldName}
-                    onChange={(e) => setTenantFieldName(e.target.value)}
-                    placeholder="tenant_id"
-                    className="qp-ai-modal-input"
-                  />
-                </div>
-                <div>
-                  <label htmlFor={previewTenantIdFieldId} className="qp-ai-modal-label">
-                    Preview as tenant ID (optional)
-                  </label>
-                  <input
-                    id={previewTenantIdFieldId}
-                    type="text"
-                    value={previewTenantId}
-                    onChange={(e) => setPreviewTenantId(e.target.value)}
-                    placeholder="tenant_a"
-                    className="qp-ai-modal-input"
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="qp-ai-modal-body">
-            <div className="qp-ai-modal-main">
+          <div
+            className={`qp-ai-modal-body qp-ai-modal-body-split${isNarrowLayout ? " qp-ai-modal-body-narrow" : ""}`}
+          >
+            <div
+              className="qp-ai-modal-chat-pane"
+              inert={isNarrowLayout && mobileSettingsOpen ? true : undefined}
+            >
               <div className="qp-ai-modal-messages">
                 {messages.length === 0 && (
                   <div className="qp-ai-modal-empty">
@@ -1303,26 +1454,120 @@ export function AIChartModal({
                 <div ref={messagesEndRef} />
               </div>
 
+              {isNarrowLayout && (
+                <div className="qp-ai-modal-mobile-settings-strip">
+                  <button
+                    ref={mobileSettingsTriggerRef}
+                    type="button"
+                    className={`qp-ai-modal-mobile-settings-trigger${
+                      selectedDatasourceIds.length === 0 ? " qp-ai-modal-mobile-settings-trigger-attention" : ""
+                    }`}
+                    onClick={() => setMobileSettingsOpen(true)}
+                    aria-expanded={mobileSettingsOpen}
+                    aria-controls="qp-ai-chart-mobile-settings-sheet"
+                  >
+                    <span className="qp-ai-modal-mobile-settings-trigger-icon" aria-hidden>
+                      <SlidersHorizontalIcon className="w-4 h-4" />
+                    </span>
+                    <span className="qp-ai-modal-mobile-settings-trigger-copy">
+                      <span className="qp-ai-modal-mobile-settings-trigger-kicker">Data & preview</span>
+                      <span className="qp-ai-modal-mobile-settings-trigger-line">{datasourceSummaryShort}</span>
+                    </span>
+                    {tenantSettingsVisible && previewTenantId.trim() ? (
+                      <span className="qp-ai-modal-mobile-settings-tenant-pill" title="Preview tenant">
+                        {previewTenantId.trim()}
+                      </span>
+                    ) : null}
+                    <ChevronUpIcon className="qp-ai-modal-mobile-settings-open-hint w-4 h-4" aria-hidden />
+                  </button>
+                </div>
+              )}
+
               <div className="qp-ai-modal-footer">
-                <textarea
-                  ref={textareaRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="E.g., 'Show quarterly revenue as a line chart'"
-                  className="qp-ai-modal-textarea"
-                  rows={1}
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputValue.trim() || isLoading}
-                  className="qp-ai-modal-send"
-                >
-                  <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
-                </button>
+                <div className="qp-ai-modal-pill-compose">
+                  <input
+                    ref={promptInputRef}
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handlePromptKeyDown}
+                    placeholder="What chart do you want?"
+                    className="qp-ai-modal-pill-input"
+                    aria-label="Chart prompt"
+                    autoComplete="off"
+                  />
+                  {chartModelOptions.length > 0 && (
+                    <select
+                      id={chartModelId}
+                      className="qp-ai-modal-pill-model"
+                      value={chartModel}
+                      onChange={(e) => setChartModel(e.target.value)}
+                      disabled={isLoading}
+                      title="Model"
+                      aria-label="Model"
+                    >
+                      {chartModelOptions.map((opt, i) => (
+                        <option key={`${i}-${opt.label}`} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage()}
+                    disabled={!inputValue.trim() || isLoading}
+                    className="qp-ai-modal-pill-send"
+                    aria-label="Send message"
+                  >
+                    <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
+                  </button>
+                </div>
               </div>
             </div>
+
+            {!isNarrowLayout && (
+              <aside className="qp-ai-modal-settings-pane" aria-label="Chart settings">
+                {settingsPaneInner}
+              </aside>
+            )}
+
+            {isNarrowLayout && mobileSettingsOpen ? (
+              <div
+                className="qp-ai-modal-mobile-sheet-root"
+                role="presentation"
+                onClick={() => setMobileSettingsOpen(false)}
+              >
+                <div
+                  id="qp-ai-chart-mobile-settings-sheet"
+                  className="qp-ai-modal-mobile-sheet"
+                  role="region"
+                  aria-labelledby={mobileSettingsSheetTitleId}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="qp-ai-modal-mobile-sheet-handle-wrap" aria-hidden>
+                    <span className="qp-ai-modal-mobile-sheet-handle" />
+                  </div>
+                  <div className="qp-ai-modal-mobile-sheet-toolbar">
+                    <h3 className="qp-ai-modal-mobile-sheet-title" id={mobileSettingsSheetTitleId}>
+                      Data & preview
+                    </h3>
+                    <button
+                      ref={mobileSettingsDoneRef}
+                      type="button"
+                      className="qp-ai-modal-mobile-sheet-done"
+                      onClick={() => setMobileSettingsOpen(false)}
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <p className="qp-ai-modal-mobile-sheet-subtitle">
+                    Pick where the chart runs and how tenant preview is applied.
+                  </p>
+                  <div className="qp-ai-modal-mobile-sheet-body">{settingsPaneInner}</div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

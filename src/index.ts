@@ -17,7 +17,12 @@ export { QuerypanelEmbedded, type QuerypanelEmbeddedProps } from "./components/Q
 export { DashboardViewer, type DashboardViewerProps } from "./components/DashboardViewer";
 export { DashboardEditor, type DashboardEditorProps } from "./components/DashboardEditor";
 export { DashboardAiEditor, type DashboardAiEditorProps } from "./components/DashboardAiEditor";
-export { AIChartModal, type AIChartModalProps } from "./components/AIChartModal";
+export {
+  AIChartModal,
+  DEFAULT_AI_CHART_MODEL_OPTIONS,
+  type AIChartModalProps,
+  type AIChartModelOption,
+} from "./components/AIChartModal";
 export { DatasourceSelector, type DatasourceSelectorProps } from "./components/DatasourceSelector";
 export { DeploySuccessModal, type DeploySuccessModalProps } from "./components/DeploySuccessModal";
 export { BlockNoteThemedView, type BlockNoteThemedViewProps } from "./components/BlockNoteThemedView";
