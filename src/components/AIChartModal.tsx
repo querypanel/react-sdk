@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect, useId } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useId, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { XIcon, SendIcon, BarChart3Icon, SparklesIcon } from "lucide-react";
+import {
+  XIcon,
+  SendIcon,
+  BarChart3Icon,
+  SparklesIcon,
+  Wand2Icon,
+  CircleCheckIcon,
+  CircleAlertIcon,
+  LoaderCircleIcon,
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -77,6 +86,7 @@ type MastraStreamChunk = {
   textDelta?: string;
   toolName?: string;
   result?: unknown;
+  payload?: Record<string, unknown>;
   response?: {
     messages?: Array<{
       role?: string;
@@ -96,6 +106,25 @@ type MastraStreamChunk = {
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
+
+type ToolEventStatus = "running" | "succeeded" | "failed";
+type ToolEvent = {
+  id: string;
+  toolName: string;
+  status: ToolEventStatus;
+  startedAt: number;
+  endedAt?: number;
+  error?: string;
+};
+
+type SqlExecutionArtifact = {
+  fields: string[];
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  database?: string;
+  dialect?: string;
+  datasource?: { id: string; name: string; dialect: string };
+};
 
 function isMastraAgentStreamUrl(url: string) {
   return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
@@ -134,6 +163,29 @@ function extractAssistantTextFromChunk(chunk: MastraStreamChunk) {
   return textPart?.text;
 }
 
+function extractToolResultsFromChunk(chunk: MastraStreamChunk) {
+  const results: Array<{ toolName: string; result: Record<string, unknown> }> = [];
+
+  for (const message of chunk.response?.messages ?? []) {
+    for (const part of message.content ?? []) {
+      if (
+        typeof part.toolName === "string" &&
+        part.toolName.trim().length > 0 &&
+        part.result &&
+        typeof part.result === "object" &&
+        !Array.isArray(part.result)
+      ) {
+        results.push({
+          toolName: part.toolName.trim(),
+          result: part.result as Record<string, unknown>,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
 function formatToolStatus(toolName: string) {
   switch (toolName) {
     case "search_schema":
@@ -164,6 +216,96 @@ function isNumericChartValue(value: unknown): boolean {
   return false;
 }
 
+function withVizSpecDataFallback(
+  chartSpec: unknown,
+  rows: Array<Record<string, unknown>> | null
+) {
+  if (!rows || rows.length === 0) return chartSpec;
+
+  try {
+    const spec =
+      typeof chartSpec === "string"
+        ? (JSON.parse(chartSpec) as unknown)
+        : chartSpec;
+    if (!spec || typeof spec !== "object") return chartSpec;
+
+    const s = spec as Record<string, unknown>;
+    if (s.kind === "chart") {
+      const currentData = s.data;
+      if (Array.isArray(currentData) && currentData.length > 0) return s;
+      return { ...s, data: rows };
+    }
+
+    const data = s.data;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const values = (data as { values?: unknown }).values;
+      if (Array.isArray(values) && values.length > 0) return s;
+      return { ...s, data: { ...(data as Record<string, unknown>), values: rows } };
+    }
+
+    return { ...s, data: { values: rows } };
+  } catch {
+    return chartSpec;
+  }
+}
+
+function normalizeMastraChunk(raw: MastraStreamChunk): MastraStreamChunk {
+  const payload = raw.payload;
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const merged = { ...raw, ...payload } as MastraStreamChunk;
+    delete (merged as { payload?: unknown }).payload;
+    if (
+      merged.type === "text-delta" &&
+      typeof merged.textDelta !== "string" &&
+      typeof (payload as { text?: unknown }).text === "string"
+    ) {
+      merged.textDelta = (payload as { text: string }).text;
+    }
+    if (
+      merged.type === "step-finish" &&
+      !merged.response &&
+      Array.isArray((payload as { messages?: unknown }).messages)
+    ) {
+      merged.response = {
+        messages: (payload as { messages: NonNullable<MastraStreamChunk["response"]>["messages"] }).messages,
+      };
+    }
+    return merged;
+  }
+  return raw;
+}
+
+function getToolEventLabel(toolName: string) {
+  return formatToolStatus(toolName);
+}
+
+function ToolEventStatusIcon({ status }: { status: ToolEventStatus }) {
+  if (status === "succeeded") return <CircleCheckIcon className="w-4 h-4" />;
+  if (status === "failed") return <CircleAlertIcon className="w-4 h-4" />;
+  return <LoaderCircleIcon className="w-4 h-4 qp-ai-modal-spin" />;
+}
+
+function ToolEventChip({
+  event,
+  active,
+  onClick,
+}: {
+  event: ToolEvent;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`qp-ai-modal-toolchip ${event.status} ${active ? "active" : ""}`}
+      onClick={onClick}
+    >
+      <ToolEventStatusIcon status={event.status} />
+      <span className="qp-ai-modal-toolchip-label">{getToolEventLabel(event.toolName)}</span>
+    </button>
+  );
+}
+
 function ChartPreview({
   chartSpec,
   darkMode = false,
@@ -171,24 +313,57 @@ function ChartPreview({
   chartSpec: unknown;
   darkMode?: boolean;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const parsed = useMemo(() => {
+    try {
+      const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec) : chartSpec;
+      if (!spec || typeof spec !== "object") {
+        return {
+          error: "Invalid chart specification",
+          spec: null,
+          chartType: "bar",
+          chartData: [] as Record<string, unknown>[],
+        };
+      }
 
-  let chartType = "bar";
-  let chartData: Record<string, unknown>[] = [];
+      const record = spec as Record<string, unknown>;
+      if (record.kind === "chart") {
+        return {
+          error: null,
+          spec: record,
+          chartType:
+            typeof (record.encoding as { chartType?: unknown } | undefined)?.chartType === "string"
+              ? ((record.encoding as { chartType: string }).chartType || "bar")
+              : "bar",
+          chartData: Array.isArray(record.data) ? (record.data as Record<string, unknown>[]) : [],
+        };
+      }
 
-  try {
-    const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec) : chartSpec;
+      const mark = record.mark;
+      const chartType =
+        typeof mark === "string"
+          ? mark
+          : mark && typeof mark === "object" && typeof (mark as { type?: unknown }).type === "string"
+            ? (mark as { type: string }).type
+            : "bar";
 
-    if (spec.kind === "chart") {
-      chartType = spec.encoding?.chartType || "bar";
-      chartData = spec.data || [];
-    } else {
-      chartType = spec.mark?.type || spec.mark || "bar";
-      chartData = spec.data?.values || [];
+      const data = record.data;
+      const chartData =
+        data && typeof data === "object" && Array.isArray((data as { values?: unknown }).values)
+          ? ((data as { values: Record<string, unknown>[] }).values ?? [])
+          : [];
+
+      return { error: null, spec: record, chartType, chartData };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : "Failed to render chart",
+        spec: null,
+        chartType: "bar",
+        chartData: [] as Record<string, unknown>[],
+      };
     }
-  } catch (err) {
-    setError(err instanceof Error ? err.message : "Failed to render chart");
-  }
+  }, [chartSpec]);
+
+  const { error, spec, chartType, chartData } = parsed;
 
   if (error || !chartData || chartData.length === 0) {
     return (
@@ -216,11 +391,21 @@ function ChartPreview({
   }
 
   // Use encoding from vizspec when present (kind === "chart"), so x/y/series/tooltips map correctly
-  const spec = typeof chartSpec === "string" ? JSON.parse(chartSpec as string) : chartSpec;
-  const encoding = spec?.kind === "chart" ? spec.encoding : null;
-  const xField = encoding?.x?.field;
-  const yField = encoding?.y?.field;
-  const yType = encoding?.y?.type;
+  const encoding =
+    spec?.kind === "chart" && spec.encoding && typeof spec.encoding === "object"
+      ? (spec.encoding as Record<string, unknown>)
+      : null;
+  const xRef =
+    encoding?.x && typeof encoding.x === "object"
+      ? (encoding.x as { field?: unknown; type?: unknown })
+      : null;
+  const yRef =
+    encoding?.y && typeof encoding.y === "object"
+      ? (encoding.y as { field?: unknown; type?: unknown })
+      : null;
+  const xField = typeof xRef?.field === "string" ? xRef.field : undefined;
+  const yField = typeof yRef?.field === "string" ? yRef.field : undefined;
+  const yType = typeof yRef?.type === "string" ? yRef.type : undefined;
   const seriesRef = encoding?.series;
   const seriesField =
     typeof seriesRef === "string"
@@ -411,6 +596,9 @@ export function AIChartModal({
   );
   const [previewTenantId, setPreviewTenantId] = useState("");
   const [querypanelSessionId, setQuerypanelSessionId] = useState<string | null>(null);
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
+  const [activeAssistantMessageId, setActiveAssistantMessageId] = useState<string | null>(null);
+  const [lastSqlExecution, setLastSqlExecution] = useState<SqlExecutionArtifact | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const tenantFieldId = useId();
@@ -468,6 +656,9 @@ export function AIChartModal({
         setIsLoading(false);
         setTransientStatus(null);
         setQuerypanelSessionId(null);
+        setToolEvents([]);
+        setActiveAssistantMessageId(null);
+        setLastSqlExecution(null);
       }, 300);
     }
   }, [isOpen]);
@@ -510,6 +701,8 @@ export function AIChartModal({
     setInputValue("");
     setIsLoading(true);
     setTransientStatus("Thinking");
+    setToolEvents([]);
+    setLastSqlExecution(null);
     let assistantMessageId: string | null = null;
 
     try {
@@ -517,6 +710,7 @@ export function AIChartModal({
         const threadId = querypanelSessionId || `chart-${dashboardId}-${Date.now()}`;
         const currentAssistantMessageId = `assistant-${Date.now()}`;
         assistantMessageId = currentAssistantMessageId;
+        setActiveAssistantMessageId(currentAssistantMessageId);
         const resourceId = `dashboard-${organizationId}-${dashboardId}`;
 
         setMessages((prev) => [
@@ -574,10 +768,117 @@ export function AIChartModal({
           );
         };
 
-        const applyMastraChunk = (chunk: MastraStreamChunk) => {
+        const applyMastraChunk = (rawChunk: MastraStreamChunk) => {
+          const chunk = normalizeMastraChunk(rawChunk);
+
           if (typeof chunk.toolName === "string" && chunk.toolName.trim().length > 0) {
             setTransientStatus(formatToolStatus(chunk.toolName));
+            const toolName = chunk.toolName.trim();
+            setToolEvents((prev) => {
+              const existingRunning = prev.find(
+                (event) => event.toolName === toolName && event.status === "running"
+              );
+              if (existingRunning) return prev;
+              const id = `tool-${toolName}-${Date.now()}`;
+              const next: ToolEvent[] = [
+                ...prev,
+                { id, toolName, status: "running", startedAt: Date.now() },
+              ];
+              return next;
+            });
           }
+
+          const chunkError =
+            (chunk as { error?: unknown }).error && typeof (chunk as { error?: unknown }).error === "object"
+              ? ((chunk as { error?: { message?: unknown } }).error?.message ?? null)
+              : null;
+          if (typeof chunkError === "string" && chunkError.trim().length > 0) {
+            setTransientStatus(null);
+            const toolName = typeof chunk.toolName === "string" ? chunk.toolName : undefined;
+            setToolEvents((prev) =>
+              prev.map((event) =>
+                toolName && event.toolName === toolName && event.status === "running"
+                  ? { ...event, status: "failed", endedAt: Date.now(), error: chunkError.trim() }
+                  : event
+              )
+            );
+          }
+
+          const applyToolResult = (toolName: string, result: Record<string, unknown>) => {
+            if (toolName === "generate_sql") {
+              console.log("[AIChartModal] generated sql", {
+                sql: typeof result.sql === "string" ? result.sql : null,
+                params: mapGeneratedParams(result.params),
+              });
+              setToolEvents((prev) =>
+                prev.map((event) =>
+                  event.toolName === "generate_sql" && event.status === "running"
+                    ? { ...event, status: "succeeded", endedAt: Date.now() }
+                    : event
+                )
+              );
+              updateAssistantMessage((current) => ({
+                ...current,
+                sql: typeof result.sql === "string" ? result.sql : current.sql,
+                rationale: typeof result.rationale === "string" ? result.rationale : current.rationale,
+                sqlParams: mapGeneratedParams(result.params) ?? current.sqlParams ?? null,
+              }));
+              return true;
+            }
+
+            if (toolName === "execute_sql") {
+              const rows = Array.isArray(result.rows)
+                ? (result.rows as Array<Record<string, unknown>>)
+                : [];
+              const fields = Array.isArray(result.fields) ? (result.fields as string[]) : [];
+              console.log("[AIChartModal] query data", {
+                rowCount: typeof result.rowCount === "number" ? result.rowCount : rows.length,
+                fields,
+                rows,
+              });
+              setToolEvents((prev) =>
+                prev.map((event) =>
+                  event.toolName === "execute_sql" && event.status === "running"
+                    ? { ...event, status: "succeeded", endedAt: Date.now() }
+                    : event
+                )
+              );
+              setLastSqlExecution({
+                rows,
+                fields,
+                rowCount: typeof result.rowCount === "number" ? result.rowCount : rows.length,
+                database: typeof result.database === "string" ? result.database : undefined,
+                dialect: typeof result.dialect === "string" ? result.dialect : undefined,
+                datasource:
+                  result.datasource && typeof result.datasource === "object"
+                    ? (result.datasource as { id: string; name: string; dialect: string })
+                    : undefined,
+              });
+              return true;
+            }
+
+            if (toolName === "generate_visualization") {
+              setTransientStatus(null);
+              setToolEvents((prev) =>
+                prev.map((event) =>
+                  event.toolName === "generate_visualization" && event.status === "running"
+                    ? { ...event, status: "succeeded", endedAt: Date.now() }
+                    : event
+                )
+              );
+              updateAssistantMessage((current) => ({
+                ...current,
+                chartSpec: result.spec ?? current.chartSpec,
+                rationale:
+                  typeof result.notes === "string" && result.notes.trim().length > 0
+                    ? result.notes
+                    : current.rationale,
+              }));
+              return true;
+            }
+
+            return false;
+          };
 
           if (chunk.type === "text-delta" && chunk.textDelta) {
             setTransientStatus(null);
@@ -589,32 +890,30 @@ export function AIChartModal({
           }
 
           if (chunk.type === "tool-result" && chunk.toolName === "generate_sql" && chunk.result && typeof chunk.result === "object") {
-            const result = chunk.result as Record<string, unknown>;
-            updateAssistantMessage((current) => ({
-              ...current,
-              sql: typeof result.sql === "string" ? result.sql : current.sql,
-              rationale: typeof result.rationale === "string" ? result.rationale : current.rationale,
-              sqlParams: mapGeneratedParams(result.params) ?? current.sqlParams ?? null,
-            }));
+            applyToolResult("generate_sql", chunk.result as Record<string, unknown>);
+            return;
+          }
+
+          if (chunk.type === "tool-result" && chunk.toolName === "execute_sql" && chunk.result && typeof chunk.result === "object") {
+            applyToolResult("execute_sql", chunk.result as Record<string, unknown>);
             return;
           }
 
           if (chunk.type === "tool-result" && chunk.toolName === "generate_visualization" && chunk.result && typeof chunk.result === "object") {
-            const result = chunk.result as Record<string, unknown>;
-            setTransientStatus(null);
-            updateAssistantMessage((current) => ({
-              ...current,
-              chartSpec: result.spec ?? current.chartSpec,
-              rationale:
-                typeof result.notes === "string" && result.notes.trim().length > 0
-                  ? result.notes
-                  : current.rationale,
-            }));
+            applyToolResult("generate_visualization", chunk.result as Record<string, unknown>);
             return;
           }
 
           if (chunk.type === "step-finish") {
             setTransientStatus(null);
+            setToolEvents((prev) =>
+              prev.map((event) =>
+                event.status === "running" ? { ...event, status: "succeeded", endedAt: Date.now() } : event
+              )
+            );
+            for (const embeddedResult of extractToolResultsFromChunk(chunk)) {
+              applyToolResult(embeddedResult.toolName, embeddedResult.result);
+            }
             const assistantText = extractAssistantTextFromChunk(chunk);
             if (assistantText && assistantText.trim().length > 0) {
               updateAssistantMessage((current) => ({
@@ -714,6 +1013,11 @@ export function AIChartModal({
       setMessages((prev) =>
         prev.filter((message) => message.id !== assistantMessageId)
       );
+      setToolEvents((prev) =>
+        prev.map((event) =>
+          event.status === "running" ? { ...event, status: "failed", endedAt: Date.now(), error: "Failed" } : event
+        )
+      );
 
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
@@ -775,6 +1079,19 @@ export function AIChartModal({
                   </p>
                 </div>
               </div>
+              <div className="qp-ai-modal-header-actions">
+                {isLoading && (
+                  <div className="qp-ai-modal-status-pill" aria-live="polite">
+                    <span className="qp-ai-modal-status-dot" />
+                    <span className="qp-ai-modal-status-text">{transientStatus ?? "Working"}</span>
+                  </div>
+                )}
+                {!isLoading && querypanelSessionId && (
+                  <div className="qp-ai-modal-session-pill" title={`Session: ${querypanelSessionId}`}>
+                    <Wand2Icon className="w-4 h-4" />
+                    <span className="qp-ai-modal-session-pill-text">Session</span>
+                  </div>
+                )}
               <button
                 type="button"
                 onClick={onClose}
@@ -783,6 +1100,7 @@ export function AIChartModal({
               >
                 <XIcon className="w-4 h-4" />
               </button>
+              </div>
             </div>
 
             <div className="qp-ai-modal-datasource-row">
@@ -843,13 +1161,44 @@ export function AIChartModal({
                       <p className="qp-ai-modal-empty-text">
                         Describe your visualization in natural language
                       </p>
+                      <div className="qp-ai-modal-suggestions">
+                        <button
+                          type="button"
+                          className="qp-ai-modal-suggestion"
+                          onClick={() => handleSendMessage("Show revenue by month as a line chart")}
+                          disabled={isLoading}
+                        >
+                          Revenue by month
+                        </button>
+                        <button
+                          type="button"
+                          className="qp-ai-modal-suggestion"
+                          onClick={() => handleSendMessage("Show top 10 customers by total spend as a bar chart")}
+                          disabled={isLoading}
+                        >
+                          Top customers
+                        </button>
+                        <button
+                          type="button"
+                          className="qp-ai-modal-suggestion"
+                          onClick={() => handleSendMessage("Break down signups by plan as a stacked bar chart")}
+                          disabled={isLoading}
+                        >
+                          Signups by plan
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {messages.map((message) => {
+                  const isActiveAssistant =
+                    message.role === "assistant" && message.id === activeAssistantMessageId;
                   const hasVisibleAssistantState =
-                    message.content.trim().length > 0 || Boolean(message.chartSpec);
+                    message.content.trim().length > 0 ||
+                    Boolean(message.chartSpec) ||
+                    (isActiveAssistant &&
+                      (toolEvents.length > 0 || Boolean(lastSqlExecution)));
 
                   if (message.role === "assistant" && !hasVisibleAssistantState) {
                     return null;
@@ -862,6 +1211,60 @@ export function AIChartModal({
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
                         {message.content.trim().length > 0 && <div>{message.content}</div>}
+
+                        {message.role === "assistant" && message.id === activeAssistantMessageId && toolEvents.length > 0 && (
+                          <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
+                            {toolEvents.map((event) => (
+                              <ToolEventChip key={event.id} event={event} />
+                            ))}
+                          </div>
+                        )}
+
+                        {message.role === "assistant" && message.id === activeAssistantMessageId && lastSqlExecution && (
+                          <div className="qp-ai-modal-data-card" aria-label="Query results preview">
+                            <div className="qp-ai-modal-data-card-head">
+                              <div className="qp-ai-modal-data-summary">
+                                <span className="qp-ai-modal-data-pill">
+                                  Rows: {lastSqlExecution.rowCount}
+                                </span>
+                                <span className="qp-ai-modal-data-pill secondary">
+                                  Columns: {(lastSqlExecution.fields.length || Object.keys(lastSqlExecution.rows[0] ?? {}).length)}
+                                </span>
+                                {lastSqlExecution.database && (
+                                  <span className="qp-ai-modal-data-pill secondary">
+                                    DB: {lastSqlExecution.database}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="qp-ai-modal-table-wrap">
+                              <table className="qp-ai-modal-table">
+                                <thead>
+                                  <tr>
+                                    {(lastSqlExecution.fields.length
+                                      ? lastSqlExecution.fields
+                                      : Object.keys(lastSqlExecution.rows[0] ?? {})
+                                    ).map((field) => (
+                                      <th key={field}>{field}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {lastSqlExecution.rows.slice(0, 3).map((row, idx) => (
+                                    <tr key={idx}>
+                                      {(lastSqlExecution.fields.length
+                                        ? lastSqlExecution.fields
+                                        : Object.keys(lastSqlExecution.rows[0] ?? {})
+                                      ).map((field) => (
+                                        <td key={field}>{String(row[field] ?? "")}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
 
                         {Boolean(message.chartSpec) && (
                           <div className="qp-ai-modal-chart-card">
@@ -879,20 +1282,23 @@ export function AIChartModal({
                               </button>
                             </div>
                             <div className="qp-ai-modal-chart-card-preview">
-                              <ChartPreview chartSpec={message.chartSpec} darkMode={effectiveDarkMode} />
+                              <ChartPreview
+                                chartSpec={withVizSpecDataFallback(
+                                  message.chartSpec,
+                                  message.id === activeAssistantMessageId
+                                    ? (lastSqlExecution?.rows ?? null)
+                                    : null
+                                )}
+                                darkMode={effectiveDarkMode}
+                              />
                             </div>
                           </div>
                         )}
+
                       </div>
                     </div>
                   );
                 })}
-
-                {isLoading && transientStatus && (
-                  <div className="qp-ai-modal-loading">
-                    <span className="qp-ai-modal-loading-text">{transientStatus}</span>
-                  </div>
-                )}
 
                 <div ref={messagesEndRef} />
               </div>
