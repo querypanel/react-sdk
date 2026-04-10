@@ -1,0 +1,28 @@
+{
+  "name": "querypanel-mono",
+  "private": true,
+  "version": "0.1.0",
+  "description": "QueryPanel monorepo (admin, api, sdk packages, database, docs)",
+  "workspaces": [
+    "admin",
+    "api",
+    "admin/packages/react-sdk",
+    "admin/packages/node-sdk"
+  ],
+  "scripts": {
+    "dev:admin": "npm run dev --workspace=admin",
+    "dev:api": "npm run dev --workspace=api",
+    "dev:react-sdk": "npm run dev --workspace=admin/packages/react-sdk",
+    "dev:node-sdk": "npm run dev --workspace=admin/packages/node-sdk",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "worktree:new": "bash scripts/worktree-new.sh",
+    "worktree:list": "git worktree list",
+    "worktree:prune": "git worktree prune",
+    "subtree:pull:react-sdk": "bash scripts/subtree-sync.sh pull react-sdk",
+    "subtree:push:react-sdk": "bash scripts/subtree-sync.sh push react-sdk",
+    "subtree:pull:node-sdk": "bash scripts/subtree-sync.sh pull node-sdk",
+    "subtree:push:node-sdk": "bash scripts/subtree-sync.sh push node-sdk"
+  }
+}
