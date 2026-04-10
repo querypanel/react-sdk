@@ -1,52 +1,217 @@
-# QueryPanel Monorepo
+# @querypanel/react-sdk
 
-Monorepo layout:
+React components for QueryPanel - AI-powered data visualization.
 
-- `admin`: Next.js admin + landing site (deploy separately on Vercel)
-- `api`: API service (deploy separately on Vercel)
-- `admin/packages/react-sdk`: React SDK (managed as a git subtree)
-- `admin/packages/node-sdk`: Node SDK (managed as a git subtree)
-- `database`: Supabase project files and migrations
-- `docs`: shared documentation
+## Installation
 
-## Local workspace scripts
+```bash
+npm install @querypanel/react-sdk
+# or
+yarn add @querypanel/react-sdk
+# or
+pnpm add @querypanel/react-sdk
+```
 
-From repo root:
+## Quick Start
 
-- `npm run dev:admin`
-- `npm run dev:api`
-- `npm run dev:react-sdk`
-- `npm run dev:node-sdk`
+### Using the Provider (Recommended)
 
-## Vercel deployment model
+```tsx
+import {
+  QueryPanelProvider,
+  QueryInput,
+  QueryResult,
+  LoadingState,
+  EmptyState,
+  ErrorState,
+  useQueryPanel,
+} from "@querypanel/react-sdk";
 
-Create independent Vercel projects and set each project's **Root Directory**:
+function App() {
+  return (
+    <QueryPanelProvider
+      config={{
+        askEndpoint: "/api/demo/ask",
+        modifyEndpoint: "/api/demo/modify",
+        colorPreset: "default",
+      }}
+    >
+      <Dashboard />
+    </QueryPanelProvider>
+  );
+}
 
-- Admin project -> `admin`
-- API project -> `api`
-- React SDK Storybook project -> `admin/packages/react-sdk`
+function Dashboard() {
+  const { query, result, isLoading, error, ask, modify, colorPreset } = useQueryPanel();
 
-Each project deploys independently while living in one repository.
+  return (
+    <div>
+      <QueryInput
+        value={query}
+        onSubmit={ask}
+        isLoading={isLoading}
+        chips={[
+          { key: "sales", text: "Show sales by month", emoji: "📈" },
+          { key: "top", text: "Top 10 products", emoji: "🏆" },
+        ]}
+      />
 
-## Git subtree workflow for SDK packages
+      {isLoading && !result && <LoadingState />}
+      {error && <ErrorState message={error} />}
+      {!isLoading && !error && !result && <EmptyState />}
+      {result && (
+        <QueryResult
+          result={result}
+          query={query}
+          isLoading={isLoading}
+          colorPreset={colorPreset}
+          onModify={modify}
+        />
+      )}
+    </div>
+  );
+}
+```
 
-Use helper scripts:
+### Using Individual Components
 
-- Pull updates from SDK repos:
-  - `npm run subtree:pull:react-sdk`
-  - `npm run subtree:pull:node-sdk`
-- Push local SDK changes back:
-  - `npm run subtree:push:react-sdk`
-  - `npm run subtree:push:node-sdk`
+```tsx
+import { VegaChart, DataTable, ChartControls } from "@querypanel/react-sdk";
+import { getColorsByPreset } from "@querypanel/react-sdk/themes";
 
-Detailed instructions are in `docs/monorepo.md`.
+function MyChart({ spec, data, fields }) {
+  const colors = getColorsByPreset("ocean");
 
-## Git worktree workflow
+  return (
+    <div>
+      <ChartControls
+        fields={fields}
+        onApply={(options) => console.log(options)}
+      />
+      <VegaChart spec={spec} colors={colors} />
+      <DataTable rows={data} fields={fields} />
+    </div>
+  );
+}
+```
 
-Create parallel working directories for features:
+## Components
 
-- `npm run worktree:new -- feature/admin-redesign main`
-- `npm run worktree:list`
-- `npm run worktree:prune`
+### `QuerypanelEmbedded`
+Embeds a deployed dashboard by calling your backend wrapper (not QueryPanel API directly from the browser).
 
-Worktrees are created under `.worktrees/`.
+```tsx
+import { QuerypanelEmbedded } from "@querypanel/react-sdk";
+
+function CustomerPage() {
+  return (
+    <QuerypanelEmbedded
+      dashboardId="3ed3b98f-..."
+      apiBaseUrl="https://customer-api.example.com"
+      allowCustomization={true}
+    />
+  );
+}
+```
+
+Notes:
+- Browser requests go to your backend URL.
+- Backend handles auth and tenant context server-side.
+- `token` prop was removed; migrate to backend-managed auth/session.
+
+### `QueryInput`
+Search input with prompt chips for quick queries.
+
+### `VegaChart`
+Renders Vega-Lite specifications with automatic theming.
+
+### `DataTable`
+Displays query results in a styled table.
+
+### `ChartControls`
+Controls for modifying chart type, axes, time granularity, and colors.
+
+### `QueryResult`
+Combined display of chart, SQL, and data table.
+
+### `LoadingState`, `ErrorState`, `EmptyState`
+UI states for loading, errors, and empty results.
+
+## Theming
+
+### Color Presets
+
+Built-in presets: `default`, `sunset`, `emerald`, `ocean`
+
+```tsx
+import { getColorsByPreset } from "@querypanel/react-sdk/themes";
+
+const colors = getColorsByPreset("sunset");
+```
+
+### Custom Theme
+
+```tsx
+import { createTheme } from "@querypanel/react-sdk/themes";
+
+const customTheme = createTheme({
+  colors: {
+    primary: "#FF6B6B",
+    secondary: "#4ECDC4",
+    // ... other colors
+  },
+  borderRadius: "1rem",
+  fontFamily: "Inter, sans-serif",
+});
+```
+
+## White-Labeling
+
+All components accept a `colors` prop for custom styling:
+
+```tsx
+<VegaChart
+  spec={spec}
+  colors={{
+    primary: "#YOUR_BRAND_COLOR",
+    range: ["#color1", "#color2", "#color3"],
+    text: "#ffffff",
+    muted: "#888888",
+    // ...
+  }}
+/>
+```
+
+## Types
+
+```typescript
+interface ThemeColors {
+  primary: string;
+  secondary: string;
+  tertiary: string;
+  accent: string;
+  range: string[];
+  text: string;
+  muted: string;
+  grid: string;
+  background: string;
+  surface: string;
+  border: string;
+  error: string;
+}
+
+interface QueryResult {
+  success: boolean;
+  sql?: string;
+  rows?: Array<Record<string, unknown>>;
+  fields?: string[];
+  chart?: {
+    vegaLiteSpec?: Record<string, unknown>;
+    specType: "vega-lite" | "vizspec";
+  };
+}
+```
+
+## License
+
+MIT

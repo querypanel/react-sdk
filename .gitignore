@@ -1,24 +1,47 @@
-node_modules/
-.DS_Store
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Build and cache output
-.turbo/
-dist/
-coverage/
+# dependencies
+**/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+**/dist/
+
+# storybook build output
 storybook-static/
 
-# Env files
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*.local
 .env
-.env.local
-.env.*.local
+.env.production
 
-# Workspace local artifacts
-.worktrees/
-.migration-backup/
+# vercel
+.vercel
 
-# Keep nested .git dirs out of root tracking if present during migration.
-admin/.git
-api/.git
-database/.git
-admin/packages/react-sdk/.git
-admin/packages/node-sdk/.git
+# typescript
+*.tsbuildinfo
+next-env.d.ts
