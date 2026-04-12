@@ -1,4 +1,4 @@
-import { defineCatalog } from "@json-render/core";
+import { defineCatalog, type Catalog } from "@json-render/core";
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
@@ -7,7 +7,9 @@ const dataPointSchema = z.object({
   value: z.number(),
 });
 
-export const catalog = defineCatalog(schema, {
+// Explicit annotation breaks the nested-zod type reference (@json-render/core uses zod v4
+// internally while the workspace uses v3, causing a non-portable inferred type in dts build)
+export const catalog: Catalog = defineCatalog(schema, {
   components: {
     Metric: {
       props: z.object({
@@ -31,9 +33,10 @@ export const catalog = defineCatalog(schema, {
         caption: z.string().nullable().optional(),
       }),
       slots: [] as string[],
-      description: "A data table. Use resultId when the dataset is larger than a small inline preview.",
+      description: "A data table. Inline headers and rows are preferred; resultId is for backward compatibility only.",
       example: {
-        resultId: "abc123",
+        headers: ["Name", "Value"],
+        rows: [["Item A", "100"]],
         caption: "Query results",
       },
     },
@@ -46,10 +49,10 @@ export const catalog = defineCatalog(schema, {
         yLabel: z.string().nullable().optional(),
       }),
       slots: [] as string[],
-      description: "A bar chart visualizing categorical data.",
+      description: "A bar chart visualizing categorical data. Inline data points are preferred; resultId is for backward compatibility only.",
       example: {
-        resultId: "abc123",
         title: "Sales by Region",
+        data: [{ label: "East", value: 120 }, { label: "West", value: 95 }],
       },
     },
     LineChart: {
@@ -61,10 +64,10 @@ export const catalog = defineCatalog(schema, {
         yLabel: z.string().nullable().optional(),
       }),
       slots: [] as string[],
-      description: "A line chart visualizing trends over time or sequential data.",
+      description: "A line chart visualizing trends over time or sequential data. Inline data points are preferred; resultId is for backward compatibility only.",
       example: {
-        resultId: "abc123",
         title: "Monthly Revenue",
+        data: [{ label: "Jan", value: 5000 }, { label: "Feb", value: 6200 }],
       },
     },
     PieChart: {
@@ -74,10 +77,10 @@ export const catalog = defineCatalog(schema, {
         data: z.array(dataPointSchema).optional(),
       }),
       slots: [] as string[],
-      description: "A pie chart visualizing proportional data.",
+      description: "A pie chart visualizing proportional data. Inline data points are preferred; resultId is for backward compatibility only.",
       example: {
-        resultId: "abc123",
         title: "Market Share",
+        data: [{ label: "Product A", value: 60 }, { label: "Product B", value: 40 }],
       },
     },
   },

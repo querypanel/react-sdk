@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useGenerativeUIConfig } from "./provider";
+import { normalizeRowsForJsonRenderChart } from "./specData";
 
 const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
@@ -38,86 +39,53 @@ function getSurfaceColors(darkMode: boolean) {
       };
 }
 
-function toChartNumber(value: unknown): number | null {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
+function formatTooltipValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: Math.abs(value) >= 100 ? 1 : 2,
+    }).format(value);
   }
-
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed.replace(/,/g, "").replace(/[$%]/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
+    const normalized = value.trim();
+    if (!normalized) return "—";
+    if (Number.isFinite(Number(normalized))) {
+      return formatTooltipValue(Number(normalized));
+    }
+    return normalized;
   }
-
-  return null;
+  return String(value);
 }
 
-function toChartLabel(value: unknown): string | null {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : null;
-  }
-
-  if (
-    typeof value === "number" ||
-    typeof value === "bigint" ||
-    typeof value === "boolean"
-  ) {
-    return String(value);
-  }
-
-  return null;
-}
-
-const VALUE_KEYS = ["value", "count", "total", "amount", "metric", "number"];
-const LABEL_KEYS = ["label", "name", "category", "type", "group", "status"];
-
-function findValueKey(keys: string[], sampleRow: Record<string, unknown>) {
-  for (const key of VALUE_KEYS) {
-    if (keys.includes(key) && toChartNumber(sampleRow[key]) !== null) return key;
-  }
-
-  for (const key of keys) {
-    if (toChartNumber(sampleRow[key]) !== null) return key;
-  }
-
-  return null;
-}
-
-function findLabelKey(
-  keys: string[],
-  sampleRow: Record<string, unknown>,
-  valueKey: string | null
-) {
-  for (const key of LABEL_KEYS) {
-    if (key !== valueKey && keys.includes(key)) return key;
-  }
-
-  for (const key of keys) {
-    if (key !== valueKey && toChartLabel(sampleRow[key]) !== null) return key;
-  }
-
-  return null;
-}
-
-function normalizeChartData(data: Array<Record<string, unknown>>) {
-  if (data.length === 0) return [];
-
-  const keys = Object.keys(data[0]);
-  const valueKey = findValueKey(keys, data[0]);
-  const labelKey = findLabelKey(keys, data[0], valueKey);
-
-  return data
-    .map((point, index) => {
-      const value = valueKey ? toChartNumber(point[valueKey]) : null;
-      const label = labelKey
-        ? (toChartLabel(point[labelKey]) ?? `Item ${index + 1}`)
-        : `Item ${index + 1}`;
-
-      return value === null ? null : { label, value };
-    })
-    .filter((point): point is { label: string; value: number } => point !== null);
+function getTooltipStyles(colors: ReturnType<typeof getSurfaceColors>, darkMode: boolean) {
+  return {
+    contentStyle: {
+      backgroundColor: darkMode ? "rgba(15, 23, 42, 0.96)" : "rgba(255, 255, 255, 0.98)",
+      border: `1px solid ${darkMode ? "rgba(148, 163, 184, 0.28)" : "rgba(15, 23, 42, 0.08)"}`,
+      borderRadius: 10,
+      boxShadow: darkMode
+        ? "0 18px 48px rgba(2, 6, 23, 0.55)"
+        : "0 18px 40px rgba(15, 23, 42, 0.12)",
+      color: colors.text,
+      fontSize: 12,
+      lineHeight: 1.45,
+      padding: "8px 10px",
+    },
+    itemStyle: {
+      color: colors.text,
+      fontSize: 12,
+      padding: 0,
+    },
+    labelStyle: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: 600,
+      marginBottom: 4,
+    },
+    cursor: {
+      fill: darkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.16)",
+    },
+  } as const;
 }
 
 function useResultData(resultId?: string | null) {
@@ -286,7 +254,9 @@ export function DataTable({
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
-  const { rows, loading, error } = useResultData(props.resultId);
+  const { rows, loading, error } = useResultData(
+    props.rows && props.rows.length > 0 ? null : props.resultId
+  );
 
   if (loading) return <MessageState title={props.caption} message="Loading data..." />;
   if (error) return <MessageState title={props.caption} message={error} error />;
@@ -363,12 +333,17 @@ export function BarChartComponent({
     data?: { label: string; value: number }[];
   };
 }) {
-  const { rows, loading, error } = useResultData(props.resultId);
+  const { darkMode } = useThemeContext();
+  const colors = getSurfaceColors(darkMode);
+  const tooltipStyles = getTooltipStyles(colors, darkMode);
+  const { rows, loading, error } = useResultData(
+    props.data && props.data.length > 0 ? null : props.resultId
+  );
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeChartData(source);
+  const chartData = normalizeRowsForJsonRenderChart(source);
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -378,10 +353,16 @@ export function BarChartComponent({
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RechartsBarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
+            <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: colors.muted }} />
+            <YAxis tick={{ fontSize: 12, fill: colors.muted }} />
+            <Tooltip
+              formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+              contentStyle={tooltipStyles.contentStyle}
+              itemStyle={tooltipStyles.itemStyle}
+              labelStyle={tooltipStyles.labelStyle}
+              cursor={tooltipStyles.cursor}
+            />
             <Bar dataKey="value" fill={CHART_COLORS[0]} radius={[6, 6, 0, 0]} />
           </RechartsBarChart>
         </ResponsiveContainer>
@@ -399,12 +380,17 @@ export function LineChartComponent({
     data?: { label: string; value: number }[];
   };
 }) {
-  const { rows, loading, error } = useResultData(props.resultId);
+  const { darkMode } = useThemeContext();
+  const colors = getSurfaceColors(darkMode);
+  const tooltipStyles = getTooltipStyles(colors, darkMode);
+  const { rows, loading, error } = useResultData(
+    props.data && props.data.length > 0 ? null : props.resultId
+  );
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeChartData(source);
+  const chartData = normalizeRowsForJsonRenderChart(source);
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -414,10 +400,16 @@ export function LineChartComponent({
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RechartsLineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip />
+            <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: colors.muted }} />
+            <YAxis tick={{ fontSize: 12, fill: colors.muted }} />
+            <Tooltip
+              formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+              contentStyle={tooltipStyles.contentStyle}
+              itemStyle={tooltipStyles.itemStyle}
+              labelStyle={tooltipStyles.labelStyle}
+              cursor={tooltipStyles.cursor}
+            />
             <Line
               type="monotone"
               dataKey="value"
@@ -441,12 +433,17 @@ export function PieChartComponent({
     data?: { label: string; value: number }[];
   };
 }) {
-  const { rows, loading, error } = useResultData(props.resultId);
+  const { darkMode } = useThemeContext();
+  const colors = getSurfaceColors(darkMode);
+  const tooltipStyles = getTooltipStyles(colors, darkMode);
+  const { rows, loading, error } = useResultData(
+    props.data && props.data.length > 0 ? null : props.resultId
+  );
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeChartData(source);
+  const chartData = normalizeRowsForJsonRenderChart(source);
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -473,7 +470,12 @@ export function PieChartComponent({
                 />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+              contentStyle={tooltipStyles.contentStyle}
+              itemStyle={tooltipStyles.itemStyle}
+              labelStyle={tooltipStyles.labelStyle}
+            />
           </RechartsPieChart>
         </ResponsiveContainer>
       </div>

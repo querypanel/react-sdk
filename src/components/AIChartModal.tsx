@@ -10,6 +10,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   XIcon,
   SendIcon,
@@ -39,6 +41,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { DatasourceSelector } from "./DatasourceSelector";
+import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
 import { formatTimestampForDisplay } from "../utils/formatters";
 import "./AIChartModal.css";
 
@@ -76,6 +79,8 @@ export interface AIChartModalProps {
   datasourcesUrl?: string;
   /** Extra headers for API requests (e.g. x-organization-id is always sent) */
   headers?: Record<string, string>;
+  /** URL for result artifact fetches used by json-render previews */
+  queryResultBaseUrl?: string;
   /** Whether to render dark theme styles for inline-styled children */
   darkMode?: boolean;
   /** When set, only these datasource IDs are shown (e.g. from dashboard.available_datasource_ids). */
@@ -88,7 +93,7 @@ export interface AIChartModalProps {
   hideTenantInputs?: boolean;
   /** Whitelabel: modal title (default: "AI Chart Generator") */
   title?: string;
-  /** Whitelabel: empty-state heading (default: "Create a Chart") */
+  /** Whitelabel: empty-state heading (default: "Create a Visualization") */
   createTitle?: string;
   /** Model dropdown options (`value` = OpenAI model id, empty string = server default). */
   chartModelOptions?: AIChartModelOption[];
@@ -101,10 +106,15 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   chartSpec?: unknown;
+  jsonRenderSpec?: unknown;
+  resultId?: string;
+  presentationKind?: "chart" | "table" | "metric";
+  queryResult?: SqlExecutionArtifact;
   rationale?: string;
   sql?: string;
   sqlParams?: Record<string, unknown> | null;
   timestamp: Date;
+  toolEvents?: ToolEvent[];
 };
 
 type MastraStreamChunk = {
@@ -132,6 +142,11 @@ type MastraStreamChunk = {
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
+const GENERIC_ASSISTANT_SUMMARIES = new Set([
+  "I've prepared a visualization for you.",
+  "I've prepared a table for you.",
+  "I processed your request.",
+]);
 
 type ToolEventStatus = "running" | "succeeded" | "failed";
 type ToolEvent = {
@@ -144,6 +159,7 @@ type ToolEvent = {
 };
 
 type SqlExecutionArtifact = {
+  resultId?: string;
   fields: string[];
   rows: Array<Record<string, unknown>>;
   rowCount: number;
@@ -216,6 +232,62 @@ function mapGeneratedParams(params: unknown) {
   }, {});
 }
 
+function normalizeSqlParams(
+  params: unknown
+): Record<string, unknown> | null {
+  if (Array.isArray(params)) {
+    return mapGeneratedParams(params);
+  }
+
+  if (params && typeof params === "object" && !Array.isArray(params)) {
+    return params as Record<string, unknown>;
+  }
+
+  return null;
+}
+
+function getLatestResultId(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") continue;
+    const resultId = message.resultId ?? message.queryResult?.resultId;
+    if (typeof resultId === "string" && resultId.trim().length > 0) {
+      return resultId.trim();
+    }
+  }
+
+  return undefined;
+}
+
+const FOLLOW_UP_RESULT_REFERENCE =
+  "(?:that|this|it|the above|the previous result|the previous results|the result|the results|same data)";
+
+const FOLLOW_UP_VISUALIZATION_PATTERNS = [
+  new RegExp(
+    `^(?:can you\\s+|please\\s+)?(?:turn|convert|make|render)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\s+(?:into|as)\\s+(?:a\\s+|an\\s+)?(?:bar|line|pie|column|area)?\\s*(?:chart|graph|table|visuali[sz]ation)\\b`,
+    "i"
+  ),
+  new RegExp(
+    `^(?:can you\\s+|please\\s+)?(?:plot|chart|graph|visuali[sz]e|tabulate)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\b`,
+    "i"
+  ),
+  new RegExp(
+    `^(?:can you\\s+|please\\s+)?(?:show|display)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\s+(?:as|in)\\s+(?:a\\s+|an\\s+)?(?:bar|line|pie|column|area)?\\s*(?:chart|graph|table|visuali[sz]ation)\\b`,
+    "i"
+  ),
+  /^(?:a\s+|an\s+)?(?:bar|line|pie|column|area)\s+chart$/i,
+  /^(?:show\s+as|make\s+it\s+a)\s+(?:bar|line|pie|column|area)\s+chart$/i,
+  /^(?:show\s+as|make\s+it)\s+(?:a\s+)?table$/i,
+];
+
+function shouldReuseLatestResultId(prompt: string) {
+  const normalizedPrompt = prompt.trim();
+  if (!normalizedPrompt) return false;
+  return FOLLOW_UP_VISUALIZATION_PATTERNS.some((pattern) =>
+    pattern.test(normalizedPrompt)
+  );
+}
+
 function extractAssistantTextFromChunk(chunk: MastraStreamChunk) {
   const assistantMessage = chunk.response?.messages?.find((message) => message.role === "assistant");
   const textPart = assistantMessage?.content?.find((part) => part.type === "text" && typeof part.text === "string");
@@ -255,7 +327,7 @@ function formatToolStatus(toolName: string) {
     case "execute_sql":
       return "Running SQL";
     case "generate_visualization":
-      return "Building chart";
+      return "Building visualization";
     default:
       return toolName
         .split("_")
@@ -273,6 +345,76 @@ function isNumericChartValue(value: unknown): boolean {
   if (typeof value === "number" && Number.isFinite(value)) return true;
   if (typeof value === "string" && value !== "" && Number.isFinite(Number(value))) return true;
   return false;
+}
+
+function formatTooltipValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (value instanceof Date) return formatTimestampForDisplay(value);
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: Math.abs(value) >= 100 ? 1 : 2,
+    }).format(value);
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return "—";
+    if (Number.isFinite(Number(normalized))) {
+      return formatTooltipValue(Number(normalized));
+    }
+    return formatTimestampForDisplay(normalized);
+  }
+
+  return String(value);
+}
+
+function getTooltipStyles(darkMode: boolean, isNarrowChart: boolean) {
+  const borderColor = darkMode ? "rgba(148, 163, 184, 0.28)" : "rgba(15, 23, 42, 0.08)";
+  const backgroundColor = darkMode ? "rgba(15, 23, 42, 0.96)" : "rgba(255, 255, 255, 0.98)";
+  const textColor = darkMode ? "#e2e8f0" : "#0f172a";
+  const mutedColor = darkMode ? "#94a3b8" : "#475569";
+
+  return {
+    contentStyle: {
+      backgroundColor,
+      border: `1px solid ${borderColor}`,
+      borderRadius: isNarrowChart ? 12 : 10,
+      boxShadow: darkMode
+        ? "0 18px 48px rgba(2, 6, 23, 0.55)"
+        : "0 18px 40px rgba(15, 23, 42, 0.12)",
+      color: textColor,
+      fontSize: isNarrowChart ? 13 : 12,
+      lineHeight: 1.45,
+      padding: isNarrowChart ? "10px 12px" : "8px 10px",
+    },
+    itemStyle: {
+      color: textColor,
+      fontSize: isNarrowChart ? 13 : 12,
+      padding: 0,
+    },
+    labelStyle: {
+      color: mutedColor,
+      fontSize: isNarrowChart ? 12 : 11,
+      fontWeight: 600,
+      marginBottom: 4,
+    },
+    cursor: {
+      fill: darkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.16)",
+    },
+  } as const;
+}
+
+function getMessageRationale(message: Message) {
+  const rationale = message.rationale?.trim();
+  if (rationale) return rationale;
+
+  const content = message.content.trim();
+  if (!content || GENERIC_ASSISTANT_SUMMARIES.has(content)) {
+    return undefined;
+  }
+
+  return content;
 }
 
 function withVizSpecDataFallback(
@@ -365,6 +507,47 @@ function ToolEventChip({
   );
 }
 
+function ThoughtSummaryRail({ events }: { events: ToolEvent[] }) {
+  const startMs = Math.min(...events.map((e) => e.startedAt));
+  const endMs = Math.max(...events.map((e) => e.endedAt ?? e.startedAt));
+  const secs = ((endMs - startMs) / 1000).toFixed(1);
+
+  return (
+    <div className="qp-ai-modal-toolrail">
+      <span className="qp-ai-modal-thought-label">Thought for {secs}s</span>
+    </div>
+  );
+}
+
+function AssistantMessageMarkdown({ content }: { content: string }) {
+  return (
+    <div className="qp-ai-modal-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node: _node, href, children, ...props }) => (
+            <a
+              {...props}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {children}
+            </a>
+          ),
+          table: ({ node: _node, children, ...props }) => (
+            <div className="qp-ai-modal-markdown-table-wrap">
+              <table {...props}>{children}</table>
+            </div>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 function ChartPreview({
   chartSpec,
   darkMode = false,
@@ -433,9 +616,7 @@ function ChartPreview({
   const chartMargins = isNarrowChart
     ? { top: 10, right: 6, left: 2, bottom: chartData.length > 3 ? Math.max(36, xAxisHeight - 8) : 16 }
     : { top: 6, right: 8, left: 0, bottom: 6 };
-  const tooltipContentStyle = isNarrowChart
-    ? { fontSize: 13, padding: "10px 12px", borderRadius: 10 }
-    : undefined;
+  const tooltipStyles = getTooltipStyles(darkMode, isNarrowChart);
 
   if (error || !chartData || chartData.length === 0) {
     return (
@@ -558,8 +739,10 @@ function ChartPreview({
       return (
         <PieChart>
           <Tooltip
-            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-            contentStyle={tooltipContentStyle}
+            formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+            contentStyle={tooltipStyles.contentStyle}
+            itemStyle={tooltipStyles.itemStyle}
+            labelStyle={tooltipStyles.labelStyle}
           />
           <Pie
             data={data}
@@ -606,8 +789,11 @@ function ChartPreview({
             tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
           />
           <Tooltip
-            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-            contentStyle={tooltipContentStyle}
+            formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+            contentStyle={tooltipStyles.contentStyle}
+            itemStyle={tooltipStyles.itemStyle}
+            labelStyle={tooltipStyles.labelStyle}
+            cursor={tooltipStyles.cursor}
           />
           <Line
             type="monotone"
@@ -639,8 +825,11 @@ function ChartPreview({
             tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
           />
           <Tooltip
-            formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-            contentStyle={tooltipContentStyle}
+            formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+            contentStyle={tooltipStyles.contentStyle}
+            itemStyle={tooltipStyles.itemStyle}
+            labelStyle={tooltipStyles.labelStyle}
+            cursor={tooltipStyles.cursor}
           />
           <Area
             type="monotone"
@@ -671,8 +860,11 @@ function ChartPreview({
           tickFormatter={(v) => (typeof v === "number" && Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v))}
         />
         <Tooltip
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          contentStyle={tooltipContentStyle}
+          formatter={(value, name) => [formatTooltipValue(value), String(name)]}
+          contentStyle={tooltipStyles.contentStyle}
+          itemStyle={tooltipStyles.itemStyle}
+          labelStyle={tooltipStyles.labelStyle}
+          cursor={tooltipStyles.cursor}
         />
         <Bar
           dataKey={dataKey}
@@ -695,6 +887,28 @@ function ChartPreview({
   );
 }
 
+function JsonRenderPreview({
+  spec,
+  queryResultBaseUrl,
+}: {
+  spec: unknown;
+  queryResultBaseUrl: string;
+}) {
+  const isNarrowChart = useAiChartModalNarrowLayout();
+
+  return (
+    <div
+      className={`qp-ai-modal-chart-preview${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
+      style={{ minHeight: isNarrowChart ? 220 : 260 }}
+    >
+      <PersistedSpecRenderer
+        spec={spec}
+        queryResultBaseUrl={queryResultBaseUrl}
+      />
+    </div>
+  );
+}
+
 export function AIChartModal({
   isOpen,
   onClose,
@@ -706,6 +920,7 @@ export function AIChartModal({
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
+  queryResultBaseUrl = "/api/query-results",
   darkMode = false,
   availableDatasourceIds,
   defaultTenantFieldName,
@@ -716,8 +931,8 @@ export function AIChartModal({
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
   defaultChartModel = "gpt-5.4-mini",
 }: AIChartModalProps) {
-  const modalTitle = titleProp ?? "AI Chart Generator";
-  const createTitle = createTitleProp ?? "Create a Chart";
+  const modalTitle = titleProp ?? "AI Visualization Generator";
+  const createTitle = createTitleProp ?? "Create a Visualization";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
 
   const getResolvedTenantField = (
@@ -885,7 +1100,7 @@ export function AIChartModal({
         {
           id: `error-${Date.now()}`,
           role: "assistant",
-          content: "Select exactly one datasource before generating a chart with the native Mastra agent.",
+          content: "Select exactly one datasource before generating a visualization with the native Mastra agent.",
           timestamp: new Date(),
         },
       ]);
@@ -898,6 +1113,10 @@ export function AIChartModal({
       content: messageText,
       timestamp: new Date(),
     };
+
+    const latestResultId = shouldReuseLatestResultId(messageText)
+      ? getLatestResultId(messages)
+      : undefined;
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
@@ -943,6 +1162,7 @@ export function AIChartModal({
             requestContext: {
               organizationId,
               datasourceId: selectedDatasourceIds[0],
+              ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(hideTenantInputs ? {} : { tenantId: previewTenantId.trim() || undefined }),
             },
             savePerStep: true,
@@ -1036,8 +1256,21 @@ export function AIChartModal({
                 ? (result.rows as Array<Record<string, unknown>>)
                 : [];
               const fields = Array.isArray(result.fields) ? (result.fields as string[]) : [];
-              console.log("[AIChartModal] query data", {
+              const queryResult: SqlExecutionArtifact = {
+                resultId:
+                  typeof result.resultId === "string" ? result.resultId : undefined,
+                rows,
+                fields,
                 rowCount: typeof result.rowCount === "number" ? result.rowCount : rows.length,
+                database: typeof result.database === "string" ? result.database : undefined,
+                dialect: typeof result.dialect === "string" ? result.dialect : undefined,
+                datasource:
+                  result.datasource && typeof result.datasource === "object"
+                    ? (result.datasource as { id: string; name: string; dialect: string })
+                    : undefined,
+              };
+              console.log("[AIChartModal] query data", {
+                rowCount: queryResult.rowCount,
                 fields,
                 rows,
               });
@@ -1048,17 +1281,12 @@ export function AIChartModal({
                     : event
                 )
               );
-              setLastSqlExecution({
-                rows,
-                fields,
-                rowCount: typeof result.rowCount === "number" ? result.rowCount : rows.length,
-                database: typeof result.database === "string" ? result.database : undefined,
-                dialect: typeof result.dialect === "string" ? result.dialect : undefined,
-                datasource:
-                  result.datasource && typeof result.datasource === "object"
-                    ? (result.datasource as { id: string; name: string; dialect: string })
-                    : undefined,
-              });
+              setLastSqlExecution(queryResult);
+              updateAssistantMessage((current) => ({
+                ...current,
+                resultId: queryResult.resultId ?? current.resultId,
+                queryResult,
+              }));
               return true;
             }
 
@@ -1074,10 +1302,44 @@ export function AIChartModal({
               updateAssistantMessage((current) => ({
                 ...current,
                 chartSpec: result.spec ?? current.chartSpec,
+                jsonRenderSpec: result.jsonRenderSpec ?? current.jsonRenderSpec,
+                resultId:
+                  typeof result.resultId === "string" ? result.resultId : current.resultId,
+                presentationKind:
+                  result.presentationKind === "chart" ||
+                  result.presentationKind === "table" ||
+                  result.presentationKind === "metric"
+                    ? result.presentationKind
+                    : current.presentationKind,
+                sql: typeof result.sql === "string" ? result.sql : current.sql,
+                sqlParams:
+                  normalizeSqlParams(result.params) ?? current.sqlParams ?? null,
+                queryResult:
+                  Array.isArray(result.previewRows)
+                    ? {
+                        resultId:
+                          typeof result.resultId === "string"
+                            ? result.resultId
+                            : current.queryResult?.resultId,
+                        rows: result.previewRows as Array<Record<string, unknown>>,
+                        fields: Array.isArray(result.fields)
+                          ? (result.fields as string[])
+                          : current.queryResult?.fields ?? [],
+                        rowCount:
+                          typeof result.rowCount === "number"
+                            ? result.rowCount
+                            : current.queryResult?.rowCount ?? 0,
+                        database: typeof result.database === "string" ? result.database : current.queryResult?.database,
+                        dialect: typeof result.dialect === "string" ? result.dialect : current.queryResult?.dialect,
+                        datasource: current.queryResult?.datasource,
+                      }
+                    : current.queryResult,
                 rationale:
-                  typeof result.notes === "string" && result.notes.trim().length > 0
-                    ? result.notes
-                    : current.rationale,
+                  typeof result.rationale === "string" && result.rationale.trim().length > 0
+                    ? result.rationale
+                    : typeof result.notes === "string" && result.notes.trim().length > 0
+                      ? result.notes
+                      : current.rationale,
               }));
               return true;
             }
@@ -1168,10 +1430,22 @@ export function AIChartModal({
           content:
             current.content.trim().length > 0
               ? current.content
-              : current.chartSpec
-                ? "I've created a chart for you."
+              : current.jsonRenderSpec || current.chartSpec
+                ? current.presentationKind === "table"
+                  ? "I've prepared a table for you."
+                  : "I've prepared a visualization for you."
                 : "I processed your request.",
         }));
+        setToolEvents((current) => {
+          if (current.length > 0) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === currentAssistantMessageId ? { ...m, toolEvents: current } : m
+              )
+            );
+          }
+          return [];
+        });
         setTransientStatus(null);
       } else {
         const response = await fetch(generateChartWithSqlUrl, {
@@ -1219,20 +1493,41 @@ export function AIChartModal({
       setMessages((prev) =>
         prev.filter((message) => message.id !== assistantMessageId)
       );
-      setToolEvents((prev) =>
-        prev.map((event) =>
-          event.status === "running" ? { ...event, status: "failed", endedAt: Date.now(), error: "Failed" } : event
-        )
-      );
-
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content:
-          "Sorry, I couldn't generate that chart. Please try again or rephrase your request.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const errorMessageId = `error-${Date.now()}`;
+      setToolEvents((current) => {
+        const finalised = current.map((event) =>
+          event.status === "running" ? { ...event, status: "failed" as const, endedAt: Date.now(), error: "Failed" } : event
+        );
+        if (finalised.length > 0) {
+          setMessages((prev) => {
+            const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
+            return [
+              ...withoutPlaceholder,
+              {
+                id: errorMessageId,
+                role: "assistant" as const,
+                content: "Sorry, I couldn't generate that chart. Please try again or rephrase your request.",
+                timestamp: new Date(),
+                toolEvents: finalised,
+              },
+            ];
+          });
+        } else {
+          setMessages((prev) => {
+            const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
+            return [
+              ...withoutPlaceholder,
+              {
+                id: errorMessageId,
+                role: "assistant" as const,
+                content: "Sorry, I couldn't generate that chart. Please try again or rephrase your request.",
+                timestamp: new Date(),
+              },
+            ];
+          });
+        }
+        return [];
+      });
     } finally {
       setIsLoading(false);
     }
@@ -1240,8 +1535,8 @@ export function AIChartModal({
 
   const handleAddChartToEditor = (message: Message) => {
     onAddChart(
-      message.chartSpec,
-      message.rationale,
+      message.jsonRenderSpec ?? message.chartSpec,
+      getMessageRationale(message),
       message.sql,
       selectedDatasourceIds,
       message.sqlParams,
@@ -1415,10 +1710,10 @@ export function AIChartModal({
                         <button
                           type="button"
                           className="qp-ai-modal-suggestion"
-                          onClick={() => handleSendMessage("Break down signups by plan as a stacked bar chart")}
+                          onClick={() => handleSendMessage("Show the latest customer signups in a table")}
                           disabled={isLoading}
                         >
-                          Signups by plan
+                          Signup table
                         </button>
                       </div>
                     </div>
@@ -1428,9 +1723,14 @@ export function AIChartModal({
                 {messages.map((message) => {
                   const isActiveAssistant =
                     message.role === "assistant" && message.id === activeAssistantMessageId;
+                  const messageQueryResult =
+                    message.queryResult ?? (isActiveAssistant ? lastSqlExecution : null);
                   const hasVisibleAssistantState =
                     message.content.trim().length > 0 ||
+                    Boolean(message.jsonRenderSpec) ||
                     Boolean(message.chartSpec) ||
+                    Boolean(messageQueryResult) ||
+                    Boolean(message.toolEvents?.length) ||
                     (isActiveAssistant &&
                       (toolEvents.length > 0 || Boolean(lastSqlExecution)));
 
@@ -1444,29 +1744,41 @@ export function AIChartModal({
                       className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
-                        {message.content.trim().length > 0 && <div>{message.content}</div>}
+                        {message.content.trim().length > 0 &&
+                          (message.role === "assistant" ? (
+                            <AssistantMessageMarkdown content={message.content} />
+                          ) : (
+                            <div>{message.content}</div>
+                          ))}
 
-                        {message.role === "assistant" && message.id === activeAssistantMessageId && toolEvents.length > 0 && (
+                        {message.role === "assistant" && message.id === activeAssistantMessageId && toolEvents.some((e) => e.status === "running") && (
                           <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
-                            {toolEvents.map((event) => (
-                              <ToolEventChip key={event.id} event={event} />
+                            {toolEvents.filter((e) => e.status === "running").map((event) => (
+                              <span key={event.id} className="qp-ai-modal-step-text">
+                                <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
+                                {getToolEventLabel(event.toolName)}
+                              </span>
                             ))}
                           </div>
                         )}
 
-                        {message.role === "assistant" && message.id === activeAssistantMessageId && lastSqlExecution && (
+                        {message.role === "assistant" && message.toolEvents && message.toolEvents.length > 0 && (
+                          <ThoughtSummaryRail events={message.toolEvents} />
+                        )}
+
+                        {message.role === "assistant" && messageQueryResult && !message.jsonRenderSpec && !message.chartSpec && (
                           <div className="qp-ai-modal-data-card" aria-label="Query results preview">
                             <div className="qp-ai-modal-data-card-head">
                               <div className="qp-ai-modal-data-summary">
                                 <span className="qp-ai-modal-data-pill">
-                                  Rows: {lastSqlExecution.rowCount}
+                                  Rows: {messageQueryResult.rowCount}
                                 </span>
                                 <span className="qp-ai-modal-data-pill secondary">
-                                  Columns: {(lastSqlExecution.fields.length || Object.keys(lastSqlExecution.rows[0] ?? {}).length)}
+                                  Columns: {(messageQueryResult.fields.length || Object.keys(messageQueryResult.rows[0] ?? {}).length)}
                                 </span>
-                                {lastSqlExecution.database && (
+                                {messageQueryResult.database && (
                                   <span className="qp-ai-modal-data-pill secondary">
-                                    DB: {lastSqlExecution.database}
+                                    DB: {messageQueryResult.database}
                                   </span>
                                 )}
                               </div>
@@ -1475,20 +1787,20 @@ export function AIChartModal({
                               <table className="qp-ai-modal-table">
                                 <thead>
                                   <tr>
-                                    {(lastSqlExecution.fields.length
-                                      ? lastSqlExecution.fields
-                                      : Object.keys(lastSqlExecution.rows[0] ?? {})
+                                    {(messageQueryResult.fields.length
+                                      ? messageQueryResult.fields
+                                      : Object.keys(messageQueryResult.rows[0] ?? {})
                                     ).map((field) => (
                                       <th key={field}>{field}</th>
                                     ))}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {lastSqlExecution.rows.slice(0, 3).map((row, idx) => (
+                                  {messageQueryResult.rows.slice(0, 3).map((row, idx) => (
                                     <tr key={idx}>
-                                      {(lastSqlExecution.fields.length
-                                        ? lastSqlExecution.fields
-                                        : Object.keys(lastSqlExecution.rows[0] ?? {})
+                                      {(messageQueryResult.fields.length
+                                        ? messageQueryResult.fields
+                                        : Object.keys(messageQueryResult.rows[0] ?? {})
                                       ).map((field) => (
                                         <td key={field}>{String(row[field] ?? "")}</td>
                                       ))}
@@ -1500,7 +1812,7 @@ export function AIChartModal({
                           </div>
                         )}
 
-                        {Boolean(message.chartSpec) && (
+                        {Boolean(message.jsonRenderSpec || message.chartSpec) && (
                           <div className="qp-ai-modal-chart-card">
                             <div className="qp-ai-modal-chart-card-head">
                               <div className="qp-ai-modal-chart-card-badge">
@@ -1512,19 +1824,26 @@ export function AIChartModal({
                                 onClick={() => handleAddChartToEditor(message)}
                                 className="qp-ai-modal-add-chart-btn"
                               >
-                                Add Chart
+                                Add to dashboard
                               </button>
                             </div>
                             <div className="qp-ai-modal-chart-card-preview">
-                              <ChartPreview
-                                chartSpec={withVizSpecDataFallback(
-                                  message.chartSpec,
-                                  message.id === activeAssistantMessageId
-                                    ? (lastSqlExecution?.rows ?? null)
-                                    : null
-                                )}
-                                darkMode={effectiveDarkMode}
-                              />
+                              {message.jsonRenderSpec ? (
+                                <JsonRenderPreview
+                                  spec={message.jsonRenderSpec}
+                                  queryResultBaseUrl={queryResultBaseUrl}
+                                />
+                              ) : (
+                                <ChartPreview
+                                  chartSpec={withVizSpecDataFallback(
+                                    message.chartSpec,
+                                    message.id === activeAssistantMessageId
+                                      ? (lastSqlExecution?.rows ?? null)
+                                      : null
+                                  )}
+                                  darkMode={effectiveDarkMode}
+                                />
+                              )}
                             </div>
                           </div>
                         )}
@@ -1574,7 +1893,7 @@ export function AIChartModal({
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handlePromptKeyDown}
-                    placeholder="What chart do you want?"
+                    placeholder="Ask a question or request a chart or table"
                     className="qp-ai-modal-pill-input"
                     aria-label="Chart prompt"
                     autoComplete="off"

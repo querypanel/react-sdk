@@ -14,10 +14,16 @@ import type { ThemeColors, EmbedBranding } from "../types";
 import { defaultColors } from "../themes";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
+import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal } from "./AIChartModal";
 import { DeploySuccessModal } from "./DeploySuccessModal";
 import { ThemeProvider } from "../context/ThemeContext";
 import { normalizeBlockNoteContent } from "./blocknoteContent";
+import {
+  getJsonRenderTitle,
+  isJsonRenderSpecLike,
+  stripDataFromJsonRenderSpec,
+} from "./generative-ui/specData";
 
 const EMPTY_HEADERS: Record<string, string> = {};
 
@@ -97,6 +103,8 @@ export interface DashboardAiEditorProps {
   generateChartWithSqlUrl?: string;
   /** Override datasources URL */
   datasourcesUrl?: string;
+  /** Override query result URL used by json-render previews */
+  queryResultBaseUrl?: string;
   /** Dark mode. When undefined, auto-detects from DOM (html class/data-theme). */
   darkMode?: boolean;
   /** Theme colors */
@@ -138,6 +146,7 @@ export function DashboardAiEditor({
   runSqlUrl,
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
   datasourcesUrl = "/api/datasources",
+  queryResultBaseUrl,
   darkMode,
   themeColors = defaultColors,
   fontFamily,
@@ -198,6 +207,9 @@ export function DashboardAiEditor({
   const resolvedRunSqlUrl = runSqlUrl ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql` : "/api/dashboards/run-sql");
   const resolvedGenerateChartWithSqlUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/ai/generate-chart-with-sql` : generateChartWithSqlUrl;
   const resolvedDatasourcesUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/datasources` : datasourcesUrl;
+  const resolvedQueryResultBaseUrl =
+    queryResultBaseUrl ??
+    (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/query-results` : "/api/query-results");
 
   const chartBlockSpec = useMemo(
     () =>
@@ -212,15 +224,38 @@ export function DashboardAiEditor({
     [apiBaseUrl, themeColors, resolvedRunSqlUrl, organizationId, dashboardId, headers]
   );
 
+  const jsonRenderBlockSpec = useMemo(
+    () =>
+      createJsonRenderChartBlockSpec({
+        apiBaseUrl: apiBaseUrl || "",
+        colors: themeColors,
+        queryResultBaseUrl: resolvedQueryResultBaseUrl,
+        runSqlUrl: resolvedRunSqlUrl,
+        organizationId,
+        dashboardId,
+        headers,
+      }),
+    [
+      apiBaseUrl,
+      themeColors,
+      resolvedQueryResultBaseUrl,
+      resolvedRunSqlUrl,
+      organizationId,
+      dashboardId,
+      headers,
+    ]
+  );
+
   const schema = useMemo(
     () =>
       BlockNoteSchema.create({
         blockSpecs: {
           ...defaultBlockSpecs,
           chart: chartBlockSpec,
+          "json-render-chart": jsonRenderBlockSpec,
         },
       }),
-    [chartBlockSpec]
+    [chartBlockSpec, jsonRenderBlockSpec]
   );
 
   const contentSignature = `${String(contentResetKey ?? "")}::${initialContent}::${effectiveDarkMode ? "dark" : "light"}`;
@@ -270,6 +305,30 @@ export function DashboardAiEditor({
       tenantFieldName?: string,
       previewTenantId?: string
     ) => {
+      if (isJsonRenderSpecLike(chartSpec)) {
+        editor.insertBlocks(
+          [
+            {
+              type: "json-render-chart",
+              props: {
+                jsonRenderSpec: JSON.stringify(chartSpec),
+                title: getJsonRenderTitle(chartSpec) || "Visualization",
+                rationale: rationale || "",
+                sql: sql || "",
+                sqlParams: JSON.stringify(sqlParams || {}),
+                datasourceIds: JSON.stringify(datasourceIds || []),
+                tenantFieldName: tenantFieldName || "",
+                previewTenantId: previewTenantId || "",
+              },
+            },
+          ],
+          editor.getTextCursorPosition().block,
+          "after"
+        );
+        setIsAIModalOpen(false);
+        return;
+      }
+
       editor.insertBlocks(
         [
           {
@@ -310,6 +369,20 @@ export function DashboardAiEditor({
               },
             };
           }
+        } catch {
+          // keep original on parse failure
+        }
+      }
+      if (block.type === "json-render-chart" && block.props.jsonRenderSpec) {
+        try {
+          const spec = JSON.parse(block.props.jsonRenderSpec as string);
+          return {
+            ...block,
+            props: {
+              ...block.props,
+              jsonRenderSpec: JSON.stringify(stripDataFromJsonRenderSpec(spec)),
+            },
+          };
         } catch {
           // keep original on parse failure
         }
@@ -448,6 +521,7 @@ export function DashboardAiEditor({
           dashboardType={dashboardType}
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
           datasourcesUrl={resolvedDatasourcesUrl}
+          queryResultBaseUrl={resolvedQueryResultBaseUrl}
           headers={headers}
           darkMode={effectiveDarkMode}
           availableDatasourceIds={availableDatasourceIds}

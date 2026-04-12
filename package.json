@@ -37,8 +37,12 @@
     "@blocknote/core": "^0.37.0",
     "@blocknote/mantine": "^0.37.0",
     "@blocknote/react": "^0.37.0",
+    "@json-render/core": "0.11.0",
+    "@json-render/react": "0.11.0",
     "lucide-react": "^0.511.0",
-    "recharts": "^2.15.3"
+    "react-markdown": "^10.1.0",
+    "recharts": "^2.15.3",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
