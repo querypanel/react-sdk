@@ -1164,6 +1164,9 @@ export function AIChartModal({
               datasourceId: selectedDatasourceIds[0],
               ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(hideTenantInputs ? {} : { tenantId: previewTenantId.trim() || undefined }),
+              ...(tenantFieldName.trim()
+                ? { tenantFieldName: tenantFieldName.trim() }
+                : {}),
             },
             savePerStep: true,
             ...(chartModel.trim()

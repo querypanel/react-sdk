@@ -104,7 +104,8 @@ function useResultData(resultId?: string | null) {
     const fetchRows = async () => {
       try {
         const response = await fetch(
-          `${queryResultBaseUrl.replace(/\/+$/, "")}/${encodeURIComponent(resultId)}`
+          `${queryResultBaseUrl.replace(/\/+$/, "")}/${encodeURIComponent(resultId)}`,
+          { credentials: "include" },
         );
         const payload = await response.json().catch(() => ({}));
 
