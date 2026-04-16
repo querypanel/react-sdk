@@ -67,7 +67,8 @@ export interface AIChartModalProps {
     datasourceIds?: string[],
     sqlParams?: Record<string, unknown> | null,
     tenantFieldName?: string,
-    previewTenantId?: string
+    previewTenantId?: string,
+    resultId?: string
   ) => void;
   organizationId: string;
   dashboardId: string;
@@ -949,6 +950,7 @@ export function AIChartModal({
   const modalTitle = titleProp ?? "AI Visualization Generator";
   const createTitle = createTitleProp ?? "Create a Visualization";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
+  const enableModelOverride = false;
 
   const getResolvedTenantField = (
     selectedIds: string[],
@@ -1184,7 +1186,7 @@ export function AIChartModal({
                 : {}),
             },
             savePerStep: true,
-            ...(chartModel.trim()
+            ...(enableModelOverride && chartModel.trim()
               ? { model: normalizeModelForMastraStreamBody(chartModel) }
               : {}),
           }),
@@ -1481,7 +1483,7 @@ export function AIChartModal({
             ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
             conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
             ...(querypanelSessionId ? { querypanelSessionId } : {}),
-            ...(chartModel.trim() ? { model: chartModel.trim() } : {}),
+            ...(enableModelOverride && chartModel.trim() ? { model: chartModel.trim() } : {}),
           }),
         });
 
@@ -1559,7 +1561,8 @@ export function AIChartModal({
       selectedDatasourceIds,
       message.sqlParams,
       tenantFieldName.trim() || undefined,
-      hideTenantInputs ? undefined : previewTenantId.trim() || undefined
+      hideTenantInputs ? undefined : previewTenantId.trim() || undefined,
+      message.resultId ?? message.queryResult?.resultId
     );
   };
 
@@ -1800,21 +1803,8 @@ export function AIChartModal({
                         )}
 
                         {Boolean(message.jsonRenderSpec || message.chartSpec) && (
-                          <div className="qp-ai-modal-chart-card">
-                            <div className="qp-ai-modal-chart-card-head">
-                              <div className="qp-ai-modal-chart-card-badge">
-                                <BarChart3Icon className="w-3 h-3" style={{ color: "#fff" }} />
-                              </div>
-                              <span className="qp-ai-modal-chart-card-title">Ready to add</span>
-                              <button
-                                type="button"
-                                onClick={() => handleAddChartToEditor(message)}
-                                className="qp-ai-modal-add-chart-btn"
-                              >
-                                Add to dashboard
-                              </button>
-                            </div>
-                            <div className="qp-ai-modal-chart-card-preview">
+                          <div className="qp-ai-modal-chart-stack">
+                            <div className="qp-ai-modal-chart-stack-preview">
                               {message.jsonRenderSpec ? (
                                 <JsonRenderPreview
                                   spec={message.jsonRenderSpec}
@@ -1831,6 +1821,15 @@ export function AIChartModal({
                                   darkMode={effectiveDarkMode}
                                 />
                               )}
+                            </div>
+                            <div className="qp-ai-modal-chart-stack-actions">
+                              <button
+                                type="button"
+                                onClick={() => handleAddChartToEditor(message)}
+                                className="qp-ai-modal-add-chart-btn"
+                              >
+                                Add to dashboard
+                              </button>
                             </div>
                           </div>
                         )}
@@ -1896,11 +1895,11 @@ export function AIChartModal({
                     <select
                       id={chartModelId}
                       className="qp-ai-modal-pill-model"
-                      value={chartModel}
-                      onChange={(e) => setChartModel(e.target.value)}
-                      disabled={isLoading}
-                      title="Model"
-                      aria-label="Model"
+                      value=""
+                      onChange={undefined}
+                      disabled
+                      title="Model (server default)"
+                      aria-label="Model (server default)"
                     >
                       {chartModelOptions.map((opt, i) => (
                         <option key={`${i}-${opt.label}`} value={opt.value}>

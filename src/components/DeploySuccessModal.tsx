@@ -24,8 +24,10 @@ export function DeploySuccessModal({ open, onOpenChange }: DeploySuccessModalPro
         aria-modal="true"
       >
         <div
-          className="w-full max-w-[500px] bg-white dark:bg-gray-950 rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-800 pointer-events-auto"
+          className="w-auto max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-950 rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-800 pointer-events-auto"
           style={{
+            width: "fit-content",
+            maxWidth: "min(320px, calc(100vw - 2rem))",
             background: "linear-gradient(to bottom right, var(--bn-colors-editor-background, #fff), #f8fafc)",
           }}
         >
@@ -41,39 +43,39 @@ export function DeploySuccessModal({ open, onOpenChange }: DeploySuccessModalPro
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              padding: "3rem",
+              padding: "1.5rem 1.25rem",
               textAlign: "center",
-              gap: "1.5rem",
+              gap: "1rem",
             }}
           >
             <div style={{ position: "relative" }}>
               <div
                 style={{
                   borderRadius: "9999px",
-                  padding: "1rem",
+                  padding: "0.75rem",
                   background: "linear-gradient(to bottom right, #dcfce7, #bbf7d0)",
                   border: "1px solid #86efac",
                 }}
               >
                 <CheckCircle2
-                  size={48}
+                  size={36}
                   style={{ color: "#16a34a" }}
                 />
                 <Rocket
-                  size={20}
+                  size={16}
                   style={{
                     color: "#16a34a",
                     position: "absolute",
-                    top: "-4px",
-                    right: "-4px",
+                    top: "-2px",
+                    right: "-2px",
                   }}
                 />
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
               <h2
                 style={{
-                  fontSize: "1.5rem",
+                  fontSize: "1.125rem",
                   fontWeight: 700,
                   color: "inherit",
                 }}
@@ -82,7 +84,8 @@ export function DeploySuccessModal({ open, onOpenChange }: DeploySuccessModalPro
               </h2>
               <p
                 style={{
-                  fontSize: "1rem",
+                  fontSize: "0.875rem",
+                  lineHeight: 1.4,
                   color: "#64748b",
                 }}
               >

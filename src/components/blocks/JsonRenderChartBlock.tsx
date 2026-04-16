@@ -290,22 +290,16 @@ export function createJsonRenderChartBlockSpec({
             style={{
               width: "100%",
               minWidth: 0,
-              padding: "0.75rem",
-              boxSizing: "border-box",
-              background: resolvedColors.surface,
-              border: `1px solid ${resolvedColors.border}`,
-              borderRadius: "0.75rem",
+              display: "flex",
+              justifyContent: "center",
+              padding: "0.25rem 0",
             }}
           >
             <div
               style={{
                 width: "100%",
-                minWidth: 0,
+                maxWidth: "56rem",
                 minHeight: `${chartHeight}px`,
-                borderRadius: "0.5rem",
-                background: resolvedColors.background,
-                border: `1px solid ${resolvedColors.border}`,
-                padding: "0.5rem",
                 boxSizing: "border-box",
               }}
             >

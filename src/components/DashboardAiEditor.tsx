@@ -303,7 +303,8 @@ export function DashboardAiEditor({
       datasourceIds?: string[],
       sqlParams?: Record<string, unknown> | null,
       tenantFieldName?: string,
-      previewTenantId?: string
+      previewTenantId?: string,
+      resultId?: string
     ) => {
       if (isJsonRenderSpecLike(chartSpec)) {
         editor.insertBlocks(
@@ -319,6 +320,7 @@ export function DashboardAiEditor({
                 datasourceIds: JSON.stringify(datasourceIds || []),
                 tenantFieldName: tenantFieldName || "",
                 previewTenantId: previewTenantId || "",
+                resultId: resultId || "",
               },
             },
           ],
