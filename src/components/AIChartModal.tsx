@@ -106,6 +106,8 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  kind?: "status" | "chart" | "action" | "explanation";
+  sourceAssistantId?: string;
   chartSpec?: unknown;
   jsonRenderSpec?: unknown;
   resultId?: string;
@@ -915,7 +917,6 @@ function JsonRenderPreview({
   return (
     <div
       className={`qp-ai-modal-chart-preview${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
-      style={{ minHeight: isNarrowChart ? 220 : "clamp(220px, 34vh, 340px)" }}
     >
       <PersistedSpecRenderer
         spec={spec}
@@ -1156,6 +1157,7 @@ export function AIChartModal({
           {
             id: currentAssistantMessageId,
             role: "assistant",
+            kind: "status",
             content: "",
             sqlParams: null,
             timestamp: new Date(),
@@ -1319,48 +1321,96 @@ export function AIChartModal({
                     : event
                 )
               );
-              updateAssistantMessage((current) => ({
-                ...current,
-                chartSpec: result.spec ?? current.chartSpec,
-                jsonRenderSpec: result.jsonRenderSpec ?? current.jsonRenderSpec,
-                resultId:
-                  typeof result.resultId === "string" ? result.resultId : current.resultId,
-                presentationKind:
-                  result.presentationKind === "chart" ||
-                  result.presentationKind === "table" ||
-                  result.presentationKind === "metric"
-                    ? result.presentationKind
-                    : current.presentationKind,
-                sql: typeof result.sql === "string" ? result.sql : current.sql,
-                sqlParams:
-                  normalizeSqlParams(result.params) ?? current.sqlParams ?? null,
-                queryResult:
-                  Array.isArray(result.previewRows)
-                    ? {
-                        resultId:
-                          typeof result.resultId === "string"
-                            ? result.resultId
-                            : current.queryResult?.resultId,
-                        rows: result.previewRows as Array<Record<string, unknown>>,
-                        fields: Array.isArray(result.fields)
-                          ? (result.fields as string[])
-                          : current.queryResult?.fields ?? [],
-                        rowCount:
-                          typeof result.rowCount === "number"
-                            ? result.rowCount
-                            : current.queryResult?.rowCount ?? 0,
-                        database: typeof result.database === "string" ? result.database : current.queryResult?.database,
-                        dialect: typeof result.dialect === "string" ? result.dialect : current.queryResult?.dialect,
-                        datasource: current.queryResult?.datasource,
-                      }
-                    : current.queryResult,
-                rationale:
-                  typeof result.rationale === "string" && result.rationale.trim().length > 0
-                    ? result.rationale
-                    : typeof result.notes === "string" && result.notes.trim().length > 0
-                      ? result.notes
-                      : current.rationale,
-              }));
+              const chartSpec = result.spec ?? null;
+              const jsonRenderSpec = result.jsonRenderSpec ?? null;
+              const resultId =
+                typeof result.resultId === "string" ? result.resultId : undefined;
+              const presentationKind =
+                result.presentationKind === "chart" ||
+                result.presentationKind === "table" ||
+                result.presentationKind === "metric"
+                  ? result.presentationKind
+                  : undefined;
+              const sql = typeof result.sql === "string" ? result.sql : undefined;
+              const sqlParams = normalizeSqlParams(result.params) ?? null;
+              const queryResult: SqlExecutionArtifact | undefined = Array.isArray(result.previewRows)
+                ? {
+                    resultId,
+                    rows: result.previewRows as Array<Record<string, unknown>>,
+                    fields: Array.isArray(result.fields) ? (result.fields as string[]) : [],
+                    rowCount:
+                      typeof result.rowCount === "number"
+                        ? result.rowCount
+                        : (result.previewRows as Array<Record<string, unknown>>).length,
+                    database: typeof result.database === "string" ? result.database : undefined,
+                    dialect: typeof result.dialect === "string" ? result.dialect : undefined,
+                    datasource: undefined,
+                  }
+                : undefined;
+              const rationale =
+                typeof result.rationale === "string" && result.rationale.trim().length > 0
+                  ? result.rationale
+                  : typeof result.notes === "string" && result.notes.trim().length > 0
+                    ? result.notes
+                    : undefined;
+
+              const chartMessage: Message = {
+                id: `${currentAssistantMessageId}-chart`,
+                role: "assistant",
+                kind: "chart",
+                sourceAssistantId: currentAssistantMessageId,
+                content: "",
+                chartSpec,
+                jsonRenderSpec,
+                resultId,
+                presentationKind,
+                sql,
+                sqlParams,
+                queryResult,
+                rationale,
+                timestamp: new Date(),
+              };
+
+              const actionMessage: Message = {
+                id: `${currentAssistantMessageId}-action`,
+                role: "assistant",
+                kind: "action",
+                sourceAssistantId: currentAssistantMessageId,
+                content: "Add to dashboard",
+                chartSpec,
+                jsonRenderSpec,
+                resultId,
+                presentationKind,
+                sql,
+                sqlParams,
+                queryResult,
+                rationale,
+                timestamp: new Date(),
+              };
+
+              setMessages((prev) => {
+                const withoutStatus = prev.filter((message) => message.id !== currentAssistantMessageId);
+                const chartIndex = withoutStatus.findIndex((message) => message.id === chartMessage.id);
+                const actionIndex = withoutStatus.findIndex((message) => message.id === actionMessage.id);
+
+                if (chartIndex !== -1 || actionIndex !== -1) {
+                  return withoutStatus.map((message) => {
+                    if (message.id === chartMessage.id) return { ...message, ...chartMessage };
+                    if (message.id === actionMessage.id) return { ...message, ...actionMessage };
+                    return message;
+                  });
+                }
+
+                const insertAt = Math.min(
+                  prev.findIndex((message) => message.id === currentAssistantMessageId),
+                  withoutStatus.length
+                );
+                const safeInsertAt = insertAt >= 0 ? insertAt : withoutStatus.length;
+                const next = [...withoutStatus];
+                next.splice(safeInsertAt, 0, chartMessage, actionMessage);
+                return next;
+              });
+
               return true;
             }
 
@@ -1403,10 +1453,37 @@ export function AIChartModal({
             }
             const assistantText = extractAssistantTextFromChunk(chunk);
             if (assistantText && assistantText.trim().length > 0) {
-              updateAssistantMessage((current) => ({
-                ...current,
-                content: current.content.trim().length > 0 ? current.content : assistantText,
-              }));
+              const explanationMessage: Message = {
+                id: `${currentAssistantMessageId}-explanation`,
+                role: "assistant",
+                kind: "explanation",
+                sourceAssistantId: currentAssistantMessageId,
+                content: assistantText,
+                timestamp: new Date(),
+              };
+
+              setMessages((prev) => {
+                const withoutStatus = prev.filter((message) => message.id !== currentAssistantMessageId);
+                const existingIndex = withoutStatus.findIndex(
+                  (message) => message.id === explanationMessage.id
+                );
+                if (existingIndex !== -1) {
+                  return withoutStatus.map((message) =>
+                    message.id === explanationMessage.id ? { ...message, ...explanationMessage } : message
+                  );
+                }
+
+                const anchorIndex = withoutStatus.reduce((max, message, index) => {
+                  if (message.sourceAssistantId === currentAssistantMessageId) {
+                    return index;
+                  }
+                  return max;
+                }, -1);
+                const insertAt = anchorIndex >= 0 ? anchorIndex + 1 : withoutStatus.length;
+                const next = [...withoutStatus];
+                next.splice(insertAt, 0, explanationMessage);
+                return next;
+              });
             }
           }
         };
@@ -1460,7 +1537,10 @@ export function AIChartModal({
           if (current.length > 0) {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === currentAssistantMessageId ? { ...m, toolEvents: current } : m
+                m.id === currentAssistantMessageId ||
+                (m.sourceAssistantId === currentAssistantMessageId && m.kind === "explanation")
+                  ? { ...m, toolEvents: current }
+                  : m
               )
             );
           }
@@ -1747,12 +1827,19 @@ export function AIChartModal({
                   const messageQueryResult =
                     message.queryResult ?? (isActiveAssistant ? lastSqlExecution : null);
                   const assistantHasVisualization = Boolean(message.jsonRenderSpec || message.chartSpec);
+                  const isStreamItem =
+                    message.kind === "status" ||
+                    message.kind === "chart" ||
+                    message.kind === "action" ||
+                    message.kind === "explanation";
                   /** While the active turn is still streaming, hide narrative text until a chart/table spec exists so it only appears under the viz. */
                   const showAssistantMarkdown =
                     message.role === "assistant" &&
                     message.content.trim().length > 0 &&
-                    (!isActiveAssistant || !isLoading || assistantHasVisualization);
+                    (message.kind === "explanation" ||
+                      (!isStreamItem && (!isActiveAssistant || !isLoading || assistantHasVisualization)));
                   const hasVisibleAssistantState =
+                    isStreamItem ||
                     message.content.trim().length > 0 ||
                     Boolean(message.jsonRenderSpec) ||
                     Boolean(message.chartSpec) ||
@@ -1772,6 +1859,7 @@ export function AIChartModal({
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
                         {message.role === "assistant" &&
+                          message.kind === "status" &&
                           message.id === activeAssistantMessageId &&
                           isLoading &&
                           !toolEvents.some((e) => e.status === "running") &&
@@ -1787,22 +1875,26 @@ export function AIChartModal({
                             </div>
                           )}
 
-                        {message.role === "assistant" && message.id === activeAssistantMessageId && toolEvents.some((e) => e.status === "running") && (
-                          <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
-                            {toolEvents.filter((e) => e.status === "running").map((event) => (
-                              <span key={event.id} className="qp-ai-modal-step-text">
-                                <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
-                                {getToolEventLabel(event.toolName)}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        {message.role === "assistant" &&
+                          message.kind === "status" &&
+                          message.id === activeAssistantMessageId &&
+                          toolEvents.some((e) => e.status === "running") && (
+                            <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
+                              {toolEvents.filter((e) => e.status === "running").map((event) => (
+                                <span key={event.id} className="qp-ai-modal-step-text">
+                                  <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
+                                  {getToolEventLabel(event.toolName)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
 
-                        {message.role === "assistant" && message.toolEvents && message.toolEvents.length > 0 && (
-                          <ThoughtSummaryRail events={message.toolEvents} />
-                        )}
+                        {message.role === "assistant" &&
+                          message.kind === "status" &&
+                          message.toolEvents &&
+                          message.toolEvents.length > 0 && <ThoughtSummaryRail events={message.toolEvents} />}
 
-                        {Boolean(message.jsonRenderSpec || message.chartSpec) && (
+                        {message.kind === "chart" && (
                           <div className="qp-ai-modal-chart-stack">
                             <div className="qp-ai-modal-chart-stack-preview">
                               {message.jsonRenderSpec ? (
@@ -1814,30 +1906,81 @@ export function AIChartModal({
                                 <ChartPreview
                                   chartSpec={withVizSpecDataFallback(
                                     message.chartSpec,
-                                    message.id === activeAssistantMessageId
-                                      ? (lastSqlExecution?.rows ?? null)
-                                      : null
+                                    Array.isArray(message.queryResult?.rows)
+                                      ? (message.queryResult.rows as Array<Record<string, unknown>>)
+                                      : message.sourceAssistantId === activeAssistantMessageId
+                                        ? (lastSqlExecution?.rows ?? null)
+                                        : null
                                   )}
                                   darkMode={effectiveDarkMode}
                                 />
                               )}
                             </div>
-                            <div className="qp-ai-modal-chart-stack-actions">
-                              <button
-                                type="button"
-                                onClick={() => handleAddChartToEditor(message)}
-                                className="qp-ai-modal-add-chart-btn"
-                              >
-                                Add to dashboard
-                              </button>
+                          </div>
+                        )}
+
+                        {message.kind === "action" && (
+                          <div className="qp-ai-modal-chart-action-item">
+                            <button
+                              type="button"
+                              onClick={() => handleAddChartToEditor(message)}
+                              className="qp-ai-modal-add-chart-btn"
+                            >
+                              Add to dashboard
+                            </button>
+                          </div>
+                        )}
+
+                        {message.kind === "explanation" && (
+                          <>
+                            {message.toolEvents && message.toolEvents.length > 0 && (
+                              <ThoughtSummaryRail events={message.toolEvents} />
+                            )}
+                            <AssistantMessageMarkdown content={message.content} />
+                          </>
+                        )}
+
+                        {!isStreamItem && Boolean(message.jsonRenderSpec || message.chartSpec) && (
+                          <div className="qp-ai-modal-chart-stack">
+                            <div className="qp-ai-modal-chart-stack-preview">
+                              {message.jsonRenderSpec ? (
+                                <JsonRenderPreview
+                                  spec={message.jsonRenderSpec}
+                                  queryResultBaseUrl={queryResultBaseUrl}
+                                />
+                              ) : (
+                                <ChartPreview
+                                  chartSpec={withVizSpecDataFallback(
+                                    message.chartSpec,
+                                    Array.isArray(message.queryResult?.rows)
+                                      ? (message.queryResult.rows as Array<Record<string, unknown>>)
+                                      : message.id === activeAssistantMessageId
+                                        ? (lastSqlExecution?.rows ?? null)
+                                        : null
+                                  )}
+                                  darkMode={effectiveDarkMode}
+                                />
+                              )}
                             </div>
+                          </div>
+                        )}
+
+                        {!isStreamItem && Boolean(message.jsonRenderSpec || message.chartSpec) && (
+                          <div className="qp-ai-modal-chart-action-item">
+                            <button
+                              type="button"
+                              onClick={() => handleAddChartToEditor(message)}
+                              className="qp-ai-modal-add-chart-btn"
+                            >
+                              Add to dashboard
+                            </button>
                           </div>
                         )}
 
                         {message.role === "user" && message.content.trim().length > 0 && (
                           <div>{message.content}</div>
                         )}
-                        {showAssistantMarkdown && (
+                        {!isStreamItem && showAssistantMarkdown && (
                           <AssistantMessageMarkdown content={message.content} />
                         )}
 

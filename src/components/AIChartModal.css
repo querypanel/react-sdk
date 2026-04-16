@@ -1073,7 +1073,7 @@
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
-  align-items: center;
+  align-items: stretch;
 }
 
 [data-qp-ai-modal] .qp-ai-modal-chart-card-head {
@@ -1120,33 +1120,26 @@
   background: transparent;
 }
 
-[data-qp-ai-modal] .qp-ai-modal-chart-stack-actions {
+[data-qp-ai-modal] .qp-ai-modal-chart-action-item {
   display: flex;
-  justify-content: center;
-  width: 100%;
+  justify-content: flex-start;
+  width: auto;
 }
 
-/* Chart preview area (Recharts ResponsiveContainer needs explicit height) */
+/* Chart preview area — fixed pixel height so Recharts always has room for
+   title + axes + plot.  The message list scrolls, so this never clips. */
 [data-qp-ai-modal] .qp-ai-modal-chart-preview {
   width: 100%;
-  height: clamp(210px, 34vh, 340px);
+  height: 320px;
 }
 
 [data-qp-ai-modal] .qp-ai-modal-chart-preview--narrow {
-  height: clamp(200px, 48vmin, 280px);
-}
-
-[data-qp-ai-modal] .qp-ai-modal-chart-preview-empty.qp-ai-modal-chart-preview--narrow {
-  min-height: clamp(160px, 36vmin, 220px);
+  height: 280px;
 }
 
 @media (max-width: 52rem) {
   [data-qp-ai-modal] .qp-ai-modal-msg-bubble.assistant {
     max-width: 100%;
-  }
-
-  [data-qp-ai-modal] .qp-ai-modal-chart-stack {
-    gap: 0.75rem;
   }
 
   /* Soft edge light on the preview canvas (dark reads as a subtle “stage”) */
@@ -1168,14 +1161,11 @@
     border-radius: 0.625rem;
   }
 
-  [data-qp-ai-modal] .qp-ai-modal-add-chart-btn {
-    width: 100%;
-    min-height: 2.75rem;
-    height: auto;
-    padding: 0.625rem 1rem;
-    font-size: 0.9375rem;
-    border-radius: 0.625rem;
-    font-weight: 600;
+  [data-qp-ai-modal] .qp-ai-modal-chart-action-item .qp-ai-modal-add-chart-btn {
+    height: 2.25rem;
+    padding: 0 1rem;
+    font-size: 0.8125rem;
+    border-radius: 999px;
   }
 
   [data-qp-ai-modal] .qp-ai-modal-data-card {
@@ -1767,11 +1757,10 @@
   cursor: not-allowed;
 }
 
-[data-qp-ai-modal] .qp-ai-modal-chart-stack-actions .qp-ai-modal-add-chart-btn {
-  min-height: 2.5rem;
-  height: auto;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  border-radius: 0.625rem;
+[data-qp-ai-modal] .qp-ai-modal-chart-action-item .qp-ai-modal-add-chart-btn {
+  height: 2rem;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 999px;
   font-weight: 600;
 }
