@@ -322,24 +322,6 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
                 colors={resolvedColors}
               />
             </div>
-            {props.block.props.rationale ? (
-              <div
-                style={{
-                  marginTop: "0.75rem",
-                  padding: "0.75rem",
-                  borderRadius: "0.5rem",
-                  border: `1px solid ${resolvedColors.border}`,
-                  color: resolvedColors.muted,
-                  fontSize: "0.8rem",
-                  lineHeight: 1.45,
-                }}
-              >
-                <div style={{ marginBottom: "0.25rem", fontWeight: 600, color: resolvedColors.text }}>
-                  Rationale
-                </div>
-                {props.block.props.rationale}
-              </div>
-            ) : null}
           </div>
         );
       },

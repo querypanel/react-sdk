@@ -1132,7 +1132,7 @@
 /* Chart preview area (Recharts ResponsiveContainer needs explicit height) */
 [data-qp-ai-modal] .qp-ai-modal-chart-preview {
   width: 100%;
-  height: 180px;
+  height: clamp(210px, 34vh, 340px);
 }
 
 [data-qp-ai-modal] .qp-ai-modal-chart-preview--narrow {

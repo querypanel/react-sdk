@@ -610,12 +610,12 @@ function ChartPreview({
 
   const gridStroke = darkMode ? "#3f3f46" : "#e2e8f0";
   const tickFill = darkMode ? "#a1a1aa" : "#64748b";
-  const tickFontSize = isNarrowChart ? 12 : 10;
-  const xAxisAngle = isNarrowChart && chartData.length > 3 ? -38 : 0;
-  const xAxisHeight = isNarrowChart ? (chartData.length > 5 ? 64 : chartData.length > 3 ? 52 : 32) : 30;
-  const chartMargins = isNarrowChart
+  let tickFontSize = isNarrowChart ? 12 : 10;
+  let xAxisAngle = isNarrowChart && chartData.length > 3 ? -38 : 0;
+  let xAxisHeight = isNarrowChart ? (chartData.length > 5 ? 64 : chartData.length > 3 ? 52 : 32) : 48;
+  let chartMargins = isNarrowChart
     ? { top: 10, right: 6, left: 2, bottom: chartData.length > 3 ? Math.max(36, xAxisHeight - 8) : 16 }
-    : { top: 6, right: 8, left: 0, bottom: 6 };
+    : { top: 8, right: 8, left: 4, bottom: 18 };
   const tooltipStyles = getTooltipStyles(darkMode, isNarrowChart);
 
   if (error || !chartData || chartData.length === 0) {
@@ -732,6 +732,21 @@ function ChartPreview({
           return r;
         })
       : chartData;
+  const longestCategoryLabel = chartDataNormalized.reduce((max, row) => {
+    const formatted = formatTimestampForDisplay(row[categoryKey]);
+    return Math.max(max, String(formatted ?? "").length);
+  }, 0);
+  const needsCompactXAxis =
+    chartDataNormalized.length >= (isNarrowChart ? 4 : 7) ||
+    longestCategoryLabel > (isNarrowChart ? 8 : 12);
+  if (needsCompactXAxis) {
+    tickFontSize = isNarrowChart ? 12 : 9;
+    xAxisAngle = isNarrowChart ? -38 : -30;
+    xAxisHeight = isNarrowChart ? 64 : 56;
+    chartMargins = isNarrowChart
+      ? { top: 10, right: 6, left: 2, bottom: Math.max(36, xAxisHeight - 8) }
+      : { top: 8, right: 8, left: 4, bottom: 30 };
+  }
 
   const renderChart = () => {
     const data = chartDataNormalized;
@@ -899,7 +914,7 @@ function JsonRenderPreview({
   return (
     <div
       className={`qp-ai-modal-chart-preview${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
-      style={{ minHeight: isNarrowChart ? 220 : 260 }}
+      style={{ minHeight: isNarrowChart ? 220 : "clamp(220px, 34vh, 340px)" }}
     >
       <PersistedSpecRenderer
         spec={spec}
@@ -1004,7 +1019,7 @@ export function AIChartModal({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading, transientStatus, toolEvents, lastSqlExecution, activeAssistantMessageId]);
 
   useEffect(() => {
     if (isOpen && promptInputRef.current) {
@@ -1728,6 +1743,12 @@ export function AIChartModal({
                     message.role === "assistant" && message.id === activeAssistantMessageId;
                   const messageQueryResult =
                     message.queryResult ?? (isActiveAssistant ? lastSqlExecution : null);
+                  const assistantHasVisualization = Boolean(message.jsonRenderSpec || message.chartSpec);
+                  /** While the active turn is still streaming, hide narrative text until a chart/table spec exists so it only appears under the viz. */
+                  const showAssistantMarkdown =
+                    message.role === "assistant" &&
+                    message.content.trim().length > 0 &&
+                    (!isActiveAssistant || !isLoading || assistantHasVisualization);
                   const hasVisibleAssistantState =
                     message.content.trim().length > 0 ||
                     Boolean(message.jsonRenderSpec) ||
@@ -1735,7 +1756,7 @@ export function AIChartModal({
                     Boolean(messageQueryResult) ||
                     Boolean(message.toolEvents?.length) ||
                     (isActiveAssistant &&
-                      (toolEvents.length > 0 || Boolean(lastSqlExecution)));
+                      (isLoading || toolEvents.length > 0 || Boolean(lastSqlExecution)));
 
                   if (message.role === "assistant" && !hasVisibleAssistantState) {
                     return null;
@@ -1747,12 +1768,21 @@ export function AIChartModal({
                       className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
-                        {message.content.trim().length > 0 &&
-                          (message.role === "assistant" ? (
-                            <AssistantMessageMarkdown content={message.content} />
-                          ) : (
-                            <div>{message.content}</div>
-                          ))}
+                        {message.role === "assistant" &&
+                          message.id === activeAssistantMessageId &&
+                          isLoading &&
+                          !toolEvents.some((e) => e.status === "running") &&
+                          !message.content.trim() &&
+                          !message.jsonRenderSpec &&
+                          !message.chartSpec &&
+                          !messageQueryResult && (
+                            <div className="qp-ai-modal-toolrail" aria-live="polite" aria-label="Assistant status">
+                              <span className="qp-ai-modal-step-text">
+                                <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
+                                {transientStatus ?? "Thinking"}
+                              </span>
+                            </div>
+                          )}
 
                         {message.role === "assistant" && message.id === activeAssistantMessageId && toolEvents.some((e) => e.status === "running") && (
                           <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
@@ -1767,52 +1797,6 @@ export function AIChartModal({
 
                         {message.role === "assistant" && message.toolEvents && message.toolEvents.length > 0 && (
                           <ThoughtSummaryRail events={message.toolEvents} />
-                        )}
-
-                        {message.role === "assistant" && messageQueryResult && !message.jsonRenderSpec && !message.chartSpec && (
-                          <div className="qp-ai-modal-data-card" aria-label="Query results preview">
-                            <div className="qp-ai-modal-data-card-head">
-                              <div className="qp-ai-modal-data-summary">
-                                <span className="qp-ai-modal-data-pill">
-                                  Rows: {messageQueryResult.rowCount}
-                                </span>
-                                <span className="qp-ai-modal-data-pill secondary">
-                                  Columns: {(messageQueryResult.fields.length || Object.keys(messageQueryResult.rows[0] ?? {}).length)}
-                                </span>
-                                {messageQueryResult.database && (
-                                  <span className="qp-ai-modal-data-pill secondary">
-                                    DB: {messageQueryResult.database}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="qp-ai-modal-table-wrap">
-                              <table className="qp-ai-modal-table">
-                                <thead>
-                                  <tr>
-                                    {(messageQueryResult.fields.length
-                                      ? messageQueryResult.fields
-                                      : Object.keys(messageQueryResult.rows[0] ?? {})
-                                    ).map((field) => (
-                                      <th key={field}>{field}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {messageQueryResult.rows.slice(0, 3).map((row, idx) => (
-                                    <tr key={idx}>
-                                      {(messageQueryResult.fields.length
-                                        ? messageQueryResult.fields
-                                        : Object.keys(messageQueryResult.rows[0] ?? {})
-                                      ).map((field) => (
-                                        <td key={field}>{String(row[field] ?? "")}</td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
                         )}
 
                         {Boolean(message.jsonRenderSpec || message.chartSpec) && (
@@ -1849,6 +1833,13 @@ export function AIChartModal({
                               )}
                             </div>
                           </div>
+                        )}
+
+                        {message.role === "user" && message.content.trim().length > 0 && (
+                          <div>{message.content}</div>
+                        )}
+                        {showAssistantMarkdown && (
+                          <AssistantMessageMarkdown content={message.content} />
                         )}
 
                       </div>

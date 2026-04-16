@@ -118,6 +118,11 @@ export function createJsonRenderChartBlockSpec({
           }
         }, [props.block.props.sqlParams]);
 
+        const specForRenderer = useMemo(
+          () => hydratedSpec ?? parsedSpec,
+          [hydratedSpec, parsedSpec]
+        );
+
         const datasourceIds = useMemo(() => {
           try {
             return JSON.parse(props.block.props.datasourceIds || "[]") as string[];
@@ -294,25 +299,6 @@ export function createJsonRenderChartBlockSpec({
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "0.5rem",
-                color: resolvedColors.text,
-              }}
-            >
-              <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
-                {props.block.props.title || "Visualization"}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
-                {datasourceIds.length > 0
-                  ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
-                  : ""}
-              </div>
-            </div>
-
-            <div
-              style={{
                 width: "100%",
                 minWidth: 0,
                 minHeight: `${chartHeight}px`,
@@ -324,26 +310,10 @@ export function createJsonRenderChartBlockSpec({
               }}
             >
               <PersistedSpecRenderer
-                spec={hydratedSpec ?? parsedSpec}
+                spec={specForRenderer}
                 queryResultBaseUrl={queryResultBaseUrl}
               />
             </div>
-
-            {props.block.props.rationale ? (
-              <div
-                style={{
-                  marginTop: "0.75rem",
-                  padding: "0.75rem",
-                  fontSize: "0.8125rem",
-                  lineHeight: 1.5,
-                  color: resolvedColors.muted,
-                  border: `1px solid ${resolvedColors.border}`,
-                  borderRadius: "0.5rem",
-                }}
-              >
-                {props.block.props.rationale}
-              </div>
-            ) : null}
           </div>
         );
       },
