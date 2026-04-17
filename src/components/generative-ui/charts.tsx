@@ -89,7 +89,7 @@ function getTooltipStyles(colors: ReturnType<typeof getSurfaceColors>, darkMode:
 }
 
 function useResultData(resultId?: string | null) {
-  const { queryResultBaseUrl } = useGenerativeUIConfig();
+  const { queryResultBaseUrl, requestHeaders } = useGenerativeUIConfig();
   const [rows, setRows] = React.useState<Record<string, unknown>[] | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -103,9 +103,14 @@ function useResultData(resultId?: string | null) {
 
     const fetchRows = async () => {
       try {
+        const hasRequestHeaders =
+          requestHeaders && Object.keys(requestHeaders).length > 0;
         const response = await fetch(
           `${queryResultBaseUrl.replace(/\/+$/, "")}/${encodeURIComponent(resultId)}`,
-          { credentials: "include" },
+          {
+            credentials: hasRequestHeaders ? "omit" : "include",
+            ...(hasRequestHeaders ? { headers: requestHeaders } : {}),
+          },
         );
         const payload = await response.json().catch(() => ({}));
 
@@ -131,7 +136,7 @@ function useResultData(resultId?: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [queryResultBaseUrl, resultId]);
+  }, [queryResultBaseUrl, resultId, requestHeaders]);
 
   return { rows, loading, error };
 }

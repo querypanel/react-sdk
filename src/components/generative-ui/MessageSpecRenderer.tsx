@@ -10,9 +10,11 @@ import { GenerativeUIProvider } from "./provider";
 export function MessageSpecRenderer({
   parts,
   queryResultBaseUrl = "/api/query-results",
+  requestHeaders,
 }: {
   parts: UIMessage["parts"];
   queryResultBaseUrl?: string;
+  requestHeaders?: Record<string, string>;
 }) {
   const { hasSpec, spec } = useJsonRenderMessage(parts);
 
@@ -24,7 +26,10 @@ export function MessageSpecRenderer({
   if (!hasSpec || !fixedSpec) return null;
 
   return (
-    <GenerativeUIProvider queryResultBaseUrl={queryResultBaseUrl}>
+    <GenerativeUIProvider
+      queryResultBaseUrl={queryResultBaseUrl}
+      requestHeaders={requestHeaders}
+    >
       <Renderer spec={fixedSpec} registry={registry} />
     </GenerativeUIProvider>
   );

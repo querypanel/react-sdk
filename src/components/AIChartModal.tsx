@@ -908,9 +908,11 @@ function ChartPreview({
 function JsonRenderPreview({
   spec,
   queryResultBaseUrl,
+  requestHeaders,
 }: {
   spec: unknown;
   queryResultBaseUrl: string;
+  requestHeaders?: Record<string, string>;
 }) {
   const isNarrowChart = useAiChartModalNarrowLayout();
 
@@ -921,6 +923,7 @@ function JsonRenderPreview({
       <PersistedSpecRenderer
         spec={spec}
         queryResultBaseUrl={queryResultBaseUrl}
+        requestHeaders={requestHeaders}
       />
     </div>
   );
@@ -1901,6 +1904,7 @@ export function AIChartModal({
                                 <JsonRenderPreview
                                   spec={message.jsonRenderSpec}
                                   queryResultBaseUrl={queryResultBaseUrl}
+                                  requestHeaders={headers}
                                 />
                               ) : (
                                 <ChartPreview
@@ -1947,6 +1951,7 @@ export function AIChartModal({
                                 <JsonRenderPreview
                                   spec={message.jsonRenderSpec}
                                   queryResultBaseUrl={queryResultBaseUrl}
+                                  requestHeaders={headers}
                                 />
                               ) : (
                                 <ChartPreview

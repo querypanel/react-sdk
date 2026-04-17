@@ -248,7 +248,11 @@ export function injectRowsIntoJsonRenderSpec(
     return spec;
   }
 
-  const props = root.element.props as Record<string, unknown>;
+  // Clone props so we can safely remove resultId when embedding data inline.
+  // If `resultId` stays, some renderers will still attempt to fetch `/query-results/:id`
+  // (which requires auth headers) even though we already hydrated the spec.
+  const props = { ...(root.element.props as Record<string, unknown>) };
+  delete props.resultId;
   const headers = fields.length > 0 ? fields : Object.keys(rows[0] ?? {});
 
   if (root.element.type === "DataTable") {

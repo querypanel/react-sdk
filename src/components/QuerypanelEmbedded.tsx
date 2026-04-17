@@ -68,21 +68,14 @@ export function QuerypanelEmbedded({
   const [editorResetKey, setEditorResetKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const editorSaveRef = useRef<(() => void | Promise<void>) | null>(null);
-
-  const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
   const authHeaders = useMemo(
     () => ({
-      "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
     }),
     [jwt]
   );
-  const editorHeaders = useMemo(
-    () => ({
-      Authorization: `Bearer ${jwt}`,
-    }),
-    [jwt]
-  );
+
+  const normalizedApiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
   const resolvedTheme = useMemo(
     () =>
       createTheme({
@@ -169,7 +162,7 @@ export function QuerypanelEmbedded({
     } finally {
       setLoading(false);
     }
-  }, [normalizedApiBaseUrl, dashboardId, onLoad, onError, authHeaders]);
+  }, [normalizedApiBaseUrl, dashboardId, onLoad, onError, authHeaders, jwt]);
 
   useEffect(() => {
     fetchDashboard();
@@ -398,8 +391,8 @@ export function QuerypanelEmbedded({
         editable={isEditing}
         contentResetKey={editorResetKey}
         saveRef={editorSaveRef}
+        headers={authHeaders}
         apiBaseUrl={normalizedApiBaseUrl || undefined}
-        headers={editorHeaders}
         darkMode={darkMode}
         themeColors={resolvedTheme.colors}
         fontFamily={resolvedTheme.fontFamily}

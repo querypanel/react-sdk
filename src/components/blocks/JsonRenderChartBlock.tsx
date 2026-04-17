@@ -306,6 +306,7 @@ export function createJsonRenderChartBlockSpec({
               <PersistedSpecRenderer
                 spec={specForRenderer}
                 queryResultBaseUrl={queryResultBaseUrl}
+                requestHeaders={headers}
               />
             </div>
           </div>

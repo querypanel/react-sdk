@@ -9,9 +9,11 @@ import { GenerativeUIProvider } from "./provider";
 export function PersistedSpecRenderer({
   spec,
   queryResultBaseUrl = "/api/query-results",
+  requestHeaders,
 }: {
   spec: unknown;
   queryResultBaseUrl?: string;
+  requestHeaders?: Record<string, string>;
 }) {
   const fixedSpec = useMemo(() => {
     if (!spec || typeof spec !== "object") return null;
@@ -21,7 +23,10 @@ export function PersistedSpecRenderer({
   if (!fixedSpec) return null;
 
   return (
-    <GenerativeUIProvider queryResultBaseUrl={queryResultBaseUrl}>
+    <GenerativeUIProvider
+      queryResultBaseUrl={queryResultBaseUrl}
+      requestHeaders={requestHeaders}
+    >
       <Renderer spec={fixedSpec} registry={registry} />
     </GenerativeUIProvider>
   );

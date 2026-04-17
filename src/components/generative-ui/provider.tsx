@@ -9,6 +9,7 @@ import {
 
 type GenerativeUIConfig = {
   queryResultBaseUrl: string;
+  requestHeaders?: Record<string, string>;
 };
 
 const GenerativeUIConfigContext = React.createContext<GenerativeUIConfig>({
@@ -18,12 +19,19 @@ const GenerativeUIConfigContext = React.createContext<GenerativeUIConfig>({
 export function GenerativeUIProvider({
   children,
   queryResultBaseUrl = "/api/query-results",
+  requestHeaders,
 }: {
   children: React.ReactNode;
   queryResultBaseUrl?: string;
+  requestHeaders?: Record<string, string>;
 }) {
+  const value = React.useMemo(
+    () => ({ queryResultBaseUrl, requestHeaders }),
+    [queryResultBaseUrl, requestHeaders]
+  );
+
   return (
-    <GenerativeUIConfigContext.Provider value={{ queryResultBaseUrl }}>
+    <GenerativeUIConfigContext.Provider value={value}>
       <StateProvider>
         <ActionProvider handlers={{}}>
           <VisibilityProvider>{children}</VisibilityProvider>
