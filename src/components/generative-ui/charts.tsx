@@ -96,6 +96,10 @@ function useResultData(resultId?: string | null) {
 
   React.useEffect(() => {
     if (!resultId) return;
+    if (!queryResultBaseUrl || queryResultBaseUrl.trim().length === 0) {
+      // Result artifact fetching disabled by host app.
+      return;
+    }
 
     let cancelled = false;
     setLoading(true);

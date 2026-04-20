@@ -393,6 +393,9 @@ export function QuerypanelEmbedded({
         saveRef={editorSaveRef}
         headers={authHeaders}
         apiBaseUrl={normalizedApiBaseUrl || undefined}
+        // Security: customer embeds should not fetch persisted result artifacts by id.
+        // They should execute SQL directly via /query/run-sql and render inline data.
+        queryResultBaseUrl=""
         darkMode={darkMode}
         themeColors={resolvedTheme.colors}
         fontFamily={resolvedTheme.fontFamily}

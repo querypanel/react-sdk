@@ -9,7 +9,7 @@ import { GenerativeUIProvider } from "./provider";
 
 export function MessageSpecRenderer({
   parts,
-  queryResultBaseUrl = "/api/query-results",
+  queryResultBaseUrl = "",
   requestHeaders,
 }: {
   parts: UIMessage["parts"];

@@ -8,7 +8,7 @@ import { GenerativeUIProvider } from "./provider";
 
 export function PersistedSpecRenderer({
   spec,
-  queryResultBaseUrl = "/api/query-results",
+  queryResultBaseUrl = "",
   requestHeaders,
 }: {
   spec: unknown;

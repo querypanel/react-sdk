@@ -383,6 +383,9 @@ export function DashboardAiEditor({
             props: {
               ...block.props,
               jsonRenderSpec: JSON.stringify(stripDataFromJsonRenderSpec(spec)),
+              // Important: clear resultId so embedded dashboards don't attempt to fetch
+              // `/query-results/:id` for artifacts created in a different environment.
+              resultId: "",
             },
           };
         } catch {

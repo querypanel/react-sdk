@@ -13,12 +13,13 @@ type GenerativeUIConfig = {
 };
 
 const GenerativeUIConfigContext = React.createContext<GenerativeUIConfig>({
-  queryResultBaseUrl: "/api/query-results",
+  // Security default: result-artifact fetching is opt-in.
+  queryResultBaseUrl: "",
 });
 
 export function GenerativeUIProvider({
   children,
-  queryResultBaseUrl = "/api/query-results",
+  queryResultBaseUrl = "",
   requestHeaders,
 }: {
   children: React.ReactNode;
