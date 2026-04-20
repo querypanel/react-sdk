@@ -8,9 +8,9 @@ import { runDedupedRequest } from "../utils/requestDedup";
 export interface QuerypanelEmbeddedProps {
   /** Dashboard ID to display */
   dashboardId: string;
-  /** QueryPanel API base URL (querypanel-sdk endpoint) */
+  /** Base URL of the QueryPanel API (same host you pass to the Node SDK as `baseUrl`) */
   apiBaseUrl: string;
-  /** Customer JWT generated server-side (RS256) */
+  /** Tenant-scoped JWT (RS256), minted on your server and passed to the browser */
   jwt: string;
 
   /** Enable customer customization (copy-on-write) */

@@ -12,7 +12,7 @@ import { normalizeBlockNoteContent } from "./blocknoteContent";
 export interface DashboardEditorProps {
   /** Initial BlockNote content as JSON string */
   initialContent: string;
-  /** Customer backend base URL */
+  /** QueryPanel API base URL (for chart/data sub-requests) */
   apiBaseUrl?: string;
   /** Callback when save is clicked */
   onSave: (content: string) => Promise<void>;

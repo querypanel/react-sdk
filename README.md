@@ -98,7 +98,7 @@ function MyChart({ spec, data, fields }) {
 ## Components
 
 ### `QuerypanelEmbedded`
-Embeds a deployed dashboard by calling your backend wrapper (not QueryPanel API directly from the browser).
+Embeds a deployed dashboard by calling the **QueryPanel API** from the browser. Set `apiBaseUrl` to the same QueryPanel API base URL you use with the Node SDK (e.g. `https://api.querypanel.io` or your region/self-hosted host). Authenticate with a **JWT** you mint on your server (RS256) — never ship your workspace private key to the client.
 
 ```tsx
 import { QuerypanelEmbedded } from "@querypanel/react-sdk";
@@ -107,7 +107,8 @@ function CustomerPage() {
   return (
     <QuerypanelEmbedded
       dashboardId="3ed3b98f-..."
-      apiBaseUrl="https://customer-api.example.com"
+      apiBaseUrl="https://api.querypanel.io"
+      jwt={tenantJwtFromYourServer}
       allowCustomization={true}
     />
   );
@@ -115,9 +116,9 @@ function CustomerPage() {
 ```
 
 Notes:
-- Browser requests go to your backend URL.
-- Backend handles auth and tenant context server-side.
-- `token` prop was removed; migrate to backend-managed auth/session.
+- The embed sends `Authorization: Bearer <jwt>` to `apiBaseUrl` (QueryPanel API).
+- Mint the JWT with the Node SDK (`createJwt`, etc.) on your server; pass only the JWT to the client.
+- The old `token` prop was removed in favor of `jwt`.
 
 ### `QueryInput`
 Search input with prompt chips for quick queries.

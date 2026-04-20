@@ -197,7 +197,8 @@ export const ReadOnly: Story = {
   parameters: {
     docs: {
       description: {
-        story: "Read-only dashboard view through a customer backend API wrapper.",
+        story:
+          "Read-only dashboard view. The embed calls the QueryPanel API at apiBaseUrl with the JWT (mocked here).",
       },
     },
   },
@@ -216,7 +217,7 @@ export const WithCustomization: Story = {
     docs: {
       description: {
         story:
-          "Dashboard with customization enabled. Customers can fork and edit via backend-wrapped endpoints. AI Chart Generator modal matches product (dark theme).",
+          "Dashboard with customization enabled. Customers can fork and edit; requests go to the QueryPanel API with the JWT. AI Chart Generator modal matches product (dark theme).",
       },
     },
   },

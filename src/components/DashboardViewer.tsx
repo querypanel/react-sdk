@@ -28,7 +28,7 @@ function getViewerStyles(): string {
 export interface DashboardViewerProps {
   /** BlockNote content as JSON string */
   content: string;
-  /** Customer backend base URL */
+  /** QueryPanel API base URL (for chart/data sub-requests) */
   apiBaseUrl?: string;
   /** Whether to use dark theme */
   darkMode?: boolean;
