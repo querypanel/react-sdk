@@ -45,6 +45,14 @@ import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
 import { formatTimestampForDisplay } from "../utils/formatters";
 import "./AIChartModal.css";
 
+/** Unique React list keys; `Date.now()` alone can collide (Strict Mode, same tick). */
+function createMessageId(prefix: string): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 /** Option for the SQL / chart LLM model selector (OpenAI model id as `value`). */
 export type AIChartModelOption = { value: string; label: string };
 
@@ -52,6 +60,8 @@ export type AIChartModelOption = { value: string; label: string };
 export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
   { value: "gpt-5.4-mini", label: "GPT-5.4 mini" },
   { value: "gpt-5.4", label: "GPT-5.4" },
+  { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (preview)" },
+  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)" },
   { value: "gpt-4.1", label: "GPT-4.1" },
   { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
   { value: "", label: "Server default" },
@@ -96,7 +106,7 @@ export interface AIChartModalProps {
   title?: string;
   /** Whitelabel: empty-state heading (default: "Create a Visualization") */
   createTitle?: string;
-  /** Model dropdown options (`value` = OpenAI model id, empty string = server default). */
+  /** Model dropdown options (`value` = bare model id; empty string = server default). Server maps tiers when using Gemini. */
   chartModelOptions?: AIChartModelOption[];
   /** Initial selected model `value` when the modal opens (default: `gpt-5.4-mini`) */
   defaultChartModel?: string;
@@ -198,13 +208,14 @@ function useAiChartModalNarrowLayout() {
 }
 
 /**
- * Mastra stream resolves models like AI Gateway (`provider/model`, e.g. `openai/gpt-5.4-mini`).
- * The v2 SQL pipeline uses bare OpenAI ids via @ai-sdk/openai — keep those unchanged for generate-chart-with-sql.
+ * Mastra stream expects AI Gateway–style `provider/model` (e.g. `openai/gpt-5.4-mini`, `google/gemini-3-flash-preview`).
+ * Bare Gemini ids are prefixed with `google/` so the agent uses GOOGLE_GENERATIVE_AI_API_KEY when that provider is active.
  */
 function normalizeModelForMastraStreamBody(model: string): string {
   const t = model.trim();
   if (!t) return "";
   if (t.includes("/")) return t;
+  if (/^gemini/i.test(t)) return `google/${t}`;
   return `openai/${t}`;
 }
 
@@ -1119,7 +1130,7 @@ export function AIChartModal({
       setMessages((prev) => [
         ...prev,
         {
-          id: `error-${Date.now()}`,
+          id: createMessageId("error"),
           role: "assistant",
           content: "Select exactly one datasource before generating a visualization with the native Mastra agent.",
           timestamp: new Date(),
@@ -1129,7 +1140,7 @@ export function AIChartModal({
     }
 
     const userMessage: Message = {
-      id: `user-${Date.now()}`,
+      id: createMessageId("user"),
       role: "user",
       content: messageText,
       timestamp: new Date(),
@@ -1149,8 +1160,8 @@ export function AIChartModal({
 
     try {
       if (useMastraStream) {
-        const threadId = querypanelSessionId || `chart-${dashboardId}-${Date.now()}`;
-        const currentAssistantMessageId = `assistant-${Date.now()}`;
+        const threadId = querypanelSessionId || createMessageId(`chart-${dashboardId}`);
+        const currentAssistantMessageId = createMessageId("assistant");
         assistantMessageId = currentAssistantMessageId;
         setActiveAssistantMessageId(currentAssistantMessageId);
         const resourceId = `dashboard-${organizationId}-${dashboardId}`;
@@ -1229,7 +1240,7 @@ export function AIChartModal({
                 (event) => event.toolName === toolName && event.status === "running"
               );
               if (existingRunning) return prev;
-              const id = `tool-${toolName}-${Date.now()}`;
+              const id = createMessageId(`tool-${toolName}`);
               const next: ToolEvent[] = [
                 ...prev,
                 { id, toolName, status: "running", startedAt: Date.now() },
@@ -1577,7 +1588,7 @@ export function AIChartModal({
         const data = await response.json();
 
         const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
+          id: createMessageId("assistant"),
           role: "assistant",
           content: data.message || "I've created a chart for you!",
           chartSpec: data.chartSpec,
@@ -1591,12 +1602,13 @@ export function AIChartModal({
         setTransientStatus(null);
         if (data.sessionId) setQuerypanelSessionId(data.sessionId);
       }
-    } catch {
+    } catch (err) {
+      console.error("[AIChartModal] chart generation failed", err);
       setTransientStatus(null);
       setMessages((prev) =>
         prev.filter((message) => message.id !== assistantMessageId)
       );
-      const errorMessageId = `error-${Date.now()}`;
+      const errorMessageId = createMessageId("error");
       setToolEvents((current) => {
         const finalised = current.map((event) =>
           event.status === "running" ? { ...event, status: "failed" as const, endedAt: Date.now(), error: "Failed" } : event
