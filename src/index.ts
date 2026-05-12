@@ -1,5 +1,7 @@
-// Modal and other component styles (so hosts get CSS when they import the SDK)
+// Modal, BlockNote editor, and other component styles (hosts get CSS when they import the SDK)
 import "./components/AIChartModal.css";
+import "@blocknote/core/fonts/inter.css";
+import "@blocknote/mantine/style.css";
 
 // Components
 export { VizSpecRenderer, type VizSpecRendererProps, type VizSpec } from "./components/VizSpecRenderer";
