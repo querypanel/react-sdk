@@ -1003,6 +1003,8 @@ export function AIChartModal({
   const mobileSettingsDoneRef = useRef<HTMLButtonElement>(null);
   const mobileSettingsTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileSheetWasOpenRef = useRef(false);
+  /** Prevents duplicate error rows when catch runs more than once (e.g. React Strict Mode). */
+  const streamFailureHandledRef = useRef(false);
   const isNarrowLayout = useAiChartModalNarrowLayout();
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
@@ -1126,6 +1128,7 @@ export function AIChartModal({
   const handleSendMessage = async (prompt?: string) => {
     const messageText = prompt || inputValue.trim();
     if (!messageText || isLoading) return;
+    streamFailureHandledRef.current = false;
     if (useMastraStream && selectedDatasourceIds.length !== 1) {
       setMessages((prev) => [
         ...prev,
@@ -1605,44 +1608,37 @@ export function AIChartModal({
     } catch (err) {
       console.error("[AIChartModal] chart generation failed", err);
       setTransientStatus(null);
-      setMessages((prev) =>
-        prev.filter((message) => message.id !== assistantMessageId)
-      );
-      const errorMessageId = createMessageId("error");
-      setToolEvents((current) => {
-        const finalised = current.map((event) =>
-          event.status === "running" ? { ...event, status: "failed" as const, endedAt: Date.now(), error: "Failed" } : event
-        );
-        if (finalised.length > 0) {
-          setMessages((prev) => {
-            const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
-            return [
-              ...withoutPlaceholder,
-              {
-                id: errorMessageId,
-                role: "assistant" as const,
-                content: "Sorry, I couldn't generate that chart. Please try again or rephrase your request.",
-                timestamp: new Date(),
-                toolEvents: finalised,
-              },
-            ];
-          });
-        } else {
-          setMessages((prev) => {
-            const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
-            return [
-              ...withoutPlaceholder,
-              {
-                id: errorMessageId,
-                role: "assistant" as const,
-                content: "Sorry, I couldn't generate that chart. Please try again or rephrase your request.",
-                timestamp: new Date(),
-              },
-            ];
-          });
-        }
-        return [];
-      });
+      if (!streamFailureHandledRef.current) {
+        streamFailureHandledRef.current = true;
+        const errorMessageId = createMessageId("error");
+        const errorContent =
+          "Sorry, I couldn't generate that chart. Please try again or rephrase your request.";
+        let finalisedToolEvents: ToolEvent[] = [];
+        setToolEvents((current) => {
+          finalisedToolEvents = current.map((event) =>
+            event.status === "running"
+              ? { ...event, status: "failed" as const, endedAt: Date.now(), error: "Failed" }
+              : event
+          );
+          return [];
+        });
+        setMessages((prev) => {
+          const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
+          if (withoutPlaceholder.some((m) => m.id === errorMessageId)) {
+            return withoutPlaceholder;
+          }
+          return [
+            ...withoutPlaceholder,
+            {
+              id: errorMessageId,
+              role: "assistant" as const,
+              content: errorContent,
+              timestamp: new Date(),
+              ...(finalisedToolEvents.length > 0 ? { toolEvents: finalisedToolEvents } : {}),
+            },
+          ];
+        });
+      }
     } finally {
       setIsLoading(false);
     }
