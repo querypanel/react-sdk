@@ -82,16 +82,59 @@ function normalizeWideSingleRow(
 const VALUE_KEYS = ["value", "count", "total", "amount", "metric", "number"];
 const LABEL_KEYS = ["label", "name", "category", "type", "group", "status"];
 
-function findValueKey(keys: string[], sampleRow: Record<string, unknown>) {
+export type JsonRenderChartFieldHints = {
+  labelField?: string | null;
+  valueField?: string | null;
+};
+
+function isChartDataPoint(row: Record<string, unknown>) {
+  return (
+    "label" in row &&
+    "value" in row &&
+    toChartLabel(row.label) !== null &&
+    toChartNumber(row.value) !== null
+  );
+}
+
+function isPreformattedChartData(rows: Array<Record<string, unknown>>) {
+  return rows.length > 0 && rows.every(isChartDataPoint);
+}
+
+function columnMaxMagnitude(rows: Array<Record<string, unknown>>, key: string) {
+  let max = 0;
+  for (const row of rows) {
+    const numeric = toChartNumber(row[key]);
+    if (numeric === null) continue;
+    const magnitude = Math.abs(numeric);
+    if (magnitude > max) max = magnitude;
+  }
+  return max;
+}
+
+function findValueKey(
+  keys: string[],
+  rows: Array<Record<string, unknown>>,
+  sampleRow: Record<string, unknown>
+) {
+  const numericKeys = keys.filter((key) => toChartNumber(sampleRow[key]) !== null);
+  if (numericKeys.length === 0) return null;
+  if (numericKeys.length === 1) return numericKeys[0];
+
   for (const key of VALUE_KEYS) {
-    if (keys.includes(key) && toChartNumber(sampleRow[key]) !== null) return key;
+    if (numericKeys.includes(key)) return key;
   }
 
-  for (const key of keys) {
-    if (toChartNumber(sampleRow[key]) !== null) return key;
+  // Prefer the measure column (e.g. total_usage) over auxiliary counts (e.g. tenant_count).
+  let bestKey = numericKeys[0]!;
+  let bestMax = columnMaxMagnitude(rows, bestKey);
+  for (const key of numericKeys.slice(1)) {
+    const max = columnMaxMagnitude(rows, key);
+    if (max > bestMax) {
+      bestKey = key;
+      bestMax = max;
+    }
   }
-
-  return null;
+  return bestKey;
 }
 
 function findLabelKey(
@@ -99,6 +142,12 @@ function findLabelKey(
   sampleRow: Record<string, unknown>,
   valueKey: string | null
 ) {
+  for (const key of keys) {
+    if (key === valueKey) continue;
+    if (toChartNumber(sampleRow[key]) !== null) continue;
+    if (toChartLabel(sampleRow[key]) !== null) return key;
+  }
+
   for (const key of LABEL_KEYS) {
     if (key !== valueKey && keys.includes(key)) return key;
   }
@@ -110,10 +159,39 @@ function findLabelKey(
   return null;
 }
 
+function resolveChartFieldHints(
+  fields: string[],
+  hints?: JsonRenderChartFieldHints
+) {
+  const labelField = hints?.labelField?.trim() || null;
+  const valueField = hints?.valueField?.trim() || null;
+
+  return {
+    labelField:
+      labelField && fields.includes(labelField)
+        ? labelField
+        : null,
+    valueField:
+      valueField && fields.includes(valueField)
+        ? valueField
+        : null,
+  };
+}
+
 export function normalizeRowsForJsonRenderChart(
-  rows: Array<Record<string, unknown>>
+  rows: Array<Record<string, unknown>>,
+  hints?: JsonRenderChartFieldHints
 ) {
   if (rows.length === 0) return [];
+
+  if (isPreformattedChartData(rows)) {
+    return rows
+      .map((point) => ({
+        label: toChartLabel(point.label) ?? "",
+        value: toChartNumber(point.value) ?? 0,
+      }))
+      .filter((point) => point.label.length > 0);
+  }
 
   if (rows.length === 1) {
     const wide = normalizeWideSingleRow(rows[0] ?? {});
@@ -123,8 +201,26 @@ export function normalizeRowsForJsonRenderChart(
   }
 
   const keys = Object.keys(rows[0] ?? {});
-  const valueKey = findValueKey(keys, rows[0] ?? {});
-  const labelKey = findLabelKey(keys, rows[0] ?? {}, valueKey);
+  const { labelField, valueField } = resolveChartFieldHints(keys, hints);
+
+  if (labelField && valueField) {
+    return rows
+      .map((point, index) => {
+        const value = toChartNumber(point[valueField]);
+        if (value === null) return null;
+        return {
+          label: toChartLabel(point[labelField]) ?? `Item ${index + 1}`,
+          value,
+        };
+      })
+      .filter(
+        (point): point is { label: string; value: number } => point !== null
+      );
+  }
+
+  const sampleRow = rows[0] ?? {};
+  const valueKey = findValueKey(keys, rows, sampleRow);
+  const labelKey = findLabelKey(keys, sampleRow, valueKey);
 
   return rows
     .map((point, index) => {
@@ -138,6 +234,31 @@ export function normalizeRowsForJsonRenderChart(
     .filter(
       (point): point is { label: string; value: number } => point !== null
     );
+}
+
+function resolvePersistedChartFieldHints(
+  props: Record<string, unknown>,
+  fields: string[]
+) {
+  const explicit = resolveChartFieldHints(fields, {
+    labelField:
+      typeof props.labelField === "string" ? props.labelField : null,
+    valueField:
+      typeof props.valueField === "string" ? props.valueField : null,
+  });
+  if (explicit.labelField && explicit.valueField) {
+    return explicit;
+  }
+
+  const xLabel =
+    typeof props.xLabel === "string" ? props.xLabel.trim() : null;
+  const yLabel =
+    typeof props.yLabel === "string" ? props.yLabel.trim() : null;
+
+  return resolveChartFieldHints(fields, {
+    labelField: explicit.labelField ?? (xLabel && fields.includes(xLabel) ? xLabel : null),
+    valueField: explicit.valueField ?? (yLabel && fields.includes(yLabel) ? yLabel : null),
+  });
 }
 
 export function isJsonRenderSpecLike(spec: unknown): spec is JsonRenderSpec {
@@ -277,6 +398,7 @@ export function injectRowsIntoJsonRenderSpec(
     root.element.type === "LineChart" ||
     root.element.type === "PieChart"
   ) {
+    const fieldHints = resolvePersistedChartFieldHints(props, headers);
     return {
       ...(spec as Record<string, unknown>),
       elements: {
@@ -285,7 +407,7 @@ export function injectRowsIntoJsonRenderSpec(
           ...root.element,
           props: {
             ...props,
-            data: normalizeRowsForJsonRenderChart(rows),
+            data: normalizeRowsForJsonRenderChart(rows, fieldHints),
           },
         },
       },

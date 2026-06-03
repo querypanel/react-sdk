@@ -17,7 +17,18 @@ import {
 } from "recharts";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useGenerativeUIConfig } from "./provider";
-import { normalizeRowsForJsonRenderChart } from "./specData";
+import {
+  normalizeRowsForJsonRenderChart,
+  type JsonRenderChartFieldHints,
+} from "./specData";
+
+type ChartSeriesProps = {
+  resultId?: string | null;
+  title?: string | null;
+  data?: { label: string; value: number }[];
+  labelField?: string | null;
+  valueField?: string | null;
+};
 
 const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
@@ -337,11 +348,7 @@ export function DataTable({
 export function BarChartComponent({
   props,
 }: {
-  props: {
-    resultId?: string | null;
-    title?: string | null;
-    data?: { label: string; value: number }[];
-  };
+  props: ChartSeriesProps;
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
@@ -353,7 +360,10 @@ export function BarChartComponent({
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source);
+  const chartData = normalizeRowsForJsonRenderChart(source, {
+    labelField: props.labelField,
+    valueField: props.valueField,
+  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -384,11 +394,7 @@ export function BarChartComponent({
 export function LineChartComponent({
   props,
 }: {
-  props: {
-    resultId?: string | null;
-    title?: string | null;
-    data?: { label: string; value: number }[];
-  };
+  props: ChartSeriesProps;
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
@@ -400,7 +406,10 @@ export function LineChartComponent({
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source);
+  const chartData = normalizeRowsForJsonRenderChart(source, {
+    labelField: props.labelField,
+    valueField: props.valueField,
+  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -437,11 +446,7 @@ export function LineChartComponent({
 export function PieChartComponent({
   props,
 }: {
-  props: {
-    resultId?: string | null;
-    title?: string | null;
-    data?: { label: string; value: number }[];
-  };
+  props: ChartSeriesProps;
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
@@ -453,7 +458,10 @@ export function PieChartComponent({
   if (error) return <MessageState title={props.title} message={error} error />;
 
   const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source);
+  const chartData = normalizeRowsForJsonRenderChart(source, {
+    labelField: props.labelField,
+    valueField: props.valueField,
+  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
