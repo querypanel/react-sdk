@@ -42,6 +42,18 @@ import {
 } from "recharts";
 import { DatasourceSelector } from "./DatasourceSelector";
 import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
+import { createMastraChartChunkHandler } from "./ai-chart-modal/applyMastraChartChunk";
+import {
+  consumeMastraChartStream,
+  formatToolStatus,
+  MastraStreamTerminalError,
+} from "./ai-chart-modal/mastraChartStream";
+import type {
+  MastraChartMessage,
+  SqlExecutionArtifact,
+  ToolEvent,
+  ToolEventStatus,
+} from "./ai-chart-modal/types";
 import { formatTimestampForDisplay } from "../utils/formatters";
 import "./AIChartModal.css";
 
@@ -112,46 +124,7 @@ export interface AIChartModalProps {
   defaultChartModel?: string;
 }
 
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  kind?: "status" | "chart" | "action" | "explanation";
-  sourceAssistantId?: string;
-  chartSpec?: unknown;
-  jsonRenderSpec?: unknown;
-  resultId?: string;
-  presentationKind?: "chart" | "table" | "metric";
-  queryResult?: SqlExecutionArtifact;
-  rationale?: string;
-  sql?: string;
-  sqlParams?: Record<string, unknown> | null;
-  timestamp: Date;
-  toolEvents?: ToolEvent[];
-};
-
-type MastraStreamChunk = {
-  type?: string;
-  textDelta?: string;
-  toolName?: string;
-  result?: unknown;
-  payload?: Record<string, unknown>;
-  response?: {
-    messages?: Array<{
-      role?: string;
-      content?: Array<{
-        type?: string;
-        text?: string;
-        result?: unknown;
-        toolName?: string;
-      }>;
-    }>;
-    uiMessages?: Array<{
-      role?: string;
-      metadata?: Record<string, unknown>;
-    }>;
-  };
-};
+type Message = MastraChartMessage;
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -160,26 +133,6 @@ const GENERIC_ASSISTANT_SUMMARIES = new Set([
   "I've prepared a table for you.",
   "I processed your request.",
 ]);
-
-type ToolEventStatus = "running" | "succeeded" | "failed";
-type ToolEvent = {
-  id: string;
-  toolName: string;
-  status: ToolEventStatus;
-  startedAt: number;
-  endedAt?: number;
-  error?: string;
-};
-
-type SqlExecutionArtifact = {
-  resultId?: string;
-  fields: string[];
-  rows: Array<Record<string, unknown>>;
-  rowCount: number;
-  database?: string;
-  dialect?: string;
-  datasource?: { id: string; name: string; dialect: string };
-};
 
 function isMastraAgentStreamUrl(url: string) {
   return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
@@ -217,47 +170,6 @@ function normalizeModelForMastraStreamBody(model: string): string {
   if (t.includes("/")) return t;
   if (/^gemini/i.test(t)) return `google/${t}`;
   return `openai/${t}`;
-}
-
-function mapGeneratedParams(params: unknown) {
-  if (!Array.isArray(params)) {
-    return null;
-  }
-
-  return params.reduce<Record<string, unknown>>((acc, param, index) => {
-    if (!param || typeof param !== "object") {
-      return acc;
-    }
-
-    const record = param as Record<string, unknown>;
-    const value = record.value;
-    if (value === undefined) {
-      return acc;
-    }
-
-    const key =
-      (typeof record.name === "string" && record.name.trim()) ||
-      (typeof record.placeholder === "string" && record.placeholder.trim()) ||
-      (typeof record.position === "number" && String(record.position)) ||
-      String(index + 1);
-
-    acc[key.replace(/[{}]/g, "").replace(/(.+):.*$/, "$1").replace(/^[:$]/, "").trim()] = value;
-    return acc;
-  }, {});
-}
-
-function normalizeSqlParams(
-  params: unknown
-): Record<string, unknown> | null {
-  if (Array.isArray(params)) {
-    return mapGeneratedParams(params);
-  }
-
-  if (params && typeof params === "object" && !Array.isArray(params)) {
-    return params as Record<string, unknown>;
-  }
-
-  return null;
 }
 
 function getLatestResultId(messages: Message[]) {
@@ -300,59 +212,6 @@ function shouldReuseLatestResultId(prompt: string) {
   return FOLLOW_UP_VISUALIZATION_PATTERNS.some((pattern) =>
     pattern.test(normalizedPrompt)
   );
-}
-
-function extractAssistantTextFromChunk(chunk: MastraStreamChunk) {
-  const assistantMessage = chunk.response?.messages?.find((message) => message.role === "assistant");
-  const textPart = assistantMessage?.content?.find((part) => part.type === "text" && typeof part.text === "string");
-  return textPart?.text;
-}
-
-function extractToolResultsFromChunk(chunk: MastraStreamChunk) {
-  const results: Array<{ toolName: string; result: Record<string, unknown> }> = [];
-
-  for (const message of chunk.response?.messages ?? []) {
-    for (const part of message.content ?? []) {
-      if (
-        typeof part.toolName === "string" &&
-        part.toolName.trim().length > 0 &&
-        part.result &&
-        typeof part.result === "object" &&
-        !Array.isArray(part.result)
-      ) {
-        results.push({
-          toolName: part.toolName.trim(),
-          result: part.result as Record<string, unknown>,
-        });
-      }
-    }
-  }
-
-  return results;
-}
-
-function formatToolStatus(toolName: string) {
-  switch (toolName) {
-    case "search_schema":
-    case "search_relevant_schema":
-      return "Searching schema";
-    case "generate_sql":
-      return "Generating SQL";
-    case "execute_sql":
-      return "Running SQL";
-    case "generate_visualization":
-      return "Building visualization";
-    default:
-      return toolName
-        .split("_")
-        .filter(Boolean)
-        .map((part, index) =>
-          index === 0
-            ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase().replace(/s$/, "ing")
-            : part.toLowerCase()
-        )
-        .join(" ");
-  }
 }
 
 function isNumericChartValue(value: unknown): boolean {
@@ -462,32 +321,6 @@ function withVizSpecDataFallback(
   } catch {
     return chartSpec;
   }
-}
-
-function normalizeMastraChunk(raw: MastraStreamChunk): MastraStreamChunk {
-  const payload = raw.payload;
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const merged = { ...raw, ...payload } as MastraStreamChunk;
-    delete (merged as { payload?: unknown }).payload;
-    if (
-      merged.type === "text-delta" &&
-      typeof merged.textDelta !== "string" &&
-      typeof (payload as { text?: unknown }).text === "string"
-    ) {
-      merged.textDelta = (payload as { text: string }).text;
-    }
-    if (
-      merged.type === "step-finish" &&
-      !merged.response &&
-      Array.isArray((payload as { messages?: unknown }).messages)
-    ) {
-      merged.response = {
-        messages: (payload as { messages: NonNullable<MastraStreamChunk["response"]>["messages"] }).messages,
-      };
-    }
-    return merged;
-  }
-  return raw;
 }
 
 function getToolEventLabel(toolName: string) {
@@ -1215,12 +1048,9 @@ export function AIChartModal({
           throw new Error("Failed to generate chart");
         }
 
-        const decoder = new TextDecoder();
-        const reader = response.body.getReader();
-        let buffer = "";
-        let streamDone = false;
-
-        const updateAssistantMessage = (updates: Partial<Message> | ((current: Message) => Message)) => {
+        const updateAssistantMessage = (
+          updates: Partial<Message> | ((current: Message) => Message),
+        ) => {
           setMessages((prev) =>
             prev.map((message) => {
               if (message.id !== currentAssistantMessageId) {
@@ -1228,316 +1058,22 @@ export function AIChartModal({
               }
 
               return typeof updates === "function" ? updates(message) : { ...message, ...updates };
-            })
+            }),
           );
         };
 
-        const applyMastraChunk = (rawChunk: MastraStreamChunk) => {
-          const chunk = normalizeMastraChunk(rawChunk);
-
-          if (typeof chunk.toolName === "string" && chunk.toolName.trim().length > 0) {
-            setTransientStatus(formatToolStatus(chunk.toolName));
-            const toolName = chunk.toolName.trim();
-            setToolEvents((prev) => {
-              const existingRunning = prev.find(
-                (event) => event.toolName === toolName && event.status === "running"
-              );
-              if (existingRunning) return prev;
-              const id = createMessageId(`tool-${toolName}`);
-              const next: ToolEvent[] = [
-                ...prev,
-                { id, toolName, status: "running", startedAt: Date.now() },
-              ];
-              return next;
-            });
-          }
-
-          const chunkError =
-            (chunk as { error?: unknown }).error && typeof (chunk as { error?: unknown }).error === "object"
-              ? ((chunk as { error?: { message?: unknown } }).error?.message ?? null)
-              : null;
-          if (typeof chunkError === "string" && chunkError.trim().length > 0) {
-            setTransientStatus(null);
-            const toolName = typeof chunk.toolName === "string" ? chunk.toolName : undefined;
-            setToolEvents((prev) =>
-              prev.map((event) =>
-                toolName && event.toolName === toolName && event.status === "running"
-                  ? { ...event, status: "failed", endedAt: Date.now(), error: chunkError.trim() }
-                  : event
-              )
-            );
-          }
-
-          const applyToolResult = (toolName: string, result: Record<string, unknown>) => {
-            if (toolName === "generate_sql") {
-              console.log("[AIChartModal] generated sql", {
-                sql: typeof result.sql === "string" ? result.sql : null,
-                params: mapGeneratedParams(result.params),
-              });
-              setToolEvents((prev) =>
-                prev.map((event) =>
-                  event.toolName === "generate_sql" && event.status === "running"
-                    ? { ...event, status: "succeeded", endedAt: Date.now() }
-                    : event
-                )
-              );
-              updateAssistantMessage((current) => ({
-                ...current,
-                sql: typeof result.sql === "string" ? result.sql : current.sql,
-                rationale: typeof result.rationale === "string" ? result.rationale : current.rationale,
-                sqlParams: mapGeneratedParams(result.params) ?? current.sqlParams ?? null,
-              }));
-              return true;
-            }
-
-            if (toolName === "execute_sql") {
-              const rows = Array.isArray(result.rows)
-                ? (result.rows as Array<Record<string, unknown>>)
-                : [];
-              const fields = Array.isArray(result.fields) ? (result.fields as string[]) : [];
-              const queryResult: SqlExecutionArtifact = {
-                resultId:
-                  typeof result.resultId === "string" ? result.resultId : undefined,
-                rows,
-                fields,
-                rowCount: typeof result.rowCount === "number" ? result.rowCount : rows.length,
-                database: typeof result.database === "string" ? result.database : undefined,
-                dialect: typeof result.dialect === "string" ? result.dialect : undefined,
-                datasource:
-                  result.datasource && typeof result.datasource === "object"
-                    ? (result.datasource as { id: string; name: string; dialect: string })
-                    : undefined,
-              };
-              console.log("[AIChartModal] query data", {
-                rowCount: queryResult.rowCount,
-                fields,
-                rows,
-              });
-              setToolEvents((prev) =>
-                prev.map((event) =>
-                  event.toolName === "execute_sql" && event.status === "running"
-                    ? { ...event, status: "succeeded", endedAt: Date.now() }
-                    : event
-                )
-              );
-              setLastSqlExecution(queryResult);
-              updateAssistantMessage((current) => ({
-                ...current,
-                resultId: queryResult.resultId ?? current.resultId,
-                queryResult,
-              }));
-              return true;
-            }
-
-            if (toolName === "generate_visualization") {
-              setTransientStatus(null);
-              setToolEvents((prev) =>
-                prev.map((event) =>
-                  event.toolName === "generate_visualization" && event.status === "running"
-                    ? { ...event, status: "succeeded", endedAt: Date.now() }
-                    : event
-                )
-              );
-              const chartSpec = result.spec ?? null;
-              const jsonRenderSpec = result.jsonRenderSpec ?? null;
-              const resultId =
-                typeof result.resultId === "string" ? result.resultId : undefined;
-              const presentationKind =
-                result.presentationKind === "chart" ||
-                result.presentationKind === "table" ||
-                result.presentationKind === "metric"
-                  ? result.presentationKind
-                  : undefined;
-              const sql = typeof result.sql === "string" ? result.sql : undefined;
-              const sqlParams = normalizeSqlParams(result.params) ?? null;
-              const queryResult: SqlExecutionArtifact | undefined = Array.isArray(result.previewRows)
-                ? {
-                    resultId,
-                    rows: result.previewRows as Array<Record<string, unknown>>,
-                    fields: Array.isArray(result.fields) ? (result.fields as string[]) : [],
-                    rowCount:
-                      typeof result.rowCount === "number"
-                        ? result.rowCount
-                        : (result.previewRows as Array<Record<string, unknown>>).length,
-                    database: typeof result.database === "string" ? result.database : undefined,
-                    dialect: typeof result.dialect === "string" ? result.dialect : undefined,
-                    datasource: undefined,
-                  }
-                : undefined;
-              const rationale =
-                typeof result.rationale === "string" && result.rationale.trim().length > 0
-                  ? result.rationale
-                  : typeof result.notes === "string" && result.notes.trim().length > 0
-                    ? result.notes
-                    : undefined;
-
-              const chartMessage: Message = {
-                id: `${currentAssistantMessageId}-chart`,
-                role: "assistant",
-                kind: "chart",
-                sourceAssistantId: currentAssistantMessageId,
-                content: "",
-                chartSpec,
-                jsonRenderSpec,
-                resultId,
-                presentationKind,
-                sql,
-                sqlParams,
-                queryResult,
-                rationale,
-                timestamp: new Date(),
-              };
-
-              const actionMessage: Message = {
-                id: `${currentAssistantMessageId}-action`,
-                role: "assistant",
-                kind: "action",
-                sourceAssistantId: currentAssistantMessageId,
-                content: "Add to dashboard",
-                chartSpec,
-                jsonRenderSpec,
-                resultId,
-                presentationKind,
-                sql,
-                sqlParams,
-                queryResult,
-                rationale,
-                timestamp: new Date(),
-              };
-
-              setMessages((prev) => {
-                const withoutStatus = prev.filter((message) => message.id !== currentAssistantMessageId);
-                const chartIndex = withoutStatus.findIndex((message) => message.id === chartMessage.id);
-                const actionIndex = withoutStatus.findIndex((message) => message.id === actionMessage.id);
-
-                if (chartIndex !== -1 || actionIndex !== -1) {
-                  return withoutStatus.map((message) => {
-                    if (message.id === chartMessage.id) return { ...message, ...chartMessage };
-                    if (message.id === actionMessage.id) return { ...message, ...actionMessage };
-                    return message;
-                  });
-                }
-
-                const insertAt = Math.min(
-                  prev.findIndex((message) => message.id === currentAssistantMessageId),
-                  withoutStatus.length
-                );
-                const safeInsertAt = insertAt >= 0 ? insertAt : withoutStatus.length;
-                const next = [...withoutStatus];
-                next.splice(safeInsertAt, 0, chartMessage, actionMessage);
-                return next;
-              });
-
-              return true;
-            }
-
-            return false;
-          };
-
-          if (chunk.type === "text-delta" && chunk.textDelta) {
-            setTransientStatus(null);
-            updateAssistantMessage((current) => ({
-              ...current,
-              content: `${current.content}${chunk.textDelta}`,
-            }));
-            return;
-          }
-
-          if (chunk.type === "tool-result" && chunk.toolName === "generate_sql" && chunk.result && typeof chunk.result === "object") {
-            applyToolResult("generate_sql", chunk.result as Record<string, unknown>);
-            return;
-          }
-
-          if (chunk.type === "tool-result" && chunk.toolName === "execute_sql" && chunk.result && typeof chunk.result === "object") {
-            applyToolResult("execute_sql", chunk.result as Record<string, unknown>);
-            return;
-          }
-
-          if (chunk.type === "tool-result" && chunk.toolName === "generate_visualization" && chunk.result && typeof chunk.result === "object") {
-            applyToolResult("generate_visualization", chunk.result as Record<string, unknown>);
-            return;
-          }
-
-          if (chunk.type === "step-finish") {
-            setTransientStatus(null);
-            setToolEvents((prev) =>
-              prev.map((event) =>
-                event.status === "running" ? { ...event, status: "succeeded", endedAt: Date.now() } : event
-              )
-            );
-            for (const embeddedResult of extractToolResultsFromChunk(chunk)) {
-              applyToolResult(embeddedResult.toolName, embeddedResult.result);
-            }
-            const assistantText = extractAssistantTextFromChunk(chunk);
-            if (assistantText && assistantText.trim().length > 0) {
-              const explanationMessage: Message = {
-                id: `${currentAssistantMessageId}-explanation`,
-                role: "assistant",
-                kind: "explanation",
-                sourceAssistantId: currentAssistantMessageId,
-                content: assistantText,
-                timestamp: new Date(),
-              };
-
-              setMessages((prev) => {
-                const withoutStatus = prev.filter((message) => message.id !== currentAssistantMessageId);
-                const existingIndex = withoutStatus.findIndex(
-                  (message) => message.id === explanationMessage.id
-                );
-                if (existingIndex !== -1) {
-                  return withoutStatus.map((message) =>
-                    message.id === explanationMessage.id ? { ...message, ...explanationMessage } : message
-                  );
-                }
-
-                const anchorIndex = withoutStatus.reduce((max, message, index) => {
-                  if (message.sourceAssistantId === currentAssistantMessageId) {
-                    return index;
-                  }
-                  return max;
-                }, -1);
-                const insertAt = anchorIndex >= 0 ? anchorIndex + 1 : withoutStatus.length;
-                const next = [...withoutStatus];
-                next.splice(insertAt, 0, explanationMessage);
-                return next;
-              });
-            }
-          }
-        };
-
-        while (!streamDone) {
-          const { done, value } = await reader.read();
-          streamDone = done;
-          buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-
-          let boundaryIndex = buffer.indexOf("\n\n");
-          while (boundaryIndex !== -1) {
-            const rawEvent = buffer.slice(0, boundaryIndex);
-            buffer = buffer.slice(boundaryIndex + 2);
-            boundaryIndex = buffer.indexOf("\n\n");
-
-            const payload = rawEvent
-              .split("\n")
-              .filter((line) => line.startsWith("data:"))
-              .map((line) => line.slice(5).trim())
-              .join("\n");
-
-            if (!payload) {
-              continue;
-            }
-
-            if (payload === "[DONE]") {
-              streamDone = true;
-              break;
-            }
-
-            try {
-              applyMastraChunk(JSON.parse(payload) as MastraStreamChunk);
-            } catch (error) {
-              console.error("Failed to parse Mastra stream chunk:", error);
-            }
-          }
-        }
+        await consumeMastraChartStream(
+          response.body,
+          createMastraChartChunkHandler({
+            assistantMessageId: currentAssistantMessageId,
+            createMessageId,
+            updateAssistantMessage,
+            setTransientStatus,
+            setToolEvents,
+            setMessages,
+            setLastSqlExecution,
+          }),
+        );
 
         updateAssistantMessage((current) => ({
           ...current,
@@ -1611,7 +1147,12 @@ export function AIChartModal({
       if (!streamFailureHandledRef.current) {
         streamFailureHandledRef.current = true;
         const errorMessageId = createMessageId("error");
+        const terminalMessage =
+          err instanceof MastraStreamTerminalError && err.message.trim().length > 0
+            ? err.message.trim()
+            : null;
         const errorContent =
+          terminalMessage ??
           "Sorry, I couldn't generate that chart. Please try again or rephrase your request.";
         let finalisedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {

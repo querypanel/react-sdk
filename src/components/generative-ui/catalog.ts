@@ -45,6 +45,10 @@ export const catalog: Catalog = defineCatalog(schema, {
         resultId: z.string().nullable().optional(),
         title: z.string().nullable().optional(),
         data: z.array(dataPointSchema).optional(),
+        /** SQL column for categorical axis (persisted across save/reload). */
+        labelField: z.string().nullable().optional(),
+        /** SQL column for numeric axis (persisted across save/reload). */
+        valueField: z.string().nullable().optional(),
         xLabel: z.string().nullable().optional(),
         yLabel: z.string().nullable().optional(),
       }),
@@ -60,6 +64,8 @@ export const catalog: Catalog = defineCatalog(schema, {
         resultId: z.string().nullable().optional(),
         title: z.string().nullable().optional(),
         data: z.array(dataPointSchema).optional(),
+        labelField: z.string().nullable().optional(),
+        valueField: z.string().nullable().optional(),
         xLabel: z.string().nullable().optional(),
         yLabel: z.string().nullable().optional(),
       }),
@@ -75,6 +81,8 @@ export const catalog: Catalog = defineCatalog(schema, {
         resultId: z.string().nullable().optional(),
         title: z.string().nullable().optional(),
         data: z.array(dataPointSchema).optional(),
+        labelField: z.string().nullable().optional(),
+        valueField: z.string().nullable().optional(),
       }),
       slots: [] as string[],
       description: "A pie chart visualizing proportional data. Inline data points are preferred; resultId is for backward compatibility only.",
