@@ -13,12 +13,14 @@ export interface VizSpecRendererProps {
   spec: VizSpec;
   data: Array<Record<string, unknown>>;
   colors: ThemeColors;
+  /** Chart height; pass "100%" when the parent has a fixed height. Defaults to 400px. */
+  chartHeight?: number | string;
 }
 
-export function VizSpecRenderer({ spec, data, colors }: VizSpecRendererProps) {
+export function VizSpecRenderer({ spec, data, colors, chartHeight }: VizSpecRendererProps) {
   switch (spec.kind) {
     case "chart":
-      return <VizSpecChart spec={spec} data={data} colors={colors} />;
+      return <VizSpecChart spec={spec} data={data} colors={colors} height={chartHeight} />;
     case "table":
       return <VizSpecTable spec={spec} data={data} colors={colors} />;
     case "metric":

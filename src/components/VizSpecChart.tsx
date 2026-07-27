@@ -74,9 +74,14 @@ export interface VizSpecChartProps {
   spec: ChartSpec;
   data: Array<Record<string, unknown>>;
   colors: ThemeColors;
+  /**
+   * Chart height. Use "100%" when the parent container has a fixed height
+   * (e.g. dashboard chart blocks); defaults to 400px for standalone usage.
+   */
+  height?: number | string;
 }
 
-export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
+export function VizSpecChart({ spec, data, colors, height = 400 }: VizSpecChartProps) {
   const { chartType } = spec.encoding;
 
   // Apply limit if specified
@@ -92,18 +97,18 @@ export function VizSpecChart({ spec, data, colors }: VizSpecChartProps) {
 
   switch (chartType) {
     case "column":
-      return renderBarChart(spec, normalizedData, colors, commonMargin);
+      return renderBarChart(spec, normalizedData, colors, commonMargin, height);
     case "bar":
       // Keep parity with admin chart block, where "bar" is rendered vertically.
-      return renderColumnChart(spec, normalizedData, colors, commonMargin);
+      return renderColumnChart(spec, normalizedData, colors, commonMargin, height);
     case "line":
-      return renderLineChart(spec, normalizedData, colors, commonMargin);
+      return renderLineChart(spec, normalizedData, colors, commonMargin, height);
     case "area":
-      return renderAreaChart(spec, normalizedData, colors, commonMargin);
+      return renderAreaChart(spec, normalizedData, colors, commonMargin, height);
     case "scatter":
-      return renderScatterChart(spec, normalizedData, colors, commonMargin);
+      return renderScatterChart(spec, normalizedData, colors, commonMargin, height);
     case "pie":
-      return renderPieChart(spec, normalizedData, colors);
+      return renderPieChart(spec, normalizedData, colors, height);
     default: {
       const _exhaustiveCheck: never = chartType;
       return <div>Unsupported chart type: {_exhaustiveCheck}</div>;
@@ -214,14 +219,15 @@ function renderColumnChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors,
-  margin: { top: number; right: number; left: number; bottom: number }
+  margin: { top: number; right: number; left: number; bottom: number },
+  height: number | string
 ) {
   const { x, y, stacking } = spec.encoding;
   const rawYFields = Array.isArray(y) ? y : y ? [y] : [];
   const normalized = prepareCartesianData(data, x?.field, rawYFields);
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={normalized.rows} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
@@ -259,14 +265,15 @@ function renderBarChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors,
-  margin: { top: number; right: number; left: number; bottom: number }
+  margin: { top: number; right: number; left: number; bottom: number },
+  height: number | string
 ) {
   const { x, y, stacking } = spec.encoding;
   const rawYFields = Array.isArray(y) ? y : y ? [y] : [];
   const normalized = prepareCartesianData(data, x?.field, rawYFields);
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={normalized.rows} layout="vertical" margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis type="number" stroke={colors.text} tick={{ fill: colors.text }} />
@@ -305,13 +312,14 @@ function renderLineChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors,
-  margin: { top: number; right: number; left: number; bottom: number }
+  margin: { top: number; right: number; left: number; bottom: number },
+  height: number | string
 ) {
   const { x, y } = spec.encoding;
   const yFields = Array.isArray(y) ? y : y ? [y] : [];
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
@@ -351,13 +359,14 @@ function renderAreaChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors,
-  margin: { top: number; right: number; left: number; bottom: number }
+  margin: { top: number; right: number; left: number; bottom: number },
+  height: number | string
 ) {
   const { x, y, stacking } = spec.encoding;
   const yFields = Array.isArray(y) ? y : y ? [y] : [];
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
@@ -398,13 +407,14 @@ function renderScatterChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
   colors: ThemeColors,
-  margin: { top: number; right: number; left: number; bottom: number }
+  margin: { top: number; right: number; left: number; bottom: number },
+  height: number | string
 ) {
   const { x, y } = spec.encoding;
   const yField = Array.isArray(y) ? y[0] : y;
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <ScatterChart margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
@@ -442,7 +452,8 @@ function renderScatterChart(
 function renderPieChart(
   spec: ChartSpec,
   data: Array<Record<string, unknown>>,
-  colors: ThemeColors
+  colors: ThemeColors,
+  height: number | string
 ) {
   const { x, y, series, tooltips } = spec.encoding;
   const nameField =
@@ -453,7 +464,7 @@ function renderPieChart(
     "value";
 
   return (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie
           data={data}
@@ -461,7 +472,7 @@ function renderPieChart(
           nameKey={nameField}
           cx="50%"
           cy="50%"
-          outerRadius={120}
+          outerRadius="70%"
           label={({ name }) => formatTimestampForDisplay(name)}
         >
           {data.map((_, index) => (

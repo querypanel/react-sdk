@@ -314,12 +314,14 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
                 border: `1px solid ${resolvedColors.border}`,
                 padding: "0.5rem",
                 boxSizing: "border-box",
+                overflow: "hidden",
               }}
             >
               <VizSpecRenderer
                 spec={parsedSpec.spec}
                 data={effectiveData}
                 colors={resolvedColors}
+                chartHeight="100%"
               />
             </div>
           </div>

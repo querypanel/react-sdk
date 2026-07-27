@@ -15,6 +15,16 @@ export interface QuerypanelEmbeddedProps {
 
   /** Enable customer customization (copy-on-write) */
   allowCustomization?: boolean;
+  /**
+   * Start in edit mode immediately (admin-like), without requiring Customize / Edit.
+   * When the dashboard is not yet a fork, silently forks first so Save keeps working.
+   */
+  defaultEditing?: boolean;
+  /**
+   * Show the embed toolbar (title, Customize / Edit / Save).
+   * Defaults to true when `allowCustomization` is enabled.
+   */
+  showCustomizationToolbar?: boolean;
 
   /** Color preset for theming */
   colorPreset?: ColorPreset;
@@ -40,6 +50,8 @@ export function QuerypanelEmbedded({
   apiBaseUrl,
   jwt,
   allowCustomization = false,
+  defaultEditing = false,
+  showCustomizationToolbar,
   colorPreset = "default",
   theme,
   darkMode = false,
@@ -48,6 +60,8 @@ export function QuerypanelEmbedded({
   onLoad,
   onCustomize,
 }: QuerypanelEmbeddedProps) {
+  const showToolbar =
+    allowCustomization && (showCustomizationToolbar ?? true);
   const strings = {
     customizedBadge: branding?.customizedBadge ?? "Customized",
     customizeButton: branding?.customizeButton ?? "Customize Dashboard",
@@ -68,6 +82,7 @@ export function QuerypanelEmbedded({
   const [editorResetKey, setEditorResetKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const editorSaveRef = useRef<(() => void | Promise<void>) | null>(null);
+  const autoEditStartedRef = useRef(false);
   const authHeaders = useMemo(
     () => ({
       Authorization: `Bearer ${jwt}`,
@@ -169,7 +184,7 @@ export function QuerypanelEmbedded({
   }, [fetchDashboard]);
 
   // Fork the dashboard
-  const handleFork = async () => {
+  const handleFork = useCallback(async () => {
     try {
       const response = await fetch(`${normalizedApiBaseUrl}/dashboards/${dashboardId}/fork`, {
         method: "POST",
@@ -186,12 +201,33 @@ export function QuerypanelEmbedded({
       setIsFork(true);
       setIsEditing(true);
       onCustomize?.(fork);
+      return fork;
     } catch (err) {
       const error = err instanceof Error ? err : new Error("Unknown error");
       setError(error.message);
       onError?.(error);
+      return null;
     }
-  };
+  }, [normalizedApiBaseUrl, dashboardId, authHeaders, onCustomize, onError]);
+
+  useEffect(() => {
+    autoEditStartedRef.current = false;
+  }, [dashboardId, jwt]);
+
+  // Admin-like: enter edit mode on load (silently fork when needed)
+  useEffect(() => {
+    if (!defaultEditing || !allowCustomization || loading || !dashboard || autoEditStartedRef.current) {
+      return;
+    }
+    autoEditStartedRef.current = true;
+
+    if (dashboard.is_customer_fork) {
+      setIsEditing(true);
+      return;
+    }
+
+    void handleFork();
+  }, [defaultEditing, allowCustomization, loading, dashboard, handleFork]);
 
   // Save fork changes
   const handleSave = async (content: string, _options?: { deploy?: boolean }) => {
@@ -296,7 +332,7 @@ export function QuerypanelEmbedded({
   return (
     <div className="querypanel-embedded">
       {/* Toolbar */}
-      {allowCustomization && (
+      {showToolbar && (
         <div
           className="flex flex-wrap items-center justify-between gap-3 mb-4 p-4 rounded-xl border"
           style={toolbarStyles.container}

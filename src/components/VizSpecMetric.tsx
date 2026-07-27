@@ -144,34 +144,43 @@ export function VizSpecMetric({ spec, data, colors }: VizSpecMetricProps) {
     : null;
 
   const styles = {
+    // Fill the parent (e.g. fixed-height dashboard blocks) instead of overflowing it.
     container: {
-      padding: "1.5rem",
+      height: "100%",
+      boxSizing: "border-box" as const,
+      display: "flex",
+      flexDirection: "column" as const,
+      justifyContent: "center",
+      padding: "0.75rem 1.25rem",
       borderRadius: "0.5rem",
       backgroundColor: colors.surface,
       border: `1px solid ${colors.border}`,
+      overflow: "hidden",
     },
     title: {
-      fontSize: "0.875rem",
+      fontSize: "0.8125rem",
       color: colors.muted,
-      marginBottom: "0.5rem",
+      marginBottom: "0.25rem",
       textTransform: "uppercase" as const,
       letterSpacing: "0.05em",
     },
     value: {
-      fontSize: "2.25rem",
+      fontSize: "2rem",
+      lineHeight: 1.15,
       fontWeight: 700,
       color: colors.text,
-      marginBottom: "0.5rem",
     },
     comparison: {
       fontSize: "0.875rem",
       display: "flex",
       alignItems: "center",
-      marginBottom: trend ? "1rem" : 0,
+      marginTop: "0.25rem",
     },
     sparkline: {
-      height: "60px",
-      marginTop: "1rem",
+      flex: "1 1 auto",
+      minHeight: "40px",
+      maxHeight: "60px",
+      marginTop: "0.75rem",
     },
   };
 
