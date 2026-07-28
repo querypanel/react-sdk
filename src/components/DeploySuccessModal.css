@@ -1,0 +1,123 @@
+/* Self-contained styles for DeploySuccessModal. No host Tailwind dark: required. */
+
+.qp-deploy-success-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.qp-deploy-success-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  pointer-events: none;
+}
+
+.qp-deploy-success-dialog {
+  width: fit-content;
+  max-width: min(320px, calc(100vw - 2rem));
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+[data-qp-deploy-success][data-theme="light"] .qp-deploy-success-dialog {
+  background: linear-gradient(to bottom right, #ffffff, #f8fafc);
+  border: 1px solid #e5e7eb;
+  color: #0f172a;
+}
+
+[data-qp-deploy-success][data-theme="dark"] .qp-deploy-success-dialog {
+  background: linear-gradient(to bottom right, #0a0612, #111827);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #f1f5f9;
+}
+
+.qp-deploy-success-accent {
+  height: 4px;
+  background: linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899);
+}
+
+.qp-deploy-success-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  gap: 1rem;
+}
+
+.qp-deploy-success-icon-wrap {
+  position: relative;
+}
+
+.qp-deploy-success-icon-badge {
+  border-radius: 9999px;
+  padding: 0.75rem;
+}
+
+[data-qp-deploy-success][data-theme="light"] .qp-deploy-success-icon-badge {
+  background: linear-gradient(to bottom right, #dcfce7, #bbf7d0);
+  border: 1px solid #86efac;
+}
+
+[data-qp-deploy-success][data-theme="dark"] .qp-deploy-success-icon-badge {
+  background: linear-gradient(to bottom right, rgba(22, 163, 74, 0.25), rgba(34, 197, 94, 0.15));
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+
+.qp-deploy-success-check {
+  color: #16a34a;
+}
+
+[data-qp-deploy-success][data-theme="dark"] .qp-deploy-success-check {
+  color: #4ade80;
+}
+
+.qp-deploy-success-rocket {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  color: #16a34a;
+}
+
+[data-qp-deploy-success][data-theme="dark"] .qp-deploy-success-rocket {
+  color: #4ade80;
+}
+
+.qp-deploy-success-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.qp-deploy-success-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.qp-deploy-success-message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+[data-qp-deploy-success][data-theme="light"] .qp-deploy-success-message {
+  color: #64748b;
+}
+
+[data-qp-deploy-success][data-theme="dark"] .qp-deploy-success-message {
+  color: #94a3b8;
+}

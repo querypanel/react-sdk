@@ -541,6 +541,7 @@ export function DashboardAiEditor({
       <DeploySuccessModal
         open={showDeploySuccess}
         onOpenChange={setShowDeploySuccess}
+        darkMode={effectiveDarkMode}
       />
     </>
   );

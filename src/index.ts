@@ -1,5 +1,6 @@
 // Modal, BlockNote editor, and other component styles (hosts get CSS when they import the SDK)
 import "./components/AIChartModal.css";
+import "./components/DeploySuccessModal.css";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
