@@ -41,4 +41,53 @@ describe("normalizeRowsForJsonRenderChart", () => {
 
     expect(normalizeRowsForJsonRenderChart(rows)).toEqual(rows);
   });
+
+  it("uses explicit hints when tenant_id is numeric and chart_count is the measure", () => {
+    const rows = [
+      { tenant_id: 180_001, chart_count: 5 },
+      { tenant_id: 95_002, chart_count: 4 },
+      { tenant_id: 12_003, chart_count: 1 },
+    ];
+
+    const chartData = normalizeRowsForJsonRenderChart(rows, {
+      labelField: "tenant_id",
+      valueField: "chart_count",
+    });
+
+    expect(chartData).toEqual([
+      { label: "180001", value: 5 },
+      { label: "95002", value: 4 },
+      { label: "12003", value: 1 },
+    ]);
+  });
+
+  it("prefers chart_count over numeric tenant_id when hints are missing", () => {
+    const rows = [
+      { tenant_id: 180_001, chart_count: 5 },
+      { tenant_id: 95_002, chart_count: 4 },
+      { tenant_id: 12_003, chart_count: 1 },
+    ];
+
+    const chartData = normalizeRowsForJsonRenderChart(rows);
+
+    expect(chartData).toEqual([
+      { label: "180001", value: 5 },
+      { label: "95002", value: 4 },
+      { label: "12003", value: 1 },
+    ]);
+  });
+
+  it("prefers activity_count over numeric tenant_id when hints are missing", () => {
+    const rows = [
+      { tenant_id: 42, activity_count: 120 },
+      { tenant_id: 7, activity_count: 80 },
+    ];
+
+    const chartData = normalizeRowsForJsonRenderChart(rows);
+
+    expect(chartData).toEqual([
+      { label: "42", value: 120 },
+      { label: "7", value: 80 },
+    ]);
+  });
 });

@@ -80,7 +80,10 @@ function normalizeWideSingleRow(
 }
 
 const VALUE_KEYS = ["value", "count", "total", "amount", "metric", "number"];
-const LABEL_KEYS = ["label", "name", "category", "type", "group", "status"];
+const LABEL_KEYS = ["label", "name", "category", "type", "group", "status", "state"];
+const MEASURE_NAME_RE =
+  /(^|_)(count|total|amount|usage|metric|sum|avg|average|number)(_|$)/i;
+const IDENTITY_NAME_RE = /(^|_)(id|uuid|tenant_id|user_id|org_id|state)(_|$)/i;
 
 export type JsonRenderChartFieldHints = {
   labelField?: string | null;
@@ -111,6 +114,16 @@ function columnMaxMagnitude(rows: Array<Record<string, unknown>>, key: string) {
   return max;
 }
 
+function isMeasureLikeKey(key: string) {
+  const normalized = key.trim().toLowerCase();
+  return VALUE_KEYS.includes(normalized) || MEASURE_NAME_RE.test(normalized);
+}
+
+function isIdentityLikeKey(key: string) {
+  const normalized = key.trim().toLowerCase();
+  return LABEL_KEYS.includes(normalized) || IDENTITY_NAME_RE.test(normalized);
+}
+
 function findValueKey(
   keys: string[],
   rows: Array<Record<string, unknown>>,
@@ -124,10 +137,30 @@ function findValueKey(
     if (numericKeys.includes(key)) return key;
   }
 
-  // Prefer the measure column (e.g. total_usage) over auxiliary counts (e.g. tenant_count).
-  let bestKey = numericKeys[0]!;
+  const measureLikeKeys = numericKeys.filter((key) => isMeasureLikeKey(key));
+  if (measureLikeKeys.length === 1) {
+    return measureLikeKeys[0]!;
+  }
+  if (measureLikeKeys.length > 1) {
+    let bestKey = measureLikeKeys[0]!;
+    let bestMax = columnMaxMagnitude(rows, bestKey);
+    for (const key of measureLikeKeys.slice(1)) {
+      const max = columnMaxMagnitude(rows, key);
+      if (max > bestMax) {
+        bestKey = key;
+        bestMax = max;
+      }
+    }
+    return bestKey;
+  }
+
+  // Prefer non-identity numeric columns over ids (e.g. chart_count over tenant_id).
+  const nonIdentityKeys = numericKeys.filter((key) => !isIdentityLikeKey(key));
+  const candidates = nonIdentityKeys.length > 0 ? nonIdentityKeys : numericKeys;
+
+  let bestKey = candidates[0]!;
   let bestMax = columnMaxMagnitude(rows, bestKey);
-  for (const key of numericKeys.slice(1)) {
+  for (const key of candidates.slice(1)) {
     const max = columnMaxMagnitude(rows, key);
     if (max > bestMax) {
       bestKey = key;
@@ -150,6 +183,13 @@ function findLabelKey(
 
   for (const key of LABEL_KEYS) {
     if (key !== valueKey && keys.includes(key)) return key;
+  }
+
+  // Prefer identity-like numeric columns (tenant_id) as labels over leftover measures.
+  for (const key of keys) {
+    if (key === valueKey) continue;
+    if (!isIdentityLikeKey(key)) continue;
+    if (toChartLabel(sampleRow[key]) !== null) return key;
   }
 
   for (const key of keys) {
