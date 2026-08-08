@@ -70,10 +70,10 @@ export type AIChartModelOption = { value: string; label: string };
 
 /** Sensible defaults; override via `chartModelOptions` if your deployment uses different ids. */
 export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
-  { value: "gpt-5.4-mini", label: "GPT-5.4 mini" },
-  { value: "gpt-5.4", label: "GPT-5.4" },
-  { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (preview)" },
-  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)" },
+  { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+  { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+  { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite" },
   { value: "gpt-4.1", label: "GPT-4.1" },
   { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
   { value: "", label: "Server default" },
@@ -120,7 +120,7 @@ export interface AIChartModalProps {
   createTitle?: string;
   /** Model dropdown options (`value` = bare model id; empty string = server default). Server maps tiers when using Gemini. */
   chartModelOptions?: AIChartModelOption[];
-  /** Initial selected model `value` when the modal opens (default: `gpt-5.4-mini`) */
+  /** Initial selected model `value` when the modal opens (default: `gpt-5.6-luna`) */
   defaultChartModel?: string;
 }
 
@@ -161,7 +161,7 @@ function useAiChartModalNarrowLayout() {
 }
 
 /**
- * Mastra stream expects AI Gateway–style `provider/model` (e.g. `openai/gpt-5.4-mini`, `google/gemini-3-flash-preview`).
+ * Mastra stream expects AI Gateway–style `provider/model` (e.g. `openai/gpt-5.6-luna`, `google/gemini-3.6-flash`).
  * Bare Gemini ids are prefixed with `google/` so the agent uses GOOGLE_GENERATIVE_AI_API_KEY when that provider is active.
  */
 function normalizeModelForMastraStreamBody(model: string): string {
@@ -793,7 +793,7 @@ export function AIChartModal({
   title: titleProp,
   createTitle: createTitleProp,
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
-  defaultChartModel = "gpt-5.4-mini",
+  defaultChartModel = "gpt-5.6-luna",
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Visualization Generator";
   const createTitle = createTitleProp ?? "Create a Visualization";
