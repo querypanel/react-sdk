@@ -16,6 +16,8 @@ import { BlockNoteThemedView } from "./BlockNoteThemedView";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal } from "./AIChartModal";
+import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
+import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
 import { ThemeProvider } from "../context/ThemeContext";
 import { normalizeBlockNoteContent } from "./blocknoteContent";
@@ -95,11 +97,14 @@ export interface DashboardAiEditorProps {
   showSaveButton?: boolean;
   /** Whether editor is editable. Set false for viewer mode. */
   editable?: boolean;
-  /** Customer/embed API base URL. When empty, uses admin defaults (/api/...) */
+  /**
+   * Customer/embed API base URL. When empty, uses admin defaults (/api/...).
+   * Each `*Url` override below takes precedence over this base.
+   */
   apiBaseUrl?: string;
   /** Override run-sql URL (e.g. /api/dashboards/run-sql for admin) */
   runSqlUrl?: string;
-  /** Override AI generate-chart-with-sql URL */
+  /** Override AI chart URL. Pass a Mastra agent stream URL to get the streaming agent UI. */
   generateChartWithSqlUrl?: string;
   /** Override datasources URL */
   datasourcesUrl?: string;
@@ -144,8 +149,8 @@ export function DashboardAiEditor({
   editable = true,
   apiBaseUrl = "",
   runSqlUrl,
-  generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
-  datasourcesUrl = "/api/datasources",
+  generateChartWithSqlUrl,
+  datasourcesUrl,
   queryResultBaseUrl,
   darkMode,
   themeColors = defaultColors,
@@ -204,12 +209,23 @@ export function DashboardAiEditor({
   // Use prop when explicitly provided; otherwise use DOM detection
   const effectiveDarkMode = darkMode !== undefined ? darkMode : detectedDarkMode;
 
-  const resolvedRunSqlUrl = runSqlUrl ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql` : "/api/dashboards/run-sql");
-  const resolvedGenerateChartWithSqlUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/ai/generate-chart-with-sql` : generateChartWithSqlUrl;
-  const resolvedDatasourcesUrl = apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/datasources` : datasourcesUrl;
-  const resolvedQueryResultBaseUrl =
-    queryResultBaseUrl ??
-    (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}/query-results` : "/api/query-results");
+  // An explicit override always wins (admin passes the Mastra stream URL); otherwise derive
+  // from the embed API base, falling back to admin's same-origin routes.
+  const resolveUrl = (override: string | undefined, embedPath: string, adminPath: string) =>
+    override ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}${embedPath}` : adminPath);
+
+  const resolvedRunSqlUrl = resolveUrl(runSqlUrl, "/query/run-sql", "/api/dashboards/run-sql");
+  const resolvedGenerateChartWithSqlUrl = resolveUrl(
+    generateChartWithSqlUrl,
+    "/ai/generate-chart-with-sql",
+    "/api/ai/generate-chart-with-sql"
+  );
+  const resolvedDatasourcesUrl = resolveUrl(datasourcesUrl, "/datasources", "/api/datasources");
+  const resolvedQueryResultBaseUrl = resolveUrl(
+    queryResultBaseUrl,
+    "/query-results",
+    "/api/query-results"
+  );
 
   const chartBlockSpec = useMemo(
     () =>
@@ -347,6 +363,78 @@ export function DashboardAiEditor({
             },
           },
         ],
+        editor.getTextCursorPosition().block,
+        "after"
+      );
+      setIsAIModalOpen(false);
+    },
+    [editor]
+  );
+
+  const handleAddReport = useCallback(
+    (blocks: DashboardReportInsertBlock[]) => {
+      if (blocks.length === 0) return;
+
+      const insertables: Array<Record<string, unknown>> = [];
+
+      for (const block of blocks) {
+        if (block.type === "text") {
+          for (const simple of markdownToSimpleEditorBlocks(block.markdown)) {
+            if (simple.type === "heading") {
+              insertables.push({
+                type: "heading",
+                props: { level: simple.level },
+                content: simple.text,
+              });
+            } else {
+              insertables.push({
+                type: "paragraph",
+                content: simple.text,
+              });
+            }
+          }
+          continue;
+        }
+
+        const spec = block.jsonRenderSpec ?? block.chartSpec;
+        if (!spec) continue;
+
+        if (isJsonRenderSpecLike(spec)) {
+          insertables.push({
+            type: "json-render-chart",
+            props: {
+              jsonRenderSpec: JSON.stringify(spec),
+              title: getJsonRenderTitle(spec) || "Visualization",
+              rationale: block.rationale || "",
+              sql: block.sql || "",
+              sqlParams: JSON.stringify(block.sqlParams || {}),
+              datasourceIds: JSON.stringify(block.datasourceIds || []),
+              tenantFieldName: block.tenantFieldName || "",
+              previewTenantId: block.previewTenantId || "",
+              resultId: block.resultId || "",
+            },
+          });
+        } else {
+          insertables.push({
+            type: "chart",
+            props: {
+              chartSpec: JSON.stringify(spec),
+              title: (spec as { description?: string }).description || "Chart",
+              rationale: block.rationale || "",
+              sql: block.sql || "",
+              sqlParams: JSON.stringify(block.sqlParams || {}),
+              datasourceIds: JSON.stringify(block.datasourceIds || []),
+              tenantFieldName: block.tenantFieldName || "",
+              previewTenantId: block.previewTenantId || "",
+            },
+          });
+        }
+      }
+
+      if (insertables.length === 0) return;
+
+      editor.insertBlocks(
+        insertables as never[],
         editor.getTextCursorPosition().block,
         "after"
       );
@@ -521,6 +609,7 @@ export function DashboardAiEditor({
           isOpen={isAIModalOpen}
           onClose={() => setIsAIModalOpen(false)}
           onAddChart={handleAddChart}
+          onAddReport={handleAddReport}
           organizationId={organizationId}
           dashboardId={dashboardId}
           dashboardType={dashboardType}

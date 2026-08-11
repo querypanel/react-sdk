@@ -3,6 +3,8 @@ import {
 	consumeMastraChartStream,
 	getMastraChunkErrorMessage,
 	MastraStreamTerminalError,
+	normalizeMastraChunk,
+	unwrapMastraToolResult,
 } from "./mastraChartStream";
 
 describe("getMastraChunkErrorMessage", () => {
@@ -13,6 +15,35 @@ describe("getMastraChunkErrorMessage", () => {
 				error: { message: "Stream interrupted" },
 			}),
 		).toBe("Stream interrupted");
+	});
+});
+
+describe("unwrapMastraToolResult", () => {
+	it("flags Mastra validation error payloads", () => {
+		expect(
+			unwrapMastraToolResult({
+				type: "tool-result",
+				toolName: "execute_sql",
+				result: { error: true, message: "Tool output validation failed" },
+			}),
+		).toEqual({
+			ok: false,
+			message: "Tool output validation failed",
+		});
+	});
+
+	it("accepts successful nested payload results", () => {
+		const chunk = normalizeMastraChunk({
+			type: "tool-result",
+			payload: {
+				toolName: "execute_sql",
+				result: { rows: [{ a: 1 }], rowCount: 1, fields: ["a"] },
+			},
+		});
+		expect(unwrapMastraToolResult(chunk)).toEqual({
+			ok: true,
+			result: { rows: [{ a: 1 }], rowCount: 1, fields: ["a"] },
+		});
 	});
 });
 

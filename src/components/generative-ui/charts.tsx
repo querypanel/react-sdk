@@ -17,10 +17,7 @@ import {
 } from "recharts";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useGenerativeUIConfig } from "./provider";
-import {
-  normalizeRowsForJsonRenderChart,
-  type JsonRenderChartFieldHints,
-} from "./specData";
+import { normalizeRowsForJsonRenderChart } from "./specData";
 
 type ChartSeriesProps = {
   resultId?: string | null;
@@ -154,6 +151,30 @@ function useResultData(resultId?: string | null) {
   }, [queryResultBaseUrl, resultId, requestHeaders]);
 
   return { rows, loading, error };
+}
+
+/** Prefer inline series; fall back to artifact fetch when host enables it. */
+function useNormalizedChartSeries(props: ChartSeriesProps) {
+  const inlineData = props.data ?? [];
+  const inlineSeries = normalizeRowsForJsonRenderChart(inlineData, {
+    labelField: props.labelField,
+    valueField: props.valueField,
+  });
+  const { rows, loading, error } = useResultData(
+    inlineSeries.length > 0 ? null : props.resultId,
+  );
+  let chartData: Array<{ label: string; value: number }> = [];
+  if (!loading && !error) {
+    if (inlineSeries.length > 0) {
+      chartData = inlineSeries;
+    } else {
+      chartData = normalizeRowsForJsonRenderChart(rows ?? [], {
+        labelField: props.labelField,
+        valueField: props.valueField,
+      });
+    }
+  }
+  return { chartData, loading, error };
 }
 
 function ChartShell({
@@ -353,17 +374,9 @@ export function BarChartComponent({
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
   const tooltipStyles = getTooltipStyles(colors, darkMode);
-  const { rows, loading, error } = useResultData(
-    props.data && props.data.length > 0 ? null : props.resultId
-  );
+  const { chartData, loading, error } = useNormalizedChartSeries(props);
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
-
-  const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source, {
-    labelField: props.labelField,
-    valueField: props.valueField,
-  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -399,17 +412,9 @@ export function LineChartComponent({
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
   const tooltipStyles = getTooltipStyles(colors, darkMode);
-  const { rows, loading, error } = useResultData(
-    props.data && props.data.length > 0 ? null : props.resultId
-  );
+  const { chartData, loading, error } = useNormalizedChartSeries(props);
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
-
-  const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source, {
-    labelField: props.labelField,
-    valueField: props.valueField,
-  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
@@ -451,17 +456,9 @@ export function PieChartComponent({
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
   const tooltipStyles = getTooltipStyles(colors, darkMode);
-  const { rows, loading, error } = useResultData(
-    props.data && props.data.length > 0 ? null : props.resultId
-  );
+  const { chartData, loading, error } = useNormalizedChartSeries(props);
   if (loading) return <MessageState title={props.title} message="Loading chart..." />;
   if (error) return <MessageState title={props.title} message={error} error />;
-
-  const source = rows ?? ((props.data ?? []) as Array<Record<string, unknown>>);
-  const chartData = normalizeRowsForJsonRenderChart(source, {
-    labelField: props.labelField,
-    valueField: props.valueField,
-  });
   if (chartData.length === 0) {
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }

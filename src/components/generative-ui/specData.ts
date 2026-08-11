@@ -1,5 +1,3 @@
-"use client";
-
 type JsonRenderElement = {
   type?: unknown;
   props?: unknown;
@@ -14,6 +12,11 @@ type JsonRenderSpec = {
 function toChartNumber(value: unknown): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "bigint") {
+    const asNumber = Number(value);
+    return Number.isFinite(asNumber) ? asNumber : null;
   }
 
   if (typeof value === "string") {
@@ -38,6 +41,10 @@ function toChartLabel(value: unknown): string | null {
     typeof value === "boolean"
   ) {
     return String(value);
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
   }
 
   return null;
@@ -244,7 +251,7 @@ export function normalizeRowsForJsonRenderChart(
   const { labelField, valueField } = resolveChartFieldHints(keys, hints);
 
   if (labelField && valueField) {
-    return rows
+    const mapped = rows
       .map((point, index) => {
         const value = toChartNumber(point[valueField]);
         if (value === null) return null;
@@ -256,6 +263,10 @@ export function normalizeRowsForJsonRenderChart(
       .filter(
         (point): point is { label: string; value: number } => point !== null
       );
+    if (mapped.length > 0) {
+      return mapped;
+    }
+    // Fall through to auto-detect when VizSpec field names don't match the rows.
   }
 
   const sampleRow = rows[0] ?? {};
@@ -353,7 +364,11 @@ export function hasInlineJsonRenderData(spec: unknown) {
     root.element.type === "LineChart" ||
     root.element.type === "PieChart"
   ) {
-    return Array.isArray(props.data) && props.data.length > 0;
+    if (!Array.isArray(props.data)) return false;
+    return normalizeRowsForJsonRenderChart(props.data as Array<Record<string, unknown>>, {
+      labelField: typeof props.labelField === "string" ? props.labelField : null,
+      valueField: typeof props.valueField === "string" ? props.valueField : null,
+    }).length > 0;
   }
 
   if (root.element.type === "Metric") {
@@ -409,28 +424,24 @@ export function injectRowsIntoJsonRenderSpec(
     return spec;
   }
 
-  // Clone props so we can safely remove resultId when embedding data inline.
-  // If `resultId` stays, some renderers will still attempt to fetch `/query-results/:id`
-  // (which requires auth headers) even though we already hydrated the spec.
-  const props = { ...(root.element.props as Record<string, unknown>) };
-  delete props.resultId;
+  const props = root.element.props as Record<string, unknown>;
   const headers = fields.length > 0 ? fields : Object.keys(rows[0] ?? {});
 
+  // Drop resultId only where data actually ends up inline; hosts may disable artifact
+  // fetch, but a failed remap must not also lose the fetch fallback.
+  const inlined = ({ resultId: _dropped, ...rest }: Record<string, unknown>) => rest;
+  const withProps = (nextProps: Record<string, unknown>) => ({
+    ...(spec as Record<string, unknown>),
+    elements: {
+      ...root.elements,
+      [root.rootId]: { ...root.element, props: nextProps },
+    },
+  });
+
   if (root.element.type === "DataTable") {
-    return {
-      ...(spec as Record<string, unknown>),
-      elements: {
-        ...root.elements,
-        [root.rootId]: {
-          ...root.element,
-          props: {
-            ...props,
-            headers,
-            rows: rows.map((row) => headers.map((field) => String(row[field] ?? ""))),
-          },
-        },
-      },
-    };
+    const nextRows = rows.map((row) => headers.map((field) => String(row[field] ?? "")));
+    if (nextRows.length === 0) return spec;
+    return withProps({ ...inlined(props), headers, rows: nextRows });
   }
 
   if (
@@ -439,47 +450,45 @@ export function injectRowsIntoJsonRenderSpec(
     root.element.type === "PieChart"
   ) {
     const fieldHints = resolvePersistedChartFieldHints(props, headers);
-    return {
-      ...(spec as Record<string, unknown>),
-      elements: {
-        ...root.elements,
-        [root.rootId]: {
-          ...root.element,
-          props: {
-            ...props,
-            data: normalizeRowsForJsonRenderChart(rows, fieldHints),
-          },
-        },
-      },
-    };
+    const existingData = Array.isArray(props.data)
+      ? (props.data as Array<Record<string, unknown>>)
+      : [];
+    // Keep existing series if remap yields nothing.
+    const nextData = normalizeRowsForJsonRenderChart(rows, fieldHints);
+    const data = nextData.length > 0 ? nextData : existingData;
+    if (data.length === 0) return spec;
+    return withProps({ ...inlined(props), data });
   }
 
   if (root.element.type === "Metric") {
-    const firstRow = rows[0] ?? {};
+    const entries = Object.entries(rows[0] ?? {});
     const firstEntry =
-      Object.entries(firstRow).find(([, value]) => toChartNumber(value) !== null) ??
-      Object.entries(firstRow)[0];
-
-    return {
-      ...(spec as Record<string, unknown>),
-      elements: {
-        ...root.elements,
-        [root.rootId]: {
-          ...root.element,
-          props: {
-            ...props,
-            label:
-              typeof props.label === "string" && props.label.trim()
-                ? props.label
-                : (firstEntry?.[0] ?? "Value"),
-            value: firstEntry ? String(firstEntry[1] ?? "") : "",
-          },
-        },
-      },
-    };
+      entries.find(([, value]) => toChartNumber(value) !== null) ?? entries[0];
+    if (!firstEntry) return spec;
+    return withProps({
+      ...inlined(props),
+      label:
+        typeof props.label === "string" && props.label.trim() ? props.label : firstEntry[0],
+      value: toChartLabel(firstEntry[1]) ?? "",
+    });
   }
 
   return spec;
+}
+
+/** Inject SQL rows into a json-render spec when present; otherwise return spec unchanged. */
+export function hydrateJsonRenderSpecFromRows(
+  spec: unknown,
+  rows: Array<Record<string, unknown>> | null | undefined,
+  fields?: string[] | null,
+) {
+  if (!spec || !rows?.length) return spec;
+  if (hasInlineJsonRenderData(spec)) return spec;
+  return injectRowsIntoJsonRenderSpec(
+    spec,
+    rows,
+    fields?.length ? fields : Object.keys(rows[0] ?? {}),
+  );
 }
 
 export function stripDataFromJsonRenderSpec(spec: unknown) {

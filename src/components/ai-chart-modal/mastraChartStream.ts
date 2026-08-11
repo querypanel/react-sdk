@@ -3,6 +3,9 @@ export type MastraStreamChunk = {
 	textDelta?: string;
 	toolName?: string;
 	result?: unknown;
+	/** Present on some Mastra/AI SDK tool-result shapes instead of `result`. */
+	output?: unknown;
+	isError?: boolean;
 	error?: { message?: unknown };
 	payload?: Record<string, unknown>;
 	response?: {
@@ -21,6 +24,69 @@ export type MastraStreamChunk = {
 		}>;
 	};
 };
+
+const TOOL_START_CHUNK_TYPES = new Set([
+	"tool-call",
+	"tool-call-input-streaming-start",
+	"tool-call-streaming-start",
+]);
+
+export function isMastraToolStartChunk(chunk: MastraStreamChunk): boolean {
+	return typeof chunk.type === "string" && TOOL_START_CHUNK_TYPES.has(chunk.type);
+}
+
+/**
+ * Unwrap tool payload for UI apply. Mastra may nest under `result` or `output`,
+ * and validation failures return `{ error: true, message }` without rows.
+ */
+export function unwrapMastraToolResult(
+	chunk: MastraStreamChunk,
+): { ok: true; result: Record<string, unknown> } | { ok: false; message: string } | null {
+	const raw =
+		chunk.result !== undefined
+			? chunk.result
+			: chunk.output !== undefined
+				? chunk.output
+				: null;
+	if (raw == null) {
+		return null;
+	}
+
+	if (typeof raw === "string") {
+		try {
+			const parsed = JSON.parse(raw) as unknown;
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				return unwrapMastraToolResult({
+					...chunk,
+					result: parsed,
+					output: undefined,
+				});
+			}
+		} catch {
+			return chunk.isError
+				? { ok: false, message: raw.trim() || "Tool failed" }
+				: null;
+		}
+		return chunk.isError
+			? { ok: false, message: raw.trim() || "Tool failed" }
+			: null;
+	}
+
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		return null;
+	}
+
+	const record = raw as Record<string, unknown>;
+	if (record.error === true || chunk.isError === true) {
+		const message =
+			typeof record.message === "string" && record.message.trim().length > 0
+				? record.message.trim()
+				: "Tool failed";
+		return { ok: false, message };
+	}
+
+	return { ok: true, result: record };
+}
 
 export class MastraStreamTerminalError extends Error {
 	constructor(message: string) {

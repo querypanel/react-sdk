@@ -2,9 +2,20 @@ import {
 	extractAssistantTextFromChunk,
 	extractToolResultsFromChunk,
 	formatToolStatus,
+	isMastraToolStartChunk,
+	unwrapMastraToolResult,
 	type MastraStreamChunk,
 } from "./mastraChartStream";
-import type { MastraChartMessage, SqlExecutionArtifact, ToolEvent } from "./types";
+import { hydrateJsonRenderSpecFromRows } from "../generative-ui/specData";
+import type {
+	MastraChartMessage,
+	ReportBlock,
+	ReportDataBlock,
+	ReportTextBlock,
+	ReportVizBlock,
+	SqlExecutionArtifact,
+	ToolEvent,
+} from "./types";
 
 /** Same contract as node-sdk mapGeneratedParams: array index → $1, $2, $3. */
 function mapGeneratedParams(params: unknown) {
@@ -49,6 +60,86 @@ function normalizeSqlParams(params: unknown): Record<string, unknown> | null {
 	return null;
 }
 
+function upsertTextBlock(
+	blocks: ReportBlock[],
+	createBlockId: (prefix: string) => string,
+	delta: string,
+): ReportBlock[] {
+	const next = [...blocks];
+	const existingIndex = next.findIndex((block) => block.type === "text");
+	if (existingIndex === -1) {
+		const textBlock: ReportTextBlock = {
+			id: createBlockId("text"),
+			type: "text",
+			content: delta,
+			streaming: true,
+		};
+		next.push(textBlock);
+		return next;
+	}
+
+	const existing = next[existingIndex] as ReportTextBlock;
+	next[existingIndex] = {
+		...existing,
+		content: `${existing.content}${delta}`,
+		streaming: true,
+	};
+	return next;
+}
+
+function upsertDataBlock(
+	blocks: ReportBlock[],
+	createBlockId: (prefix: string) => string,
+	queryResult: SqlExecutionArtifact,
+): ReportBlock[] {
+	const next = [...blocks];
+	const existingIndex = next.findIndex((block) => block.type === "data");
+	const dataBlock: ReportDataBlock = {
+		id:
+			existingIndex >= 0
+				? (next[existingIndex] as ReportDataBlock).id
+				: createBlockId("data"),
+		type: "data",
+		queryResult,
+	};
+	if (existingIndex >= 0) {
+		next[existingIndex] = dataBlock;
+	} else {
+		next.push(dataBlock);
+	}
+	return next;
+}
+
+function appendOrReplaceVizBlock(
+	blocks: ReportBlock[],
+	createBlockId: (prefix: string) => string,
+	viz: Omit<ReportVizBlock, "id" | "type"> & { id?: string },
+): ReportBlock[] {
+	const next = [...blocks];
+	const id = viz.id ?? createBlockId("viz");
+	const vizBlock: ReportVizBlock = {
+		id,
+		type: "viz",
+		chartSpec: viz.chartSpec,
+		jsonRenderSpec: viz.jsonRenderSpec,
+		resultId: viz.resultId,
+		presentationKind: viz.presentationKind,
+		sql: viz.sql,
+		sqlParams: viz.sqlParams,
+		queryResult: viz.queryResult,
+		rationale: viz.rationale,
+	};
+	const existingIndex = next.findIndex(
+		(block) => block.type === "viz" && block.id === id,
+	);
+	if (existingIndex >= 0) {
+		next[existingIndex] = vizBlock;
+	} else {
+		next.push(vizBlock);
+	}
+	return next;
+}
+
 export type MastraChartChunkHandlerContext = {
 	assistantMessageId: string;
 	createMessageId: (prefix: string) => string;
@@ -57,7 +148,6 @@ export type MastraChartChunkHandlerContext = {
 	) => void;
 	setTransientStatus: (status: string | null) => void;
 	setToolEvents: (updater: (prev: ToolEvent[]) => ToolEvent[]) => void;
-	setMessages: (updater: (prev: MastraChartMessage[]) => MastraChartMessage[]) => void;
 	setLastSqlExecution: (artifact: SqlExecutionArtifact | null) => void;
 };
 
@@ -69,7 +159,11 @@ export function createMastraChartChunkHandler(
 	return (rawChunk: MastraStreamChunk) => {
 		const chunk = rawChunk;
 
-		if (typeof chunk.toolName === "string" && chunk.toolName.trim().length > 0) {
+		if (
+			isMastraToolStartChunk(chunk) &&
+			typeof chunk.toolName === "string" &&
+			chunk.toolName.trim().length > 0
+		) {
 			ctx.setTransientStatus(formatToolStatus(chunk.toolName));
 			const toolName = chunk.toolName.trim();
 			ctx.setToolEvents((prev) => {
@@ -85,37 +179,44 @@ export function createMastraChartChunkHandler(
 			});
 		}
 
-		const chunkError =
-			chunk.error && typeof chunk.error === "object"
-				? (typeof chunk.error.message === "string" ? chunk.error.message : null)
-				: null;
-		if (typeof chunkError === "string" && chunkError.trim().length > 0) {
-			ctx.setTransientStatus(null);
-			const toolName = typeof chunk.toolName === "string" ? chunk.toolName : undefined;
+		const finishTool = (
+			toolName: string,
+			patch: Partial<Pick<ToolEvent, "status" | "error">>,
+		) => {
 			ctx.setToolEvents((prev) =>
 				prev.map((event) =>
-					toolName && event.toolName === toolName && event.status === "running"
-						? { ...event, status: "failed", endedAt: Date.now(), error: chunkError.trim() }
+					event.toolName === toolName && event.status === "running"
+						? { ...event, endedAt: Date.now(), ...patch }
 						: event,
 				),
+			);
+		};
+
+		const markToolFailed = (toolName: string | undefined, message: string) => {
+			ctx.setTransientStatus(null);
+			if (!toolName) return;
+			finishTool(toolName, { status: "failed", error: message });
+		};
+
+		const chunkError =
+			chunk.error && typeof chunk.error === "object"
+				? typeof chunk.error.message === "string"
+					? chunk.error.message
+					: null
+				: null;
+		if (typeof chunkError === "string" && chunkError.trim().length > 0) {
+			markToolFailed(
+				typeof chunk.toolName === "string" ? chunk.toolName : undefined,
+				chunkError.trim(),
 			);
 		}
 
 		const applyToolResult = (toolName: string, result: Record<string, unknown>) => {
 			if (toolName === "generate_sql") {
-				console.log("[AIChartModal] generated sql", {
-					sql: typeof result.sql === "string" ? result.sql : null,
-					params: mapGeneratedParams(result.params),
-				});
-				ctx.setToolEvents((prev) =>
-					prev.map((event) =>
-						event.toolName === "generate_sql" && event.status === "running"
-							? { ...event, status: "succeeded", endedAt: Date.now() }
-							: event,
-					),
-				);
+				finishTool("generate_sql", { status: "succeeded" });
 				ctx.updateAssistantMessage((current) => ({
 					...current,
+					kind: "turn",
 					sql: typeof result.sql === "string" ? result.sql : current.sql,
 					rationale:
 						typeof result.rationale === "string" ? result.rationale : current.rationale,
@@ -141,36 +242,51 @@ export function createMastraChartChunkHandler(
 							? (result.datasource as { id: string; name: string; dialect: string })
 							: undefined,
 				};
-				console.log("[AIChartModal] query data", {
-					rowCount: queryResult.rowCount,
-					fields,
-					rows,
-				});
-				ctx.setToolEvents((prev) =>
-					prev.map((event) =>
-						event.toolName === "execute_sql" && event.status === "running"
-							? { ...event, status: "succeeded", endedAt: Date.now() }
-							: event,
-					),
-				);
+				finishTool("execute_sql", { status: "succeeded" });
+				ctx.setTransientStatus("Working");
+
+				// Don't clobber a good preview with an empty/partial follow-up payload.
+				const hasRows = queryResult.rows.length > 0 || queryResult.rowCount > 0;
+				if (!hasRows) {
+					ctx.updateAssistantMessage((current) => {
+						const existingCount = current.queryResult?.rowCount ?? 0;
+						const existingRows = current.queryResult?.rows?.length ?? 0;
+						if (existingCount > 0 || existingRows > 0) {
+							return current;
+						}
+						return {
+							...current,
+							kind: "turn",
+							resultId: queryResult.resultId ?? current.resultId,
+							queryResult,
+							blocks: upsertDataBlock(
+								current.blocks ?? [],
+								createMessageId,
+								queryResult,
+							),
+						};
+					});
+					return true;
+				}
+
 				ctx.setLastSqlExecution(queryResult);
 				ctx.updateAssistantMessage((current) => ({
 					...current,
+					kind: "turn",
 					resultId: queryResult.resultId ?? current.resultId,
 					queryResult,
+					blocks: upsertDataBlock(
+						current.blocks ?? [],
+						createMessageId,
+						queryResult,
+					),
 				}));
 				return true;
 			}
 
 			if (toolName === "generate_visualization") {
 				ctx.setTransientStatus(null);
-				ctx.setToolEvents((prev) =>
-					prev.map((event) =>
-						event.toolName === "generate_visualization" && event.status === "running"
-							? { ...event, status: "succeeded", endedAt: Date.now() }
-							: event,
-					),
-				);
+				finishTool("generate_visualization", { status: "succeeded" });
 				const chartSpec = result.spec ?? null;
 				const jsonRenderSpec = result.jsonRenderSpec ?? null;
 				const resultId =
@@ -199,74 +315,47 @@ export function createMastraChartChunkHandler(
 							datasource: undefined,
 						}
 					: undefined;
-				const rationale =
-					typeof result.rationale === "string" && result.rationale.trim().length > 0
-						? result.rationale
-						: typeof result.notes === "string" && result.notes.trim().length > 0
-							? result.notes
-							: undefined;
+				let rationale: string | undefined;
+				if (typeof result.rationale === "string" && result.rationale.trim()) {
+					rationale = result.rationale;
+				} else if (typeof result.notes === "string" && result.notes.trim()) {
+					rationale = result.notes;
+				}
 
-				const chartMessage: MastraChartMessage = {
-					id: `${currentAssistantMessageId}-chart`,
-					role: "assistant",
-					kind: "chart",
-					sourceAssistantId: currentAssistantMessageId,
-					content: "",
-					chartSpec,
-					jsonRenderSpec,
-					resultId,
-					presentationKind,
-					sql,
-					sqlParams,
-					queryResult,
-					rationale,
-					timestamp: new Date(),
-				};
-
-				const actionMessage: MastraChartMessage = {
-					id: `${currentAssistantMessageId}-action`,
-					role: "assistant",
-					kind: "action",
-					sourceAssistantId: currentAssistantMessageId,
-					content: "Add to dashboard",
-					chartSpec,
-					jsonRenderSpec,
-					resultId,
-					presentationKind,
-					sql,
-					sqlParams,
-					queryResult,
-					rationale,
-					timestamp: new Date(),
-				};
-
-				ctx.setMessages((prev) => {
-					const withoutStatus = prev.filter(
-						(message) => message.id !== currentAssistantMessageId,
+				const vizId = createMessageId("viz");
+				ctx.updateAssistantMessage((current) => {
+					const hydrateFrom = [queryResult, current.queryResult].find(
+						(candidate) => candidate && candidate.rows.length > 0,
 					);
-					const chartIndex = withoutStatus.findIndex(
-						(message) => message.id === chartMessage.id,
-					);
-					const actionIndex = withoutStatus.findIndex(
-						(message) => message.id === actionMessage.id,
+					const hydratedJsonRenderSpec = hydrateJsonRenderSpecFromRows(
+						jsonRenderSpec,
+						hydrateFrom?.rows,
+						hydrateFrom?.fields,
 					);
 
-					if (chartIndex !== -1 || actionIndex !== -1) {
-						return withoutStatus.map((message) => {
-							if (message.id === chartMessage.id) return { ...message, ...chartMessage };
-							if (message.id === actionMessage.id) return { ...message, ...actionMessage };
-							return message;
-						});
-					}
-
-					const insertAt = Math.min(
-						prev.findIndex((message) => message.id === currentAssistantMessageId),
-						withoutStatus.length,
-					);
-					const safeInsertAt = insertAt >= 0 ? insertAt : withoutStatus.length;
-					const next = [...withoutStatus];
-					next.splice(safeInsertAt, 0, chartMessage, actionMessage);
-					return next;
+					return {
+						...current,
+						kind: "turn",
+						chartSpec: chartSpec ?? current.chartSpec,
+						jsonRenderSpec: hydratedJsonRenderSpec ?? current.jsonRenderSpec,
+						resultId: resultId ?? current.resultId,
+						presentationKind: presentationKind ?? current.presentationKind,
+						sql: sql ?? current.sql,
+						sqlParams: sqlParams ?? current.sqlParams ?? null,
+						queryResult: queryResult ?? current.queryResult,
+						rationale: rationale ?? current.rationale,
+						blocks: appendOrReplaceVizBlock(current.blocks ?? [], createMessageId, {
+							id: vizId,
+							chartSpec: chartSpec ?? undefined,
+							jsonRenderSpec: hydratedJsonRenderSpec ?? undefined,
+							resultId,
+							presentationKind,
+							sql: sql ?? current.sql,
+							sqlParams: sqlParams ?? current.sqlParams ?? null,
+							queryResult: queryResult ?? current.queryResult,
+							rationale,
+						}),
+					};
 				});
 
 				return true;
@@ -279,38 +368,35 @@ export function createMastraChartChunkHandler(
 			ctx.setTransientStatus(null);
 			ctx.updateAssistantMessage((current) => ({
 				...current,
+				kind: "turn",
 				content: `${current.content}${chunk.textDelta}`,
+				blocks: upsertTextBlock(
+					current.blocks ?? [],
+					createMessageId,
+					chunk.textDelta ?? "",
+				),
 			}));
 			return;
 		}
 
 		if (
-			chunk.type === "tool-result" &&
-			chunk.toolName === "generate_sql" &&
-			chunk.result &&
-			typeof chunk.result === "object"
+			(chunk.type === "tool-result" || chunk.type === "tool-error") &&
+			typeof chunk.toolName === "string" &&
+			chunk.toolName.trim().length > 0
 		) {
-			applyToolResult("generate_sql", chunk.result as Record<string, unknown>);
-			return;
-		}
-
-		if (
-			chunk.type === "tool-result" &&
-			chunk.toolName === "execute_sql" &&
-			chunk.result &&
-			typeof chunk.result === "object"
-		) {
-			applyToolResult("execute_sql", chunk.result as Record<string, unknown>);
-			return;
-		}
-
-		if (
-			chunk.type === "tool-result" &&
-			chunk.toolName === "generate_visualization" &&
-			chunk.result &&
-			typeof chunk.result === "object"
-		) {
-			applyToolResult("generate_visualization", chunk.result as Record<string, unknown>);
+			const toolName = chunk.toolName.trim();
+			const unwrapped = unwrapMastraToolResult(chunk);
+			if (unwrapped == null) {
+				if (chunk.type === "tool-error") {
+					markToolFailed(toolName, "Tool failed");
+				}
+				return;
+			}
+			if (!unwrapped.ok) {
+				markToolFailed(toolName, unwrapped.message);
+				return;
+			}
+			applyToolResult(toolName, unwrapped.result);
 			return;
 		}
 
@@ -324,44 +410,48 @@ export function createMastraChartChunkHandler(
 				),
 			);
 			for (const embeddedResult of extractToolResultsFromChunk(chunk)) {
-				applyToolResult(embeddedResult.toolName, embeddedResult.result);
+				const unwrapped = unwrapMastraToolResult({
+					type: "tool-result",
+					toolName: embeddedResult.toolName,
+					result: embeddedResult.result,
+				});
+				if (!unwrapped || !unwrapped.ok) {
+					continue;
+				}
+				applyToolResult(embeddedResult.toolName, unwrapped.result);
 			}
 			const assistantText = extractAssistantTextFromChunk(chunk);
 			if (assistantText && assistantText.trim().length > 0) {
-				const explanationMessage: MastraChartMessage = {
-					id: `${currentAssistantMessageId}-explanation`,
-					role: "assistant",
-					kind: "explanation",
-					sourceAssistantId: currentAssistantMessageId,
-					content: assistantText,
-					timestamp: new Date(),
-				};
-
-				ctx.setMessages((prev) => {
-					const withoutStatus = prev.filter(
-						(message) => message.id !== currentAssistantMessageId,
+				ctx.updateAssistantMessage((current) => {
+					const hasText = (current.blocks ?? []).some(
+						(block) => block.type === "text" && block.content.trim().length > 0,
 					);
-					const existingIndex = withoutStatus.findIndex(
-						(message) => message.id === explanationMessage.id,
-					);
-					if (existingIndex !== -1) {
-						return withoutStatus.map((message) =>
-							message.id === explanationMessage.id
-								? { ...message, ...explanationMessage }
-								: message,
-						);
-					}
-
-					const anchorIndex = withoutStatus.reduce((max, message, index) => {
-						if (message.sourceAssistantId === currentAssistantMessageId) {
-							return index;
+					if (hasText || current.content.trim().length > 0) {
+						// Prefer streamed deltas; only fill if empty.
+						if (current.content.trim().length === 0) {
+							return {
+								...current,
+								kind: "turn",
+								content: assistantText,
+								blocks: upsertTextBlock(
+									current.blocks ?? [],
+									createMessageId,
+									assistantText,
+								),
+							};
 						}
-						return max;
-					}, -1);
-					const insertAt = anchorIndex >= 0 ? anchorIndex + 1 : withoutStatus.length;
-					const next = [...withoutStatus];
-					next.splice(insertAt, 0, explanationMessage);
-					return next;
+						return current;
+					}
+					return {
+						...current,
+						kind: "turn",
+						content: assistantText,
+						blocks: upsertTextBlock(
+							current.blocks ?? [],
+							createMessageId,
+							assistantText,
+						),
+					};
 				});
 			}
 		}

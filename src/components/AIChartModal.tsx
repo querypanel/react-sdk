@@ -18,9 +18,6 @@ import {
   BarChart3Icon,
   SparklesIcon,
   Wand2Icon,
-  CircleCheckIcon,
-  CircleAlertIcon,
-  LoaderCircleIcon,
   SlidersHorizontalIcon,
   ChevronUpIcon,
 } from "lucide-react";
@@ -44,15 +41,20 @@ import { DatasourceSelector } from "./DatasourceSelector";
 import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
 import { createMastraChartChunkHandler } from "./ai-chart-modal/applyMastraChartChunk";
 import {
+  collectDashboardReportBlocks,
+  completeMastraAssistantTurn,
+} from "./ai-chart-modal/completeMastraTurn";
+import {
   consumeMastraChartStream,
-  formatToolStatus,
   MastraStreamTerminalError,
 } from "./ai-chart-modal/mastraChartStream";
+import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
 import type {
+  DashboardReportInsertBlock,
   MastraChartMessage,
+  ReportVizBlock,
   SqlExecutionArtifact,
   ToolEvent,
-  ToolEventStatus,
 } from "./ai-chart-modal/types";
 import { formatTimestampForDisplay } from "../utils/formatters";
 import "./AIChartModal.css";
@@ -92,6 +94,8 @@ export interface AIChartModalProps {
     previewTenantId?: string,
     resultId?: string
   ) => void;
+  /** Insert a multi-block report (text + viz) into the dashboard editor. */
+  onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
   organizationId: string;
   dashboardId: string;
   initialPrompt?: string;
@@ -114,9 +118,9 @@ export interface AIChartModalProps {
   tenantFieldByDatasource?: Record<string, string> | null;
   /** When true, hide tenant field name and preview tenant ID inputs (e.g. in customer embed; tenant comes from JWT only). */
   hideTenantInputs?: boolean;
-  /** Whitelabel: modal title (default: "AI Chart Generator") */
+  /** Whitelabel: modal title (default: "AI Analytics Assistant") */
   title?: string;
-  /** Whitelabel: empty-state heading (default: "Create a Visualization") */
+  /** Whitelabel: empty-state heading (default: "Ask about your data") */
   createTitle?: string;
   /** Model dropdown options (`value` = bare model id; empty string = server default). Server maps tiers when using Gemini. */
   chartModelOptions?: AIChartModelOption[];
@@ -321,37 +325,6 @@ function withVizSpecDataFallback(
   } catch {
     return chartSpec;
   }
-}
-
-function getToolEventLabel(toolName: string) {
-  return formatToolStatus(toolName);
-}
-
-function ToolEventStatusIcon({ status }: { status: ToolEventStatus }) {
-  if (status === "succeeded") return <CircleCheckIcon className="w-4 h-4" />;
-  if (status === "failed") return <CircleAlertIcon className="w-4 h-4" />;
-  return <LoaderCircleIcon className="w-4 h-4 qp-ai-modal-spin" />;
-}
-
-function ToolEventChip({
-  event,
-  active,
-  onClick,
-}: {
-  event: ToolEvent;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`qp-ai-modal-toolchip ${event.status} ${active ? "active" : ""}`}
-      onClick={onClick}
-    >
-      <ToolEventStatusIcon status={event.status} />
-      <span className="qp-ai-modal-toolchip-label">{getToolEventLabel(event.toolName)}</span>
-    </button>
-  );
 }
 
 function ThoughtSummaryRail({ events }: { events: ToolEvent[] }) {
@@ -777,6 +750,7 @@ export function AIChartModal({
   isOpen,
   onClose,
   onAddChart,
+  onAddReport,
   organizationId,
   dashboardId,
   initialPrompt,
@@ -795,8 +769,8 @@ export function AIChartModal({
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
   defaultChartModel = "gpt-5.6-luna",
 }: AIChartModalProps) {
-  const modalTitle = titleProp ?? "AI Visualization Generator";
-  const createTitle = createTitleProp ?? "Create a Visualization";
+  const modalTitle = titleProp ?? "AI Analytics Assistant";
+  const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
   const enableModelOverride = false;
 
@@ -1007,8 +981,9 @@ export function AIChartModal({
           {
             id: currentAssistantMessageId,
             role: "assistant",
-            kind: "status",
+            kind: "turn",
             content: "",
+            blocks: [],
             sqlParams: null,
             timestamp: new Date(),
           },
@@ -1070,35 +1045,33 @@ export function AIChartModal({
             updateAssistantMessage,
             setTransientStatus,
             setToolEvents,
-            setMessages,
             setLastSqlExecution,
           }),
         );
 
-        updateAssistantMessage((current) => ({
-          ...current,
-          content:
-            current.content.trim().length > 0
-              ? current.content
-              : current.jsonRenderSpec || current.chartSpec
-                ? current.presentationKind === "table"
-                  ? "I've prepared a table for you."
-                  : "I've prepared a visualization for you."
-                : "I processed your request.",
-        }));
+        // Capture running tools before clearing; do not nest setMessages inside setToolEvents
+        // (Strict Mode double-invokes updaters and would duplicate ask blocks).
+        let finalizedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {
-          if (current.length > 0) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === currentAssistantMessageId ||
-                (m.sourceAssistantId === currentAssistantMessageId && m.kind === "explanation")
-                  ? { ...m, toolEvents: current }
-                  : m
-              )
-            );
-          }
+          finalizedToolEvents = current.map((event) =>
+            event.status === "running"
+              ? { ...event, status: "succeeded" as const, endedAt: Date.now() }
+              : event,
+          );
           return [];
         });
+        updateAssistantMessage((msg) =>
+          completeMastraAssistantTurn(
+            {
+              ...msg,
+              toolEvents:
+                finalizedToolEvents.length > 0
+                  ? finalizedToolEvents
+                  : msg.toolEvents,
+            },
+            createMessageId,
+          ),
+        );
         setTransientStatus(null);
       } else {
         const response = await fetch(generateChartWithSqlUrl, {
@@ -1146,14 +1119,13 @@ export function AIChartModal({
       setTransientStatus(null);
       if (!streamFailureHandledRef.current) {
         streamFailureHandledRef.current = true;
-        const errorMessageId = createMessageId("error");
         const terminalMessage =
           err instanceof MastraStreamTerminalError && err.message.trim().length > 0
             ? err.message.trim()
             : null;
         const errorContent =
           terminalMessage ??
-          "Sorry, I couldn't generate that chart. Please try again or rephrase your request.";
+          "Sorry, I couldn't finish that request. Please try again or rephrase.";
         let finalisedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {
           finalisedToolEvents = current.map((event) =>
@@ -1164,18 +1136,70 @@ export function AIChartModal({
           return [];
         });
         setMessages((prev) => {
-          const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
-          if (withoutPlaceholder.some((m) => m.id === errorMessageId)) {
-            return withoutPlaceholder;
+          // Keep the in-progress turn (text/data/viz) and attach a visible error ask.
+          if (assistantMessageId) {
+            const hasTurn = prev.some((m) => m.id === assistantMessageId);
+            if (hasTurn) {
+              return prev.map((message) => {
+                if (message.id !== assistantMessageId) return message;
+                const withTools: Message = {
+                  ...message,
+                  kind: "turn",
+                  toolEvents:
+                    finalisedToolEvents.length > 0
+                      ? finalisedToolEvents
+                      : message.toolEvents,
+                };
+                const completed = completeMastraAssistantTurn(
+                  withTools,
+                  createMessageId,
+                );
+                const askAlready =
+                  completed.blocks?.some(
+                    (b) =>
+                      b.type === "ask" &&
+                      b.content.toLowerCase().includes(errorContent.toLowerCase().slice(0, 24)),
+                  ) ?? false;
+                if (askAlready) return completed;
+                return {
+                  ...completed,
+                  blocks: [
+                    ...(completed.blocks ?? []),
+                    {
+                      id: createMessageId("ask-error"),
+                      type: "ask" as const,
+                      content: errorContent,
+                    },
+                  ],
+                  content:
+                    completed.content.trim().length > 0
+                      ? completed.content
+                      : errorContent,
+                };
+              });
+            }
           }
+
+          const errorMessageId = createMessageId("error");
+          if (prev.some((m) => m.id === errorMessageId)) return prev;
           return [
-            ...withoutPlaceholder,
+            ...prev,
             {
               id: errorMessageId,
               role: "assistant" as const,
+              kind: "turn" as const,
               content: errorContent,
+              blocks: [
+                {
+                  id: createMessageId("ask-error"),
+                  type: "ask" as const,
+                  content: errorContent,
+                },
+              ],
               timestamp: new Date(),
-              ...(finalisedToolEvents.length > 0 ? { toolEvents: finalisedToolEvents } : {}),
+              ...(finalisedToolEvents.length > 0
+                ? { toolEvents: finalisedToolEvents }
+                : {}),
             },
           ];
         });
@@ -1196,6 +1220,52 @@ export function AIChartModal({
       hideTenantInputs ? undefined : previewTenantId.trim() || undefined,
       message.resultId ?? message.queryResult?.resultId
     );
+  };
+
+  const handleAddVizBlock = (block: ReportVizBlock, turn?: Message) => {
+    onAddChart(
+      block.jsonRenderSpec ?? block.chartSpec,
+      block.rationale ?? (turn ? getMessageRationale(turn) : undefined),
+      block.sql ?? turn?.sql,
+      selectedDatasourceIds,
+      block.sqlParams ?? turn?.sqlParams ?? null,
+      tenantFieldName.trim() || undefined,
+      hideTenantInputs ? undefined : previewTenantId.trim() || undefined,
+      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId
+    );
+  };
+
+  const handleAddReportToEditor = (message: Message) => {
+    const blocks = collectDashboardReportBlocks(message).map((block) => {
+      if (block.type !== "viz") return block;
+      return {
+        ...block,
+        datasourceIds: selectedDatasourceIds,
+        tenantFieldName: tenantFieldName.trim() || undefined,
+        previewTenantId: hideTenantInputs
+          ? undefined
+          : previewTenantId.trim() || undefined,
+      };
+    });
+    if (blocks.length === 0) return;
+    if (onAddReport) {
+      onAddReport(blocks);
+      return;
+    }
+    // Fallback: add first viz only when host did not wire onAddReport.
+    const firstViz = blocks.find((b) => b.type === "viz");
+    if (firstViz && firstViz.type === "viz") {
+      onAddChart(
+        firstViz.jsonRenderSpec ?? firstViz.chartSpec,
+        firstViz.rationale ?? getMessageRationale(message),
+        firstViz.sql ?? message.sql,
+        firstViz.datasourceIds ?? selectedDatasourceIds,
+        firstViz.sqlParams ?? message.sqlParams ?? null,
+        firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined),
+        firstViz.previewTenantId,
+        firstViz.resultId ?? message.resultId
+      );
+    }
   };
 
   const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1296,7 +1366,7 @@ export function AIChartModal({
                 <div>
                   <h2 className="qp-ai-modal-title">{modalTitle}</h2>
                   <p className="qp-ai-modal-subtitle">
-                    Describe your visualization in natural language
+                    Ask questions, explore data, and add reports to your dashboard
                   </p>
                 </div>
               </div>
@@ -1379,23 +1449,20 @@ export function AIChartModal({
                   const messageQueryResult =
                     message.queryResult ?? (isActiveAssistant ? lastSqlExecution : null);
                   const assistantHasVisualization = Boolean(message.jsonRenderSpec || message.chartSpec);
-                  const isStreamItem =
-                    message.kind === "status" ||
-                    message.kind === "chart" ||
-                    message.kind === "action" ||
-                    message.kind === "explanation";
-                  /** While the active turn is still streaming, hide narrative text until a chart/table spec exists so it only appears under the viz. */
+                  const isTurn = message.kind === "turn";
+                  // Classic (non-Mastra) replies have no kind; turn UI owns Mastra markdown.
                   const showAssistantMarkdown =
                     message.role === "assistant" &&
+                    !isTurn &&
                     message.content.trim().length > 0 &&
-                    (message.kind === "explanation" ||
-                      (!isStreamItem && (!isActiveAssistant || !isLoading || assistantHasVisualization)));
+                    (!isActiveAssistant || !isLoading || assistantHasVisualization);
                   const hasVisibleAssistantState =
-                    isStreamItem ||
+                    isTurn ||
                     message.content.trim().length > 0 ||
                     Boolean(message.jsonRenderSpec) ||
                     Boolean(message.chartSpec) ||
                     Boolean(messageQueryResult) ||
+                    Boolean(message.blocks?.length) ||
                     Boolean(message.toolEvents?.length) ||
                     (isActiveAssistant &&
                       (isLoading || toolEvents.length > 0 || Boolean(lastSqlExecution)));
@@ -1410,90 +1477,32 @@ export function AIChartModal({
                       className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
-                        {message.role === "assistant" &&
-                          message.kind === "status" &&
-                          message.id === activeAssistantMessageId &&
-                          isLoading &&
-                          !toolEvents.some((e) => e.status === "running") &&
-                          !message.content.trim() &&
-                          !message.jsonRenderSpec &&
-                          !message.chartSpec &&
-                          !messageQueryResult && (
-                            <div className="qp-ai-modal-toolrail" aria-live="polite" aria-label="Assistant status">
-                              <span className="qp-ai-modal-step-text">
-                                <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
-                                {transientStatus ?? "Thinking"}
-                              </span>
-                            </div>
-                          )}
-
-                        {message.role === "assistant" &&
-                          message.kind === "status" &&
-                          message.id === activeAssistantMessageId &&
-                          toolEvents.some((e) => e.status === "running") && (
-                            <div className="qp-ai-modal-toolrail" aria-label="Agent steps">
-                              {toolEvents.filter((e) => e.status === "running").map((event) => (
-                                <span key={event.id} className="qp-ai-modal-step-text">
-                                  <LoaderCircleIcon className="w-3 h-3 qp-ai-modal-spin" />
-                                  {getToolEventLabel(event.toolName)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                        {message.role === "assistant" &&
-                          message.kind === "status" &&
-                          message.toolEvents &&
-                          message.toolEvents.length > 0 && <ThoughtSummaryRail events={message.toolEvents} />}
-
-                        {message.kind === "chart" && (
-                          <div className="qp-ai-modal-chart-stack">
-                            <div className="qp-ai-modal-chart-stack-preview">
-                              {message.jsonRenderSpec ? (
-                                <JsonRenderPreview
-                                  spec={message.jsonRenderSpec}
-                                  queryResultBaseUrl={queryResultBaseUrl}
-                                  requestHeaders={headers}
-                                />
-                              ) : (
-                                <ChartPreview
-                                  chartSpec={withVizSpecDataFallback(
-                                    message.chartSpec,
-                                    Array.isArray(message.queryResult?.rows)
-                                      ? (message.queryResult.rows as Array<Record<string, unknown>>)
-                                      : message.sourceAssistantId === activeAssistantMessageId
-                                        ? (lastSqlExecution?.rows ?? null)
-                                        : null
-                                  )}
-                                  darkMode={effectiveDarkMode}
-                                />
-                              )}
-                            </div>
-                          </div>
+                        {message.role === "user" && message.content.trim().length > 0 && (
+                          <div>{message.content}</div>
                         )}
 
-                        {message.kind === "action" && (
-                          <div className="qp-ai-modal-chart-action-item">
-                            <button
-                              type="button"
-                              onClick={() => handleAddChartToEditor(message)}
-                              className="qp-ai-modal-add-chart-btn"
-                            >
-                              Add to dashboard
-                            </button>
-                          </div>
+                        {message.role === "assistant" && isTurn && (
+                          <ReportTurnView
+                            message={message}
+                            isActive={isActiveAssistant}
+                            isLoading={isLoading}
+                            toolEvents={toolEvents}
+                            transientStatus={transientStatus}
+                            lastSqlExecution={lastSqlExecution}
+                            queryResultBaseUrl={queryResultBaseUrl}
+                            requestHeaders={headers}
+                            darkMode={effectiveDarkMode}
+                            ChartPreview={ChartPreview}
+                            withVizSpecDataFallback={withVizSpecDataFallback}
+                            ThoughtSummaryRail={ThoughtSummaryRail}
+                            onAddViz={(block) => handleAddVizBlock(block, message)}
+                            onAddReport={handleAddReportToEditor}
+                          />
                         )}
 
-                        {message.kind === "explanation" && (
-                          <>
-                            {message.toolEvents && message.toolEvents.length > 0 && (
-                              <ThoughtSummaryRail events={message.toolEvents} />
-                            )}
-                            <AssistantMessageMarkdown content={message.content} />
-                          </>
-                        )}
-
-                        {!isStreamItem && Boolean(message.jsonRenderSpec || message.chartSpec) && (
+                        {message.role === "assistant" &&
+                          !isTurn &&
+                          Boolean(message.jsonRenderSpec || message.chartSpec) && (
                           <div className="qp-ai-modal-chart-stack">
                             <div className="qp-ai-modal-chart-stack-preview">
                               {message.jsonRenderSpec ? (
@@ -1519,7 +1528,9 @@ export function AIChartModal({
                           </div>
                         )}
 
-                        {!isStreamItem && Boolean(message.jsonRenderSpec || message.chartSpec) && (
+                        {message.role === "assistant" &&
+                          !isTurn &&
+                          Boolean(message.jsonRenderSpec || message.chartSpec) && (
                           <div className="qp-ai-modal-chart-action-item">
                             <button
                               type="button"
@@ -1531,10 +1542,7 @@ export function AIChartModal({
                           </div>
                         )}
 
-                        {message.role === "user" && message.content.trim().length > 0 && (
-                          <div>{message.content}</div>
-                        )}
-                        {!isStreamItem && showAssistantMarkdown && (
+                        {showAssistantMarkdown && (
                           <AssistantMessageMarkdown content={message.content} />
                         )}
 
