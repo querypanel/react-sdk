@@ -208,7 +208,6 @@ interface QueryResult {
   fields?: string[];
   chart?: {
     vegaLiteSpec?: Record<string, unknown>;
-    specType: "vega-lite" | "vizspec";
   };
 }
 ```
