@@ -1,10 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Block } from "@blocknote/core";
-import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import type { ThemeColors } from "../types";
 import { defaultTheme, defaultColors } from "../themes";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
+import {
+  createDashboardSchema,
+  dashboardBlockNoteDictionary,
+  multiColumnDropCursor,
+} from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { ThemeProvider } from "../context/ThemeContext";
 import { normalizeBlockNoteContent } from "./blocknoteContent";
@@ -66,11 +70,8 @@ export function DashboardEditor({
 
   const schema = useMemo(
     () =>
-      BlockNoteSchema.create({
-        blockSpecs: {
-          ...defaultBlockSpecs,
-          chart: chartBlockSpec,
-        },
+      createDashboardSchema({
+        chart: chartBlockSpec,
       }),
     [chartBlockSpec]
   );
@@ -79,6 +80,8 @@ export function DashboardEditor({
   const editor = useCreateBlockNote({
     schema,
     initialContent: parsedContent as Block[],
+    dropCursor: multiColumnDropCursor,
+    dictionary: dashboardBlockNoteDictionary,
   });
 
   useEffect(() => {

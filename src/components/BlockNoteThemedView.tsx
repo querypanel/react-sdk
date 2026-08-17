@@ -26,6 +26,17 @@ export interface BlockNoteThemedViewProps {
   slashMenu?: boolean;
 }
 
+const columnLayoutStyles = `
+  .bn-block-column {
+    min-width: 0;
+  }
+  @media (max-width: 640px) {
+    .bn-block-column-list {
+      flex-direction: column !important;
+    }
+  }
+`;
+
 function toRgba(color: string, alpha: number): string {
   const trimmed = color.trim();
   const hexMatch = /^#([A-Fa-f0-9]{6})$/.exec(trimmed);
@@ -106,11 +117,14 @@ export function BlockNoteThemedView({
   ].join("|");
 
   return (
-    <BlockNoteView
-      key={stableKey}
-      {...props}
-      theme={lockedTheme}
-      style={{ ...cssVariables, ...style }}
-    />
+    <>
+      <style>{columnLayoutStyles}</style>
+      <BlockNoteView
+        key={stableKey}
+        {...props}
+        theme={lockedTheme}
+        style={{ ...cssVariables, ...style }}
+      />
+    </>
   );
 }

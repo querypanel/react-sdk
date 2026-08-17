@@ -13,6 +13,7 @@ import {
   withJsonRenderResultId,
 } from "../generative-ui/specData";
 import { runDedupedRequest } from "../../utils/requestDedup";
+import { parseBlockHeight } from "./chartBlockHeight";
 
 type JsonRenderChartBlockOptions = {
   apiBaseUrl?: string;
@@ -131,15 +132,7 @@ export function createJsonRenderChartBlockSpec({
           }
         }, [props.block.props.datasourceIds]);
 
-        const chartHeight = (() => {
-          const raw = props.block.props.height;
-          if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-          if (typeof raw === "string") {
-            const parsed = Number.parseInt(raw, 10);
-            if (Number.isFinite(parsed)) return parsed;
-          }
-          return 400;
-        })();
+        const chartHeight = parseBlockHeight(props.block.props.height) ?? 400;
 
         useEffect(() => {
           if (!parsedSpec) return;

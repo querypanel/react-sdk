@@ -8,6 +8,7 @@ import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import type { ThemeColors } from "../../types";
 import { runDedupedRequest } from "../../utils/requestDedup";
+import { resolveChartBlockHeight } from "./chartBlockHeight";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
@@ -85,16 +86,6 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
         const [error, setError] = useState<string | null>(null);
         const [isLoading, setIsLoading] = useState(false);
 
-        const chartHeight = (() => {
-          const raw = props.block.props.height;
-          if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-          if (typeof raw === "string") {
-            const parsed = Number.parseInt(raw, 10);
-            if (Number.isFinite(parsed)) return parsed;
-          }
-          return 400;
-        })();
-
         const parsedSpec = useMemo(() => {
           if (!props.block.props.chartSpec) return null;
           try {
@@ -114,6 +105,11 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
             return null;
           }
         }, [props.block.props.chartSpec]);
+
+        const chartHeight = resolveChartBlockHeight(
+          props.block.props.height,
+          parsedSpec?.spec.kind
+        );
 
         const sqlParams = useMemo(() => {
           try {

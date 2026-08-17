@@ -3,16 +3,21 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Block } from "@blocknote/core";
 import { RocketIcon, Save, SparklesIcon } from "lucide-react";
-import { BlockNoteSchema, defaultBlockSpecs, filterSuggestionItems } from "@blocknote/core";
+import { filterSuggestionItems } from "@blocknote/core";
 import {
   useCreateBlockNote,
-  getDefaultReactSlashMenuItems,
   SuggestionMenuController,
 } from "@blocknote/react";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import type { ThemeColors, EmbedBranding } from "../types";
 import { defaultColors } from "../themes";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
+import {
+  createDashboardSchema,
+  dashboardBlockNoteDictionary,
+  getDashboardSlashMenuItems,
+  multiColumnDropCursor,
+} from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal } from "./AIChartModal";
@@ -24,8 +29,8 @@ import { normalizeBlockNoteContent } from "./blocknoteContent";
 import {
   getJsonRenderTitle,
   isJsonRenderSpecLike,
-  stripDataFromJsonRenderSpec,
 } from "./generative-ui/specData";
+import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 
 const EMPTY_HEADERS: Record<string, string> = {};
 
@@ -264,12 +269,9 @@ export function DashboardAiEditor({
 
   const schema = useMemo(
     () =>
-      BlockNoteSchema.create({
-        blockSpecs: {
-          ...defaultBlockSpecs,
-          chart: chartBlockSpec,
-          "json-render-chart": jsonRenderBlockSpec,
-        },
+      createDashboardSchema({
+        chart: chartBlockSpec,
+        "json-render-chart": jsonRenderBlockSpec,
       }),
     [chartBlockSpec, jsonRenderBlockSpec]
   );
@@ -283,6 +285,8 @@ export function DashboardAiEditor({
   const editor = useCreateBlockNote({
     schema,
     initialContent: parsedInitialContent,
+    dropCursor: multiColumnDropCursor,
+    dictionary: dashboardBlockNoteDictionary,
   }, [schema, contentSignature]);
 
   useEffect(() => {
@@ -304,10 +308,8 @@ export function DashboardAiEditor({
   );
 
   const getCustomSlashMenuItems = useCallback(
-    (): DefaultReactSuggestionItem[] => [
-      ...getDefaultReactSlashMenuItems(editor),
-      insertAIChartItem(),
-    ],
+    (): DefaultReactSuggestionItem[] =>
+      getDashboardSlashMenuItems(editor, [insertAIChartItem()]),
     [editor, insertAIChartItem]
   );
 
@@ -444,44 +446,7 @@ export function DashboardAiEditor({
   );
 
   const stripDataFromChartBlocks = useCallback(() => {
-    return editor.document.map((block) => {
-      if (block.type === "chart" && block.props.chartSpec) {
-        try {
-          const spec = JSON.parse(block.props.chartSpec as string);
-          if (spec.data) {
-            const specWithoutData = { ...spec };
-            delete specWithoutData.data;
-            return {
-              ...block,
-              props: {
-                ...block.props,
-                chartSpec: JSON.stringify(specWithoutData),
-              },
-            };
-          }
-        } catch {
-          // keep original on parse failure
-        }
-      }
-      if (block.type === "json-render-chart" && block.props.jsonRenderSpec) {
-        try {
-          const spec = JSON.parse(block.props.jsonRenderSpec as string);
-          return {
-            ...block,
-            props: {
-              ...block.props,
-              jsonRenderSpec: JSON.stringify(stripDataFromJsonRenderSpec(spec)),
-              // Important: clear resultId so embedded dashboards don't attempt to fetch
-              // `/query-results/:id` for artifacts created in a different environment.
-              resultId: "",
-            },
-          };
-        } catch {
-          // keep original on parse failure
-        }
-      }
-      return block;
-    });
+    return stripEmbeddedDataFromBlocks(editor.document);
   }, [editor]);
 
   const handleDeploy = async () => {

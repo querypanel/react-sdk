@@ -1,8 +1,12 @@
 import { useEffect, useState, useMemo } from "react";
 import type { Block } from "@blocknote/core";
-import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
+import {
+  createDashboardSchema,
+  dashboardBlockNoteDictionary,
+  multiColumnDropCursor,
+} from "./blocknoteDashboard";
 import { defaultColors, defaultTheme } from "../themes";
 import type { ThemeColors } from "../types";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
@@ -79,11 +83,8 @@ export function DashboardViewer({
 
   const schema = useMemo(
     () =>
-      BlockNoteSchema.create({
-        blockSpecs: {
-          ...defaultBlockSpecs,
-          chart: chartBlockSpec,
-        },
+      createDashboardSchema({
+        chart: chartBlockSpec,
       }),
     [chartBlockSpec]
   );
@@ -92,6 +93,8 @@ export function DashboardViewer({
   const editor = useCreateBlockNote({
     schema,
     initialContent: parsedContent as Block[],
+    dropCursor: multiColumnDropCursor,
+    dictionary: dashboardBlockNoteDictionary,
   });
 
   // Client-side only rendering to avoid hydration mismatch
