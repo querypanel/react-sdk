@@ -4,8 +4,38 @@ import {
 	getMastraChunkErrorMessage,
 	MastraStreamTerminalError,
 	normalizeMastraChunk,
+	readHttpErrorMessage,
 	unwrapMastraToolResult,
 } from "./mastraChartStream";
+
+describe("readHttpErrorMessage", () => {
+	it("reads flat and nested JSON error messages", async () => {
+		await expect(
+			readHttpErrorMessage(
+				new Response(JSON.stringify({ error: "tenantId is required" }), {
+					status: 400,
+				}),
+			),
+		).resolves.toBe("tenantId is required");
+		await expect(
+			readHttpErrorMessage(
+				new Response(
+					JSON.stringify({ error: { message: "Dashboard not found" } }),
+					{ status: 404 },
+				),
+			),
+		).resolves.toBe("Dashboard not found");
+	});
+
+	it("preserves plain-text errors and hides HTML responses", async () => {
+		await expect(
+			readHttpErrorMessage(new Response("Upstream validation failed", { status: 400 })),
+		).resolves.toBe("Upstream validation failed");
+		await expect(
+			readHttpErrorMessage(new Response("<!doctype html><h1>Error</h1>", { status: 500 })),
+		).resolves.toBe("Failed to generate chart");
+	});
+});
 
 describe("getMastraChunkErrorMessage", () => {
 	it("reads proxy terminal error events", () => {

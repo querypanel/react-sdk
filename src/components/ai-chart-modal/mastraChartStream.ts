@@ -95,6 +95,49 @@ export class MastraStreamTerminalError extends Error {
 	}
 }
 
+function messageFromErrorPayload(payload: unknown): string | null {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+		return null;
+	}
+	const record = payload as Record<string, unknown>;
+	if (typeof record.error === "string" && record.error.trim()) {
+		return record.error.trim();
+	}
+	if (typeof record.message === "string" && record.message.trim()) {
+		return record.message.trim();
+	}
+	if (
+		record.error &&
+		typeof record.error === "object" &&
+		!Array.isArray(record.error)
+	) {
+		const nestedMessage = (record.error as Record<string, unknown>).message;
+		if (typeof nestedMessage === "string" && nestedMessage.trim()) {
+			return nestedMessage.trim();
+		}
+	}
+	return null;
+}
+
+/** Preserve the server's useful 4xx/5xx message instead of masking every failure. */
+export async function readHttpErrorMessage(
+	response: Response,
+	fallback = "Failed to generate chart",
+): Promise<string> {
+	const text = await response.text().catch(() => "");
+	if (!text.trim()) return fallback;
+
+	try {
+		const parsed = JSON.parse(text) as unknown;
+		return messageFromErrorPayload(parsed) ?? fallback;
+	} catch {
+		const trimmed = text.trim();
+		return trimmed.startsWith("<!") || trimmed.startsWith("<html")
+			? fallback
+			: trimmed;
+	}
+}
+
 export function getMastraChunkErrorMessage(chunk: MastraStreamChunk): string | null {
 	if (chunk.type === "error") {
 		const message = chunk.error?.message;

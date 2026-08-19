@@ -15,7 +15,6 @@ import remarkGfm from "remark-gfm";
 import {
   XIcon,
   SendIcon,
-  BarChart3Icon,
   SparklesIcon,
   Wand2Icon,
   SlidersHorizontalIcon,
@@ -47,6 +46,7 @@ import {
 import {
   consumeMastraChartStream,
   MastraStreamTerminalError,
+  readHttpErrorMessage,
 } from "./ai-chart-modal/mastraChartStream";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
 import type {
@@ -65,6 +65,18 @@ function createMessageId(prefix: string): string {
     return `${prefix}-${globalThis.crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function resolveAiChartTenantFieldName(
+  selectedIds: string[],
+  byDs: Record<string, string> | null | undefined,
+  defaultName: string | null | undefined,
+  dashboardType: "customer" | "internal" | undefined,
+): string {
+  const firstId = selectedIds[0];
+  if (firstId && byDs?.[firstId]?.trim()) return byDs[firstId].trim();
+  if (defaultName?.trim()) return defaultName.trim();
+  return dashboardType === "internal" ? "" : "tenant_id";
 }
 
 /** Option for the SQL / chart LLM model selector (OpenAI model id as `value`). */
@@ -773,16 +785,14 @@ export function AIChartModal({
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
   const enableModelOverride = false;
+  const tenantInputsEnabled =
+    !hideTenantInputs && dashboardType === "customer";
 
   const getResolvedTenantField = (
     selectedIds: string[],
     byDs: Record<string, string> | null | undefined,
     defaultName: string | null | undefined
-  ) => {
-    const firstId = selectedIds[0];
-    if (firstId && byDs && byDs[firstId]?.trim()) return byDs[firstId].trim();
-    return defaultName?.trim() || "tenant_id";
-  };
+  ) => resolveAiChartTenantFieldName(selectedIds, byDs, defaultName, dashboardType);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -923,14 +933,22 @@ export function AIChartModal({
 
   useEffect(() => {
     if (isOpen) {
-      const firstId = selectedDatasourceIds[0];
-      const resolved =
-        firstId && tenantFieldByDatasource?.[firstId]?.trim()
-          ? tenantFieldByDatasource[firstId].trim()
-          : defaultTenantFieldName?.trim() || "tenant_id";
-      setTenantFieldName(resolved);
+      setTenantFieldName(
+        resolveAiChartTenantFieldName(
+          selectedDatasourceIds,
+          tenantFieldByDatasource,
+          defaultTenantFieldName,
+          dashboardType,
+        ),
+      );
     }
-  }, [isOpen, defaultTenantFieldName, tenantFieldByDatasource, selectedDatasourceIds]);
+  }, [
+    isOpen,
+    defaultTenantFieldName,
+    tenantFieldByDatasource,
+    selectedDatasourceIds,
+    dashboardType,
+  ]);
 
   const handleSendMessage = async (prompt?: string) => {
     const messageText = prompt || inputValue.trim();
@@ -959,6 +977,11 @@ export function AIChartModal({
     const latestResultId = shouldReuseLatestResultId(messageText)
       ? getLatestResultId(messages)
       : undefined;
+    const previewTenant = tenantInputsEnabled ? previewTenantId.trim() : "";
+    const requestTenantFieldName =
+      tenantFieldName.trim() && (dashboardType !== "internal" || previewTenant)
+        ? tenantFieldName.trim()
+        : undefined;
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
@@ -999,6 +1022,7 @@ export function AIChartModal({
           },
           body: JSON.stringify({
             messages: messageText,
+            dashboardId,
             memory: {
               thread: threadId,
               resource: resourceId,
@@ -1006,10 +1030,13 @@ export function AIChartModal({
             requestContext: {
               organizationId,
               datasourceId: selectedDatasourceIds[0],
+              dashboardType,
               ...(latestResultId ? { resultId: latestResultId } : {}),
-              ...(hideTenantInputs ? {} : { tenantId: previewTenantId.trim() || undefined }),
-              ...(tenantFieldName.trim()
-                ? { tenantFieldName: tenantFieldName.trim() }
+              ...(!tenantInputsEnabled
+                ? {}
+                : { tenantId: previewTenant || undefined }),
+              ...(requestTenantFieldName
+                ? { tenantFieldName: requestTenantFieldName }
                 : {}),
             },
             savePerStep: true,
@@ -1019,7 +1046,10 @@ export function AIChartModal({
           }),
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
+          throw new Error(await readHttpErrorMessage(response));
+        }
+        if (!response.body) {
           throw new Error("Failed to generate chart");
         }
 
@@ -1085,8 +1115,10 @@ export function AIChartModal({
             prompt: messageText,
             dashboardId,
             datasourceIds: selectedDatasourceIds.length > 0 ? selectedDatasourceIds : undefined,
-            tenantFieldName: tenantFieldName.trim() || undefined,
-            ...(hideTenantInputs ? {} : { previewTenantId: previewTenantId.trim() || undefined }),
+            tenantFieldName: requestTenantFieldName,
+            ...(!tenantInputsEnabled
+              ? {}
+              : { previewTenantId: previewTenant || undefined }),
             conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
             ...(querypanelSessionId ? { querypanelSessionId } : {}),
             ...(enableModelOverride && chartModel.trim() ? { model: chartModel.trim() } : {}),
@@ -1094,7 +1126,7 @@ export function AIChartModal({
         });
 
         if (!response.ok) {
-          throw new Error("Failed to generate chart");
+          throw new Error(await readHttpErrorMessage(response));
         }
 
         const data = await response.json();
@@ -1216,8 +1248,8 @@ export function AIChartModal({
       message.sql,
       selectedDatasourceIds,
       message.sqlParams,
-      tenantFieldName.trim() || undefined,
-      hideTenantInputs ? undefined : previewTenantId.trim() || undefined,
+      tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
+      tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
       message.resultId ?? message.queryResult?.resultId
     );
   };
@@ -1229,8 +1261,8 @@ export function AIChartModal({
       block.sql ?? turn?.sql,
       selectedDatasourceIds,
       block.sqlParams ?? turn?.sqlParams ?? null,
-      tenantFieldName.trim() || undefined,
-      hideTenantInputs ? undefined : previewTenantId.trim() || undefined,
+      tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
+      tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
       block.resultId ?? block.queryResult?.resultId ?? turn?.resultId
     );
   };
@@ -1241,10 +1273,12 @@ export function AIChartModal({
       return {
         ...block,
         datasourceIds: selectedDatasourceIds,
-        tenantFieldName: tenantFieldName.trim() || undefined,
-        previewTenantId: hideTenantInputs
-          ? undefined
-          : previewTenantId.trim() || undefined,
+        tenantFieldName: tenantInputsEnabled
+          ? tenantFieldName.trim() || undefined
+          : undefined,
+        previewTenantId: tenantInputsEnabled
+          ? previewTenantId.trim() || undefined
+          : undefined,
       };
     });
     if (blocks.length === 0) return;
@@ -1261,8 +1295,10 @@ export function AIChartModal({
         firstViz.sql ?? message.sql,
         firstViz.datasourceIds ?? selectedDatasourceIds,
         firstViz.sqlParams ?? message.sqlParams ?? null,
-        firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined),
-        firstViz.previewTenantId,
+        tenantInputsEnabled
+          ? firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined)
+          : undefined,
+        tenantInputsEnabled ? firstViz.previewTenantId : undefined,
         firstViz.resultId ?? message.resultId
       );
     }
@@ -1284,7 +1320,7 @@ export function AIChartModal({
 
   if (!isOpen) return null;
 
-  const tenantSettingsVisible = dashboardType === "customer" && !hideTenantInputs;
+  const tenantSettingsVisible = tenantInputsEnabled;
   const datasourceSummaryShort =
     selectedDatasourceIds.length === 0
       ? "Tap to choose a datasource"
@@ -1313,7 +1349,7 @@ export function AIChartModal({
         <div className="qp-ai-modal-settings-block qp-ai-modal-settings-tenant">
           <div>
             <label htmlFor={tenantFieldId} className="qp-ai-modal-label">
-              Tenant field name (optional)
+              Tenant field name
             </label>
             <input
               id={tenantFieldId}
@@ -1326,7 +1362,7 @@ export function AIChartModal({
           </div>
           <div>
             <label htmlFor={previewTenantIdFieldId} className="qp-ai-modal-label">
-              Preview as tenant ID (optional)
+              Preview as tenant ID
             </label>
             <input
               id={previewTenantIdFieldId}
@@ -1662,7 +1698,9 @@ export function AIChartModal({
                     </button>
                   </div>
                   <p className="qp-ai-modal-mobile-sheet-subtitle">
-                    Pick where the chart runs and how tenant preview is applied.
+                    {tenantSettingsVisible
+                      ? "Pick where the chart runs and how tenant preview is applied."
+                      : "Pick the datasource used to answer your question."}
                   </p>
                   <div className="qp-ai-modal-mobile-sheet-body">{settingsPaneInner}</div>
                 </div>
