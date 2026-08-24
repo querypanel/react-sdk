@@ -1,12 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
-import type { Block } from "@blocknote/core";
-import { useCreateBlockNote } from "@blocknote/react";
+import { filterSuggestionItems, type Block } from "@blocknote/core";
+import {
+  SuggestionMenuController,
+  useCreateBlockNote,
+} from "@blocknote/react";
 import type { ThemeColors } from "../types";
 import { defaultTheme, defaultColors } from "../themes";
 import { BlockNoteThemedView } from "./BlockNoteThemedView";
 import {
   createDashboardSchema,
   dashboardBlockNoteDictionary,
+  getDashboardSlashMenuItems,
   multiColumnDropCursor,
 } from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
@@ -136,7 +140,15 @@ export function DashboardEditor({
             darkMode={darkMode}
             themeColors={themeColors}
             fontFamily={fontFamily}
-          />
+            slashMenu={false}
+          >
+            <SuggestionMenuController
+              triggerCharacter="/"
+              getItems={async (query) =>
+                filterSuggestionItems(getDashboardSlashMenuItems(editor), query)
+              }
+            />
+          </BlockNoteThemedView>
         </div>
       </ThemeProvider>
     </div>

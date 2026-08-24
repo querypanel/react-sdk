@@ -30,6 +30,10 @@ const columnLayoutStyles = `
   .bn-block-column {
     min-width: 0;
   }
+  .bn-block-column .bn-block-content {
+    min-width: 0;
+    max-width: 100%;
+  }
   @media (max-width: 640px) {
     .bn-block-column-list {
       flex-direction: column !important;
