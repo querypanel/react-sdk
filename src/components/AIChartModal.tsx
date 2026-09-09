@@ -45,7 +45,6 @@ import {
 } from "./ai-chart-modal/completeMastraTurn";
 import {
   consumeMastraChartStream,
-  MastraStreamTerminalError,
   readHttpErrorMessage,
 } from "./ai-chart-modal/mastraChartStream";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
@@ -1030,6 +1029,7 @@ export function AIChartModal({
             requestContext: {
               organizationId,
               datasourceId: selectedDatasourceIds[0],
+              dashboardId,
               dashboardType,
               ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(!tenantInputsEnabled
@@ -1151,13 +1151,10 @@ export function AIChartModal({
       setTransientStatus(null);
       if (!streamFailureHandledRef.current) {
         streamFailureHandledRef.current = true;
-        const terminalMessage =
-          err instanceof MastraStreamTerminalError && err.message.trim().length > 0
-            ? err.message.trim()
-            : null;
         const errorContent =
-          terminalMessage ??
-          "Sorry, I couldn't finish that request. Please try again or rephrase.";
+          err instanceof Error && err.message.trim().length > 0
+            ? err.message.trim()
+            : "Sorry, I couldn't finish that request. Please try again or rephrase.";
         let finalisedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {
           finalisedToolEvents = current.map((event) =>

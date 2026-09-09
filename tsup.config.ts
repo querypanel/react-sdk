@@ -12,4 +12,6 @@ export default defineConfig({
   clean: true,
   external: ["react", "react-dom"],
   treeshake: true,
+  // tsup extracts CSS to dist/index.css; hosts only get it if JS imports that file.
+  onSuccess: "node scripts/inject-css-import.mjs",
 });
