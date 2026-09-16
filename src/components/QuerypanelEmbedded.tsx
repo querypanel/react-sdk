@@ -30,7 +30,10 @@ export interface QuerypanelEmbeddedProps {
   colorPreset?: ColorPreset;
   /** Custom theme override */
   theme?: Partial<Theme>;
-  /** Use dark mode */
+  /**
+   * Use dark mode. When omitted, the editor auto-detects from the host document
+   * (`html.dark` / `data-theme="dark"`), matching `DashboardAiEditor`.
+   */
   darkMode?: boolean;
 
   /** Whitelabel: override user-visible strings (toolbar, AI modal). Omit fields to keep defaults. */
@@ -54,7 +57,7 @@ export function QuerypanelEmbedded({
   showCustomizationToolbar,
   colorPreset = "default",
   theme,
-  darkMode = false,
+  darkMode,
   branding,
   onError,
   onLoad,
@@ -103,19 +106,20 @@ export function QuerypanelEmbedded({
       }),
     [colorPreset, theme]
   );
+  const toolbarDark = Boolean(darkMode);
   const toolbarStyles = useMemo(
     () => ({
       container: {
-        backgroundColor: darkMode ? resolvedTheme.colors.background : "#ffffff",
-        borderColor: darkMode ? resolvedTheme.colors.border : `${resolvedTheme.colors.primary}22`,
-        color: darkMode ? resolvedTheme.colors.text : "#0f172a",
+        backgroundColor: toolbarDark ? resolvedTheme.colors.background : "#ffffff",
+        borderColor: toolbarDark ? resolvedTheme.colors.border : `${resolvedTheme.colors.primary}22`,
+        color: toolbarDark ? resolvedTheme.colors.text : "#0f172a",
       },
       title: {
-        color: darkMode ? resolvedTheme.colors.text : "#0f172a",
+        color: toolbarDark ? resolvedTheme.colors.text : "#0f172a",
       },
       badge: {
         backgroundColor: `${resolvedTheme.colors.primary}22`,
-        color: darkMode ? resolvedTheme.colors.text : resolvedTheme.colors.primary,
+        color: toolbarDark ? resolvedTheme.colors.text : resolvedTheme.colors.primary,
         borderColor: `${resolvedTheme.colors.primary}44`,
       },
       primaryButton: {
@@ -124,17 +128,17 @@ export function QuerypanelEmbedded({
         borderColor: resolvedTheme.colors.primary,
       },
       secondaryButton: {
-        backgroundColor: darkMode ? "rgba(255,255,255,0.04)" : "#f8fafc",
-        color: darkMode ? resolvedTheme.colors.text : "#0f172a",
-        borderColor: darkMode ? resolvedTheme.colors.border : "#cbd5e1",
+        backgroundColor: toolbarDark ? "rgba(255,255,255,0.04)" : "#f8fafc",
+        color: toolbarDark ? resolvedTheme.colors.text : "#0f172a",
+        borderColor: toolbarDark ? resolvedTheme.colors.border : "#cbd5e1",
       },
       dangerButton: {
-        backgroundColor: darkMode ? "rgba(239,68,68,0.18)" : "#fef2f2",
-        color: darkMode ? "#fecaca" : "#b91c1c",
-        borderColor: darkMode ? "rgba(239,68,68,0.35)" : "#fca5a5",
+        backgroundColor: toolbarDark ? "rgba(239,68,68,0.18)" : "#fef2f2",
+        color: toolbarDark ? "#fecaca" : "#b91c1c",
+        borderColor: toolbarDark ? "rgba(239,68,68,0.35)" : "#fca5a5",
       },
     }),
-    [darkMode, resolvedTheme]
+    [toolbarDark, resolvedTheme]
   );
 
   const exitEditMode = useCallback(() => {

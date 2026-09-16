@@ -275,50 +275,61 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
             style={{
               width: "100%",
               minWidth: 0,
-              padding: "0.75rem",
-              boxSizing: "border-box",
-              background: resolvedColors.surface,
-              border: `1px solid ${resolvedColors.border}`,
-              borderRadius: "0.75rem",
+              display: "flex",
+              justifyContent: "center",
+              padding: "0.25rem 0",
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "0.5rem",
-                color: resolvedColors.text,
-              }}
-            >
-              <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
-                {props.block.props.title || "Chart"}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
-                {datasourceIds.length > 0
-                  ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
-                  : ""}
-              </div>
-            </div>
-            <div
-              style={{
                 width: "100%",
+                maxWidth: "56rem",
                 minWidth: 0,
-                height: `${chartHeight}px`,
-                borderRadius: "0.5rem",
-                background: resolvedColors.background,
-                border: `1px solid ${resolvedColors.border}`,
-                padding: "0.5rem",
+                padding: "0.75rem",
                 boxSizing: "border-box",
-                overflow: "hidden",
+                background: resolvedColors.surface,
+                border: `1px solid ${resolvedColors.border}`,
+                borderRadius: "0.75rem",
               }}
             >
-              <VizSpecRenderer
-                spec={parsedSpec.spec}
-                data={effectiveData}
-                colors={resolvedColors}
-                chartHeight="100%"
-              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.5rem",
+                  color: resolvedColors.text,
+                }}
+              >
+                <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                  {props.block.props.title || "Chart"}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
+                  {datasourceIds.length > 0
+                    ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
+                    : ""}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  height: `${chartHeight}px`,
+                  borderRadius: "0.5rem",
+                  background: resolvedColors.background,
+                  border: `1px solid ${resolvedColors.border}`,
+                  padding: "0.5rem",
+                  boxSizing: "border-box",
+                  overflow: "hidden",
+                }}
+              >
+                <VizSpecRenderer
+                  spec={parsedSpec.spec}
+                  data={effectiveData}
+                  colors={resolvedColors}
+                  chartHeight="100%"
+                />
+              </div>
             </div>
           </div>
         );
