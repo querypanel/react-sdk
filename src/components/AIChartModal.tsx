@@ -47,6 +47,7 @@ import {
   consumeMastraChartStream,
   readHttpErrorMessage,
 } from "./ai-chart-modal/mastraChartStream";
+import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
 import type {
   DashboardReportInsertBlock,
@@ -1130,12 +1131,13 @@ export function AIChartModal({
         }
 
         const data = await response.json();
+        const visualization = visualizationFromClassicGenerateChartResponse(data);
 
         const assistantMessage: Message = {
           id: createMessageId("assistant"),
           role: "assistant",
           content: data.message || "I've created a chart for you!",
-          chartSpec: data.chartSpec,
+          ...visualization,
           rationale: data.rationale,
           sql: data.sql,
           sqlParams: (data.params as Record<string, unknown> | null) ?? null,
