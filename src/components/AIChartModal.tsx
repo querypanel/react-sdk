@@ -84,6 +84,8 @@ export type AIChartModelOption = { value: string; label: string };
 
 /** Sensible defaults; override via `chartModelOptions` if your deployment uses different ids. */
 export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
+  { value: "gpt-6-luna", label: "GPT-6 Luna" },
+  { value: "gpt-6-sol", label: "GPT-6 Sol" },
   { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
   { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
   { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
@@ -136,7 +138,7 @@ export interface AIChartModalProps {
   createTitle?: string;
   /** Model dropdown options (`value` = bare model id; empty string = server default). Server maps tiers when using Gemini. */
   chartModelOptions?: AIChartModelOption[];
-  /** Initial selected model `value` when the modal opens (default: `gpt-5.6-luna`) */
+  /** Initial selected model `value` when the modal opens (default: `gpt-6-luna`) */
   defaultChartModel?: string;
 }
 
@@ -779,7 +781,7 @@ export function AIChartModal({
   title: titleProp,
   createTitle: createTitleProp,
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
-  defaultChartModel = "gpt-5.6-luna",
+  defaultChartModel = "gpt-6-luna",
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Analytics Assistant";
   const createTitle = createTitleProp ?? "Ask about your data";
