@@ -85,7 +85,7 @@ export type AIChartModelOption = { value: string; label: string };
 /** Sensible defaults; override via `chartModelOptions` if your deployment uses different ids. */
 export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
   { value: "gpt-6-luna", label: "GPT-6 Luna" },
-  { value: "gpt-6-sol", label: "GPT-6 Sol" },
+  { value: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
   { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
   { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
   { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
