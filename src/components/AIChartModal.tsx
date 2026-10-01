@@ -95,6 +95,10 @@ export const DEFAULT_AI_CHART_MODEL_OPTIONS: AIChartModelOption[] = [
   { value: "", label: "Server default" },
 ];
 
+export type ChartGenerationEvent =
+  | { phase: "ask" }
+  | { phase: "result"; result: "success" | "fail"; durationMs: number };
+
 export interface AIChartModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -140,6 +144,8 @@ export interface AIChartModalProps {
   chartModelOptions?: AIChartModelOption[];
   /** Initial selected model `value` when the modal opens (default: `gpt-6-luna`) */
   defaultChartModel?: string;
+  /** Host analytics hook. Fired when a chart ask starts and when it succeeds or fails. */
+  onChartGeneration?: (event: ChartGenerationEvent) => void;
 }
 
 type Message = MastraChartMessage;
@@ -782,6 +788,7 @@ export function AIChartModal({
   createTitle: createTitleProp,
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
   defaultChartModel = "gpt-6-luna",
+  onChartGeneration,
 }: AIChartModalProps) {
   const modalTitle = titleProp ?? "AI Analytics Assistant";
   const createTitle = createTitleProp ?? "Ask about your data";
@@ -969,6 +976,16 @@ export function AIChartModal({
       return;
     }
 
+    onChartGeneration?.({ phase: "ask" });
+    const startedAt = performance.now();
+    const reportResult = (result: "success" | "fail") => {
+      onChartGeneration?.({
+        phase: "result",
+        result,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    };
+
     const userMessage: Message = {
       id: createMessageId("user"),
       role: "user",
@@ -1106,6 +1123,7 @@ export function AIChartModal({
           ),
         );
         setTransientStatus(null);
+        reportResult("success");
       } else {
         const response = await fetch(generateChartWithSqlUrl, {
           method: "POST",
@@ -1149,9 +1167,11 @@ export function AIChartModal({
         setMessages((prev) => [...prev, assistantMessage]);
         setTransientStatus(null);
         if (data.sessionId) setQuerypanelSessionId(data.sessionId);
+        reportResult("success");
       }
     } catch (err) {
       console.error("[AIChartModal] chart generation failed", err);
+      reportResult("fail");
       setTransientStatus(null);
       if (!streamFailureHandledRef.current) {
         streamFailureHandledRef.current = true;

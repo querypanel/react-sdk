@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { DashboardAiEditor } from "./DashboardAiEditor";
+import type { ChartGenerationEvent } from "./AIChartModal";
 import type { Dashboard, EmbedBranding } from "../types";
 import type { ColorPreset, Theme } from "../types";
 import { createTheme, getColorsByPreset } from "../themes";
@@ -43,6 +44,8 @@ export interface QuerypanelEmbeddedProps {
   onError?: (error: Error) => void;
   onLoad?: (dashboard: Dashboard) => void;
   onCustomize?: (forkedDashboard: Dashboard) => void;
+  /** Fired when the visitor asks for a chart and when that ask succeeds or fails. */
+  onChartGeneration?: (event: ChartGenerationEvent) => void;
 }
 
 /**
@@ -62,6 +65,7 @@ export function QuerypanelEmbedded({
   onError,
   onLoad,
   onCustomize,
+  onChartGeneration,
 }: QuerypanelEmbeddedProps) {
   const showToolbar =
     allowCustomization && (showCustomizationToolbar ?? true);
@@ -444,6 +448,7 @@ export function QuerypanelEmbedded({
         tenantFieldByDatasource={dashboard.tenant_field_by_datasource ?? undefined}
         hideTenantInputsInAiModal={true}
         embedBranding={branding}
+        onChartGeneration={onChartGeneration}
         className="min-h-[400px]"
       />
     </div>

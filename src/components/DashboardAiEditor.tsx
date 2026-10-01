@@ -20,7 +20,7 @@ import {
 } from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
-import { AIChartModal } from "./AIChartModal";
+import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
 import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
@@ -141,6 +141,8 @@ export interface DashboardAiEditorProps {
   hideTenantInputsInAiModal?: boolean;
   /** Whitelabel strings for embed (e.g. AI modal title). Passed from QuerypanelEmbedded branding. */
   embedBranding?: EmbedBranding;
+  /** Host analytics hook for chart asks. */
+  onChartGeneration?: (event: ChartGenerationEvent) => void;
 }
 
 export function DashboardAiEditor({
@@ -170,6 +172,7 @@ export function DashboardAiEditor({
   tenantFieldByDatasource,
   hideTenantInputsInAiModal = false,
   embedBranding,
+  onChartGeneration,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -589,6 +592,7 @@ export function DashboardAiEditor({
           hideTenantInputs={hideTenantInputsInAiModal}
           title={embedBranding?.aiChartModalTitle}
           createTitle={embedBranding?.aiChartModalCreateTitle}
+          onChartGeneration={onChartGeneration}
         />
       )}
 
