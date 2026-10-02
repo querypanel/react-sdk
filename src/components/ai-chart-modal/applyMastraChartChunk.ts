@@ -154,7 +154,7 @@ export type MastraChartChunkHandlerContext = {
 export function createMastraChartChunkHandler(
 	ctx: MastraChartChunkHandlerContext,
 ): (chunk: MastraStreamChunk) => void {
-	const { assistantMessageId: currentAssistantMessageId, createMessageId } = ctx;
+	const { createMessageId } = ctx;
 
 	return (rawChunk: MastraStreamChunk) => {
 		const chunk = rawChunk;

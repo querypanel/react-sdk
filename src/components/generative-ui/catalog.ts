@@ -7,8 +7,8 @@ const dataPointSchema = z.object({
   value: z.number(),
 });
 
-// Explicit annotation breaks the nested-zod type reference (@json-render/core uses zod v4
-// internally while the workspace uses v3, causing a non-portable inferred type in dts build)
+// Public catalog type. Props are built with the zod install @json-render/core
+// resolves (scripts/link-shared-zod.mjs), so they are that package's ZodType.
 export const catalog: Catalog = defineCatalog(schema, {
   components: {
     Metric: {

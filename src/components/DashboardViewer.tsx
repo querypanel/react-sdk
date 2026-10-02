@@ -99,7 +99,6 @@ export function DashboardViewer({
 
   // Client-side only rendering to avoid hydration mismatch
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
