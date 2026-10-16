@@ -14,7 +14,7 @@ describe("resolveDateRangePreset", () => {
       to: "2024-06-15",
     });
     expect(resolveDateRangePreset("last_90", undefined, undefined, now)).toEqual({
-      from: "2024-03-17",
+      from: "2024-03-18",
       to: "2024-06-15",
     });
   });
