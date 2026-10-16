@@ -229,7 +229,7 @@ export function DashboardAiEditor({
   const resolvedModifyChartUrl = resolveUrl(
     modifyChartUrl,
     "/query/modify-chart",
-    "/api/dashboards/run-sql"
+    "/api/dashboards/modify-chart"
   );
   const resolvedGenerateChartWithSqlUrl = resolveUrl(
     generateChartWithSqlUrl,

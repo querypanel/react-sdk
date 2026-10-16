@@ -2,21 +2,17 @@
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import type { ChartType, ThemeColors } from "../../types";
 import { runDedupedRequest } from "../../utils/requestDedup";
+import { ChartControls } from "../ChartControls";
 import { resolveChartBlockHeight } from "./chartBlockHeight";
-import {
-  PinnedChartControls,
-  type PinnedChartControlsApply,
-} from "./PinnedChartControls";
-import {
-  callPinnedChartModify,
-  chartTypeFromVizSpec,
-} from "./pinnedChartModify";
+import { getBlockNoteEditor } from "./blockNoteEditor";
+import { chartTypeFromVizSpec } from "./pinnedChartModify";
+import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
@@ -33,15 +29,6 @@ type ChartBlockOptions = {
 };
 
 const EMPTY_HEADERS: Record<string, string> = {};
-
-type ChartBlockPropsSnapshot = {
-  chartSpec: string;
-  sql: string;
-  sqlParams: string;
-  rationale: string;
-  title: string;
-  question: string;
-};
 
 function getHeadersSignature(headers: Record<string, string>) {
   return JSON.stringify(
@@ -116,13 +103,8 @@ export function createChartBlockSpec({
         const { darkMode } = useThemeContext();
         const resolvedColors = getColorsForMode(colors, darkMode);
         const [data, setData] = useState<Array<Record<string, unknown>> | null>(null);
-        const [error, setError] = useState<string | null>(null);
+        const [loadError, setLoadError] = useState<string | null>(null);
         const [isLoading, setIsLoading] = useState(false);
-        const [isModifying, setIsModifying] = useState(false);
-        const [undoSnapshot, setUndoSnapshot] = useState<ChartBlockPropsSnapshot | null>(
-          null
-        );
-        const modifyingRef = useRef(false);
 
         const parsedSpec = useMemo(() => {
           if (!props.block.props.chartSpec) return null;
@@ -139,7 +121,7 @@ export function createChartBlockSpec({
               embeddedData: Array.isArray(rawSpec.data) ? rawSpec.data : [],
             };
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Invalid chart spec");
+            setLoadError(err instanceof Error ? err.message : "Invalid chart spec");
             return null;
           }
         }, [props.block.props.chartSpec]);
@@ -168,24 +150,32 @@ export function createChartBlockSpec({
           }
         }, [props.block.props.datasourceIds]);
 
-        const editor = (
-          props as {
-            editor?: {
-              isEditable?: boolean;
-              updateBlock?: (
-                block: unknown,
-                update: { props: Record<string, unknown> }
-              ) => void;
-            };
-          }
-        ).editor;
+        const editor = getBlockNoteEditor(props);
 
-        const controlsEnabled =
-          Boolean(enableChartControls && modifyChartUrl) &&
-          Boolean(editor?.isEditable !== false) &&
-          Boolean(editor?.updateBlock) &&
-          Boolean(props.block.props.sql) &&
-          datasourceIds.length > 0;
+        const {
+          controlsEnabled,
+          isModifying,
+          error: modifyError,
+          canUndo,
+          onApply,
+          onUndo,
+        } = usePinnedChartBlockModify({
+          format: "vizspec",
+          block: props.block,
+          editor,
+          modifyChartUrl,
+          enableChartControls,
+          organizationId,
+          dashboardId,
+          headers,
+          datasourceIds,
+          sqlParams,
+          currentVizSpec: parsedSpec?.spec ?? null,
+          fallbackRows:
+            Array.isArray(parsedSpec?.embeddedData) && parsedSpec.embeddedData.length > 0
+              ? parsedSpec.embeddedData
+              : (data ?? []),
+        });
 
         // biome-ignore lint/correctness/useExhaustiveDependencies: values come from createChartBlockSpec closure
         useEffect(() => {
@@ -219,7 +209,7 @@ export function createChartBlockSpec({
           let cancelled = false;
           const fetchData = async () => {
             setIsLoading(true);
-            setError(null);
+            setLoadError(null);
             try {
               const payload = await runDedupedRequest(
                 requestKey,
@@ -248,7 +238,7 @@ export function createChartBlockSpec({
               }
             } catch (err) {
               if (!cancelled) {
-                setError(err instanceof Error ? err.message : "Failed to load chart data");
+                setLoadError(err instanceof Error ? err.message : "Failed to load chart data");
               }
             } finally {
               if (!cancelled) {
@@ -277,115 +267,7 @@ export function createChartBlockSpec({
           hasEmbeddedData && parsedSpec ? parsedSpec.embeddedData : (data ?? []);
 
         const currentChartType: ChartType | "" = chartTypeFromVizSpec(parsedSpec?.spec);
-
-        const snapshotProps = (): ChartBlockPropsSnapshot => ({
-          chartSpec: props.block.props.chartSpec || "",
-          sql: props.block.props.sql || "",
-          sqlParams: props.block.props.sqlParams || "{}",
-          rationale: props.block.props.rationale || "",
-          title: props.block.props.title || "",
-          question: props.block.props.question || "",
-        });
-
-        const applyPropsUpdate = (next: Partial<ChartBlockPropsSnapshot>) => {
-          editor?.updateBlock?.(props.block, {
-            props: {
-              ...next,
-            },
-          });
-        };
-
-        const handleControlsApply = async (options: PinnedChartControlsApply) => {
-          if (!modifyChartUrl || !editor?.updateBlock || modifyingRef.current) return;
-          if (!options.sqlModifications && !options.vizModifications) return;
-
-          modifyingRef.current = true;
-          setIsModifying(true);
-          setError(null);
-          const previous = snapshotProps();
-
-          try {
-            const question =
-              props.block.props.question?.trim() ||
-              props.block.props.title?.trim() ||
-              "Chart";
-            const tenantFieldName =
-              props.block.props.tenantFieldName?.trim() || undefined;
-            const previewTenantId =
-              props.block.props.previewTenantId?.trim() ||
-              props.block.props.tenantId?.trim() ||
-              undefined;
-
-            const result = await callPinnedChartModify(
-              modifyChartUrl,
-              {
-                sql: props.block.props.sql,
-                question,
-                params: sqlParams,
-                datasourceIds,
-                ...(dashboardId ? { dashboardId } : {}),
-                ...(tenantFieldName ? { tenantFieldName } : {}),
-                ...(previewTenantId ? { previewTenantId } : {}),
-                sqlModifications: options.sqlModifications,
-                vizModifications: options.vizModifications,
-              },
-              headers,
-              organizationId
-            );
-
-            const nextSpec =
-              result.chart?.vizSpec ??
-              result.chartSpec ??
-              (parsedSpec?.spec ? { ...parsedSpec.spec } : null);
-
-            if (!nextSpec || !isVizSpec(nextSpec)) {
-              throw new Error("Modify did not return a VizSpec chart");
-            }
-
-            const rows = Array.isArray(result.rows) ? result.rows : effectiveData;
-            const specWithData = {
-              ...nextSpec,
-              data: rows,
-            };
-
-            setUndoSnapshot(previous);
-            applyPropsUpdate({
-              chartSpec: JSON.stringify(specWithData),
-              sql: typeof result.sql === "string" ? result.sql : previous.sql,
-              sqlParams: JSON.stringify(result.params ?? sqlParams),
-              rationale:
-                typeof result.rationale === "string" && result.rationale
-                  ? result.rationale
-                  : previous.rationale,
-              title:
-                (nextSpec as { description?: string; title?: string }).description ||
-                (nextSpec as { title?: string }).title ||
-                previous.title,
-            });
-            setData(rows);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to modify chart");
-          } finally {
-            modifyingRef.current = false;
-            setIsModifying(false);
-          }
-        };
-
-        const handleUndo = () => {
-          if (!undoSnapshot || !editor?.updateBlock) return;
-          applyPropsUpdate(undoSnapshot);
-          setUndoSnapshot(null);
-          try {
-            const raw = JSON.parse(undoSnapshot.chartSpec) as VizSpec & {
-              data?: Array<Record<string, unknown>>;
-            };
-            if (Array.isArray(raw.data)) {
-              setData(raw.data);
-            }
-          } catch {
-            // ignore — run-sql effect will refresh
-          }
-        };
+        const error = modifyError || loadError;
 
         if (!parsedSpec) {
           return (
@@ -419,24 +301,6 @@ export function createChartBlockSpec({
               }}
             >
               Loading chart data...
-            </div>
-          );
-        }
-
-        if (error && !parsedSpec) {
-          return (
-            <div
-              style={{
-                width: "100%",
-                minWidth: 0,
-                padding: "1rem",
-                color: resolvedColors.error,
-                background: resolvedColors.surface,
-                border: `1px solid ${resolvedColors.border}`,
-                borderRadius: "0.75rem",
-              }}
-            >
-              {error}
             </div>
           );
         }
@@ -483,19 +347,19 @@ export function createChartBlockSpec({
               </div>
 
               {controlsEnabled ? (
-                <PinnedChartControls
+                <ChartControls
+                  variant="pinned"
                   fields={
                     effectiveData[0]
                       ? Object.keys(effectiveData[0])
                       : []
                   }
-                  rows={effectiveData}
                   disabled={isModifying || isLoading}
-                  canUndo={Boolean(undoSnapshot)}
+                  canUndo={canUndo}
                   colors={resolvedColors}
                   currentChartType={currentChartType}
-                  onApply={handleControlsApply}
-                  onUndo={handleUndo}
+                  onApply={onApply}
+                  onUndo={onUndo}
                 />
               ) : null}
 

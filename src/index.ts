@@ -12,13 +12,10 @@ export { VizSpecMetric, type VizSpecMetricProps, type MetricSpec } from "./compo
 export { DataTable, type DataTableProps } from "./components/DataTable";
 export { ChartControls, type ChartControlsProps } from "./components/ChartControls";
 export {
-  PinnedChartControls,
-  type PinnedChartControlsProps,
-  type PinnedChartControlsApply,
-  type DateRangePreset,
+  DATE_RANGE_PRESETS,
   resolveDateRangePreset,
-} from "./components/blocks/PinnedChartControls";
-export { compatibleChartTypes } from "./components/blocks/compatibleChartTypes";
+  type DateRangePreset,
+} from "./components/dateRangePresets";
 export { QueryInput, type QueryInputProps } from "./components/QueryInput";
 export { QueryResult, type QueryResultProps } from "./components/QueryResult";
 export { LoadingState, type LoadingStateProps } from "./components/LoadingState";

@@ -49,6 +49,7 @@ import {
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
+import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import type {
   DashboardReportInsertBlock,
   MastraChartMessage,
@@ -1263,18 +1264,6 @@ export function AIChartModal({
     }
   };
 
-  const findPrecedingUserQuestion = (assistantMessage: Message): string | undefined => {
-    const index = messages.findIndex((m) => m.id === assistantMessage.id);
-    if (index <= 0) return undefined;
-    for (let i = index - 1; i >= 0; i -= 1) {
-      const candidate = messages[i];
-      if (candidate?.role === "user" && candidate.content.trim()) {
-        return candidate.content.trim();
-      }
-    }
-    return undefined;
-  };
-
   const handleAddChartToEditor = (message: Message) => {
     onAddChart(
       message.jsonRenderSpec ?? message.chartSpec,
@@ -1285,7 +1274,7 @@ export function AIChartModal({
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
       message.resultId ?? message.queryResult?.resultId,
-      findPrecedingUserQuestion(message)
+      findPrecedingUserQuestion(messages, message)
     );
   };
 
@@ -1299,12 +1288,12 @@ export function AIChartModal({
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
       block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
-      turn ? findPrecedingUserQuestion(turn) : undefined
+      turn ? findPrecedingUserQuestion(messages, turn) : undefined
     );
   };
 
   const handleAddReportToEditor = (message: Message) => {
-    const question = findPrecedingUserQuestion(message);
+    const question = findPrecedingUserQuestion(messages, message);
     const blocks = collectDashboardReportBlocks(message).map((block) => {
       if (block.type !== "viz") return block;
       return {

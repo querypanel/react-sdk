@@ -2,7 +2,7 @@
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ThemeColors } from "../../types";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
@@ -13,15 +13,10 @@ import {
   withJsonRenderResultId,
 } from "../generative-ui/specData";
 import { runDedupedRequest } from "../../utils/requestDedup";
+import { ChartControls } from "../ChartControls";
 import { parseBlockHeight } from "./chartBlockHeight";
-import {
-  PinnedChartControls,
-  type PinnedChartControlsApply,
-} from "./PinnedChartControls";
-import {
-  callPinnedChartModify,
-  swapJsonRenderChartType,
-} from "./pinnedChartModify";
+import { getBlockNoteEditor } from "./blockNoteEditor";
+import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
 type JsonRenderChartBlockOptions = {
   apiBaseUrl?: string;
@@ -35,22 +30,31 @@ type JsonRenderChartBlockOptions = {
   headers?: Record<string, string>;
 };
 
-type JsonRenderPropsSnapshot = {
-  jsonRenderSpec: string;
-  sql: string;
-  sqlParams: string;
-  rationale: string;
-  title: string;
-  question: string;
-  resultId: string;
-};
-
 const EMPTY_HEADERS: Record<string, string> = {};
 
 function getHeadersSignature(headers: Record<string, string>) {
   return JSON.stringify(
     Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
   );
+}
+
+function extractControlData(spec: unknown): {
+  fields: string[];
+  rows: Array<Record<string, unknown>>;
+} {
+  if (spec && typeof spec === "object") {
+    const data = (spec as { data?: unknown }).data;
+    if (Array.isArray(data) && data[0] && typeof data[0] === "object") {
+      return {
+        fields: Object.keys(data[0] as Record<string, unknown>),
+        rows: data as Array<Record<string, unknown>>,
+      };
+    }
+    if (Array.isArray(data)) {
+      return { fields: [], rows: data as Array<Record<string, unknown>> };
+    }
+  }
+  return { fields: [], rows: [] };
 }
 
 export function createJsonRenderChartBlockSpec({
@@ -117,14 +121,9 @@ export function createJsonRenderChartBlockSpec({
       render: (props) => {
         const { darkMode } = useThemeContext();
         const resolvedColors = getColorsForMode(colors, darkMode);
-        const [error, setError] = useState<string | null>(null);
+        const [loadError, setLoadError] = useState<string | null>(null);
         const [hydratedSpec, setHydratedSpec] = useState<unknown>(null);
         const [isLoading, setIsLoading] = useState(false);
-        const [isModifying, setIsModifying] = useState(false);
-        const [undoSnapshot, setUndoSnapshot] = useState<JsonRenderPropsSnapshot | null>(
-          null
-        );
-        const modifyingRef = useRef(false);
 
         const parsedSpec = useMemo(() => {
           if (!props.block.props.jsonRenderSpec) return null;
@@ -136,7 +135,7 @@ export function createJsonRenderChartBlockSpec({
               props.block.props.resultId || undefined
             );
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Invalid JSON Render spec");
+            setLoadError(err instanceof Error ? err.message : "Invalid JSON Render spec");
             return null;
           }
         }, [props.block.props.jsonRenderSpec, props.block.props.resultId]);
@@ -163,138 +162,28 @@ export function createJsonRenderChartBlockSpec({
         }, [props.block.props.datasourceIds]);
 
         const chartHeight = parseBlockHeight(props.block.props.height) ?? 400;
+        const editor = getBlockNoteEditor(props);
 
-        const editor = (
-          props as {
-            editor?: {
-              isEditable?: boolean;
-              updateBlock?: (
-                block: unknown,
-                update: { props: Record<string, unknown> }
-              ) => void;
-            };
-          }
-        ).editor;
-
-        const controlsEnabled =
-          Boolean(enableChartControls && modifyChartUrl) &&
-          Boolean(editor?.isEditable !== false) &&
-          Boolean(editor?.updateBlock) &&
-          Boolean(props.block.props.sql) &&
-          datasourceIds.length > 0;
-
-        const snapshotProps = (): JsonRenderPropsSnapshot => ({
-          jsonRenderSpec: props.block.props.jsonRenderSpec || "",
-          sql: props.block.props.sql || "",
-          sqlParams: props.block.props.sqlParams || "{}",
-          rationale: props.block.props.rationale || "",
-          title: props.block.props.title || "",
-          question: props.block.props.question || "",
-          resultId: props.block.props.resultId || "",
+        const {
+          controlsEnabled,
+          isModifying,
+          error: modifyError,
+          canUndo,
+          onApply,
+          onUndo,
+        } = usePinnedChartBlockModify({
+          format: "json-render",
+          block: props.block,
+          editor,
+          modifyChartUrl,
+          enableChartControls,
+          organizationId,
+          dashboardId,
+          headers,
+          datasourceIds,
+          sqlParams,
+          currentJsonRenderSpec: hydratedSpec ?? parsedSpec,
         });
-
-        const applyPropsUpdate = (next: Partial<JsonRenderPropsSnapshot>) => {
-          editor?.updateBlock?.(props.block, { props: { ...next } });
-        };
-
-        const handleControlsApply = async (options: PinnedChartControlsApply) => {
-          if (!modifyChartUrl || !editor?.updateBlock || modifyingRef.current) return;
-          if (!options.sqlModifications && !options.vizModifications) return;
-
-          modifyingRef.current = true;
-          setIsModifying(true);
-          setError(null);
-          const previous = snapshotProps();
-
-          try {
-            // Viz-only: swap json-render chart element locally (no SQL regen).
-            if (options.vizModifications?.chartType && !options.sqlModifications) {
-              const swapped = swapJsonRenderChartType(
-                hydratedSpec ?? parsedSpec,
-                options.vizModifications.chartType
-              );
-              if (!swapped) {
-                throw new Error("Chart type is not supported for this visualization");
-              }
-              setUndoSnapshot(previous);
-              applyPropsUpdate({
-                jsonRenderSpec: JSON.stringify(swapped),
-                resultId: "",
-              });
-              setHydratedSpec(swapped);
-              return;
-            }
-
-            const question =
-              props.block.props.question?.trim() ||
-              props.block.props.title?.trim() ||
-              "Chart";
-            const tenantFieldName =
-              props.block.props.tenantFieldName?.trim() || undefined;
-            const previewTenantId =
-              props.block.props.previewTenantId?.trim() || undefined;
-
-            const result = await callPinnedChartModify(
-              modifyChartUrl,
-              {
-                sql: props.block.props.sql,
-                question,
-                params: sqlParams,
-                datasourceIds,
-                ...(dashboardId ? { dashboardId } : {}),
-                ...(tenantFieldName ? { tenantFieldName } : {}),
-                ...(previewTenantId ? { previewTenantId } : {}),
-                sqlModifications: options.sqlModifications,
-                vizModifications: options.vizModifications,
-              },
-              headers,
-              organizationId
-            );
-
-            const rows = Array.isArray(result.rows) ? result.rows : [];
-            const fields = Array.isArray(result.fields) ? result.fields : [];
-            let nextSpec: unknown = hydratedSpec ?? parsedSpec;
-
-            if (options.vizModifications?.chartType) {
-              const swapped = swapJsonRenderChartType(
-                nextSpec,
-                options.vizModifications.chartType
-              );
-              if (swapped) nextSpec = swapped;
-            }
-
-            nextSpec = injectRowsIntoJsonRenderSpec(nextSpec, rows, fields);
-
-            setUndoSnapshot(previous);
-            applyPropsUpdate({
-              jsonRenderSpec: JSON.stringify(nextSpec),
-              sql: typeof result.sql === "string" ? result.sql : previous.sql,
-              sqlParams: JSON.stringify(result.params ?? sqlParams),
-              rationale:
-                typeof result.rationale === "string" && result.rationale
-                  ? result.rationale
-                  : previous.rationale,
-              resultId: "",
-            });
-            setHydratedSpec(nextSpec);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to modify chart");
-          } finally {
-            modifyingRef.current = false;
-            setIsModifying(false);
-          }
-        };
-
-        const handleUndo = () => {
-          if (!undoSnapshot || !editor?.updateBlock) return;
-          applyPropsUpdate(undoSnapshot);
-          setUndoSnapshot(null);
-          try {
-            setHydratedSpec(JSON.parse(undoSnapshot.jsonRenderSpec));
-          } catch {
-            setHydratedSpec(null);
-          }
-        };
 
         useEffect(() => {
           if (!parsedSpec) return;
@@ -326,7 +215,7 @@ export function createJsonRenderChartBlockSpec({
           let cancelled = false;
           const fetchData = async () => {
             setIsLoading(true);
-            setError(null);
+            setLoadError(null);
             try {
               const payload = await runDedupedRequest(
                 requestKey,
@@ -361,7 +250,7 @@ export function createJsonRenderChartBlockSpec({
               }
             } catch (err) {
               if (!cancelled) {
-                setError(
+                setLoadError(
                   err instanceof Error ? err.message : "Failed to load visualization data"
                 );
                 setHydratedSpec(parsedSpec);
@@ -385,6 +274,9 @@ export function createJsonRenderChartBlockSpec({
           props.block.props.tenantFieldName,
           props.block.props.previewTenantId,
         ]);
+
+        const error = modifyError || loadError;
+        const { fields: controlFields } = extractControlData(hydratedSpec ?? parsedSpec);
 
         if (!parsedSpec) {
           return (
@@ -440,28 +332,6 @@ export function createJsonRenderChartBlockSpec({
           );
         }
 
-        const controlFields = (() => {
-          const base = hydratedSpec ?? parsedSpec;
-          if (base && typeof base === "object") {
-            const data = (base as { data?: unknown }).data;
-            if (Array.isArray(data) && data[0] && typeof data[0] === "object") {
-              return Object.keys(data[0] as Record<string, unknown>);
-            }
-          }
-          return [] as string[];
-        })();
-
-        const controlRows = (() => {
-          const base = hydratedSpec ?? parsedSpec;
-          if (base && typeof base === "object") {
-            const data = (base as { data?: unknown }).data;
-            if (Array.isArray(data)) {
-              return data as Array<Record<string, unknown>>;
-            }
-          }
-          return [] as Array<Record<string, unknown>>;
-        })();
-
         return (
           <div
             style={{
@@ -481,14 +351,14 @@ export function createJsonRenderChartBlockSpec({
               }}
             >
               {controlsEnabled ? (
-                <PinnedChartControls
+                <ChartControls
+                  variant="pinned"
                   fields={controlFields}
-                  rows={controlRows}
                   disabled={isModifying || isLoading}
-                  canUndo={Boolean(undoSnapshot)}
+                  canUndo={canUndo}
                   colors={resolvedColors}
-                  onApply={handleControlsApply}
-                  onUndo={handleUndo}
+                  onApply={onApply}
+                  onUndo={onUndo}
                 />
               ) : null}
               {error ? (
