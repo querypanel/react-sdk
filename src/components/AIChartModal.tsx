@@ -110,7 +110,8 @@ export interface AIChartModalProps {
     sqlParams?: Record<string, unknown> | null,
     tenantFieldName?: string,
     previewTenantId?: string,
-    resultId?: string
+    resultId?: string,
+    question?: string
   ) => void;
   /** Insert a multi-block report (text + viz) into the dashboard editor. */
   onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
@@ -1262,6 +1263,18 @@ export function AIChartModal({
     }
   };
 
+  const findPrecedingUserQuestion = (assistantMessage: Message): string | undefined => {
+    const index = messages.findIndex((m) => m.id === assistantMessage.id);
+    if (index <= 0) return undefined;
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const candidate = messages[i];
+      if (candidate?.role === "user" && candidate.content.trim()) {
+        return candidate.content.trim();
+      }
+    }
+    return undefined;
+  };
+
   const handleAddChartToEditor = (message: Message) => {
     onAddChart(
       message.jsonRenderSpec ?? message.chartSpec,
@@ -1271,7 +1284,8 @@ export function AIChartModal({
       message.sqlParams,
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
-      message.resultId ?? message.queryResult?.resultId
+      message.resultId ?? message.queryResult?.resultId,
+      findPrecedingUserQuestion(message)
     );
   };
 
@@ -1284,15 +1298,18 @@ export function AIChartModal({
       block.sqlParams ?? turn?.sqlParams ?? null,
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
-      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId
+      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
+      turn ? findPrecedingUserQuestion(turn) : undefined
     );
   };
 
   const handleAddReportToEditor = (message: Message) => {
+    const question = findPrecedingUserQuestion(message);
     const blocks = collectDashboardReportBlocks(message).map((block) => {
       if (block.type !== "viz") return block;
       return {
         ...block,
+        question,
         datasourceIds: selectedDatasourceIds,
         tenantFieldName: tenantInputsEnabled
           ? tenantFieldName.trim() || undefined
@@ -1320,7 +1337,8 @@ export function AIChartModal({
           ? firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined)
           : undefined,
         tenantInputsEnabled ? firstViz.previewTenantId : undefined,
-        firstViz.resultId ?? message.resultId
+        firstViz.resultId ?? message.resultId,
+        question
       );
     }
   };

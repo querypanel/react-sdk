@@ -2,25 +2,46 @@
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
-import type { ThemeColors } from "../../types";
+import type { ChartType, ThemeColors } from "../../types";
 import { runDedupedRequest } from "../../utils/requestDedup";
 import { resolveChartBlockHeight } from "./chartBlockHeight";
+import {
+  PinnedChartControls,
+  type PinnedChartControlsApply,
+} from "./PinnedChartControls";
+import {
+  callPinnedChartModify,
+  chartTypeFromVizSpec,
+} from "./pinnedChartModify";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
   colors: ThemeColors;
   /** Override URL for run-sql (e.g. /api/dashboards/run-sql for admin). If not set, uses apiBaseUrl + /query/run-sql */
   runSqlUrl?: string;
+  /** Override URL for pinned-chart modify (admin: /api/dashboards/modify-chart). */
+  modifyChartUrl?: string;
+  /** Show date-range / chart-type controls when modifyChartUrl is set. Default true. */
+  enableChartControls?: boolean;
   organizationId?: string;
   dashboardId?: string;
   headers?: Record<string, string>;
 };
 
 const EMPTY_HEADERS: Record<string, string> = {};
+
+type ChartBlockPropsSnapshot = {
+  chartSpec: string;
+  sql: string;
+  sqlParams: string;
+  rationale: string;
+  title: string;
+  question: string;
+};
 
 function getHeadersSignature(headers: Record<string, string>) {
   return JSON.stringify(
@@ -34,7 +55,16 @@ function isVizSpec(value: unknown): value is VizSpec {
   return kind === "chart" || kind === "table" || kind === "metric";
 }
 
-export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizationId, dashboardId, headers = EMPTY_HEADERS }: ChartBlockOptions) {
+export function createChartBlockSpec({
+  apiBaseUrl,
+  colors,
+  runSqlUrl,
+  modifyChartUrl,
+  enableChartControls = true,
+  organizationId,
+  dashboardId,
+  headers = EMPTY_HEADERS,
+}: ChartBlockOptions) {
   return createReactBlockSpec(
     {
       type: "chart",
@@ -47,6 +77,9 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
           default: "Chart",
         },
         rationale: {
+          default: "",
+        },
+        question: {
           default: "",
         },
         sql: {
@@ -85,6 +118,11 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
         const [data, setData] = useState<Array<Record<string, unknown>> | null>(null);
         const [error, setError] = useState<string | null>(null);
         const [isLoading, setIsLoading] = useState(false);
+        const [isModifying, setIsModifying] = useState(false);
+        const [undoSnapshot, setUndoSnapshot] = useState<ChartBlockPropsSnapshot | null>(
+          null
+        );
+        const modifyingRef = useRef(false);
 
         const parsedSpec = useMemo(() => {
           if (!props.block.props.chartSpec) return null;
@@ -113,7 +151,10 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
 
         const sqlParams = useMemo(() => {
           try {
-            return JSON.parse(props.block.props.sqlParams || "{}") as Record<string, unknown>;
+            return JSON.parse(props.block.props.sqlParams || "{}") as Record<
+              string,
+              unknown
+            >;
           } catch {
             return {};
           }
@@ -126,6 +167,25 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
             return [];
           }
         }, [props.block.props.datasourceIds]);
+
+        const editor = (
+          props as {
+            editor?: {
+              isEditable?: boolean;
+              updateBlock?: (
+                block: unknown,
+                update: { props: Record<string, unknown> }
+              ) => void;
+            };
+          }
+        ).editor;
+
+        const controlsEnabled =
+          Boolean(enableChartControls && modifyChartUrl) &&
+          Boolean(editor?.isEditable !== false) &&
+          Boolean(editor?.updateBlock) &&
+          Boolean(props.block.props.sql) &&
+          datasourceIds.length > 0;
 
         // biome-ignore lint/correctness/useExhaustiveDependencies: values come from createChartBlockSpec closure
         useEffect(() => {
@@ -143,7 +203,9 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
           const url = runSqlUrl ?? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql`;
           const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
           const previewTenantId =
-            props.block.props.previewTenantId?.trim() || props.block.props.tenantId?.trim() || undefined;
+            props.block.props.previewTenantId?.trim() ||
+            props.block.props.tenantId?.trim() ||
+            undefined;
           const requestPayload = {
             sql: props.block.props.sql,
             datasourceIds,
@@ -163,21 +225,21 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
                 requestKey,
                 async () => {
                   const response = await fetch(url, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(organizationId ? { "x-organization-id": organizationId } : {}),
-                    ...headers,
-                  },
-                  body: JSON.stringify(requestPayload),
-                });
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(organizationId ? { "x-organization-id": organizationId } : {}),
+                      ...headers,
+                    },
+                    body: JSON.stringify(requestPayload),
+                  });
 
-                const parsed = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                  throw new Error(parsed?.error || "Failed to load chart data");
-                }
-                return parsed;
-              },
+                  const parsed = await response.json().catch(() => ({}));
+                  if (!response.ok) {
+                    throw new Error(parsed?.error || "Failed to load chart data");
+                  }
+                  return parsed;
+                },
                 { cacheMs: 60_000 }
               );
 
@@ -209,12 +271,121 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
           props.block.props.tenantId,
         ]);
 
-        // Use embedded data immediately when present so first paint shows the chart (no wait for useEffect)
         const hasEmbeddedData =
           Array.isArray(parsedSpec?.embeddedData) && parsedSpec.embeddedData.length > 0;
-        const effectiveData = hasEmbeddedData && parsedSpec
-          ? parsedSpec.embeddedData
-          : (data ?? []);
+        const effectiveData =
+          hasEmbeddedData && parsedSpec ? parsedSpec.embeddedData : (data ?? []);
+
+        const currentChartType: ChartType | "" = chartTypeFromVizSpec(parsedSpec?.spec);
+
+        const snapshotProps = (): ChartBlockPropsSnapshot => ({
+          chartSpec: props.block.props.chartSpec || "",
+          sql: props.block.props.sql || "",
+          sqlParams: props.block.props.sqlParams || "{}",
+          rationale: props.block.props.rationale || "",
+          title: props.block.props.title || "",
+          question: props.block.props.question || "",
+        });
+
+        const applyPropsUpdate = (next: Partial<ChartBlockPropsSnapshot>) => {
+          editor?.updateBlock?.(props.block, {
+            props: {
+              ...next,
+            },
+          });
+        };
+
+        const handleControlsApply = async (options: PinnedChartControlsApply) => {
+          if (!modifyChartUrl || !editor?.updateBlock || modifyingRef.current) return;
+          if (!options.sqlModifications && !options.vizModifications) return;
+
+          modifyingRef.current = true;
+          setIsModifying(true);
+          setError(null);
+          const previous = snapshotProps();
+
+          try {
+            const question =
+              props.block.props.question?.trim() ||
+              props.block.props.title?.trim() ||
+              "Chart";
+            const tenantFieldName =
+              props.block.props.tenantFieldName?.trim() || undefined;
+            const previewTenantId =
+              props.block.props.previewTenantId?.trim() ||
+              props.block.props.tenantId?.trim() ||
+              undefined;
+
+            const result = await callPinnedChartModify(
+              modifyChartUrl,
+              {
+                sql: props.block.props.sql,
+                question,
+                params: sqlParams,
+                datasourceIds,
+                ...(dashboardId ? { dashboardId } : {}),
+                ...(tenantFieldName ? { tenantFieldName } : {}),
+                ...(previewTenantId ? { previewTenantId } : {}),
+                sqlModifications: options.sqlModifications,
+                vizModifications: options.vizModifications,
+              },
+              headers,
+              organizationId
+            );
+
+            const nextSpec =
+              result.chart?.vizSpec ??
+              result.chartSpec ??
+              (parsedSpec?.spec ? { ...parsedSpec.spec } : null);
+
+            if (!nextSpec || !isVizSpec(nextSpec)) {
+              throw new Error("Modify did not return a VizSpec chart");
+            }
+
+            const rows = Array.isArray(result.rows) ? result.rows : effectiveData;
+            const specWithData = {
+              ...nextSpec,
+              data: rows,
+            };
+
+            setUndoSnapshot(previous);
+            applyPropsUpdate({
+              chartSpec: JSON.stringify(specWithData),
+              sql: typeof result.sql === "string" ? result.sql : previous.sql,
+              sqlParams: JSON.stringify(result.params ?? sqlParams),
+              rationale:
+                typeof result.rationale === "string" && result.rationale
+                  ? result.rationale
+                  : previous.rationale,
+              title:
+                (nextSpec as { description?: string; title?: string }).description ||
+                (nextSpec as { title?: string }).title ||
+                previous.title,
+            });
+            setData(rows);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to modify chart");
+          } finally {
+            modifyingRef.current = false;
+            setIsModifying(false);
+          }
+        };
+
+        const handleUndo = () => {
+          if (!undoSnapshot || !editor?.updateBlock) return;
+          applyPropsUpdate(undoSnapshot);
+          setUndoSnapshot(null);
+          try {
+            const raw = JSON.parse(undoSnapshot.chartSpec) as VizSpec & {
+              data?: Array<Record<string, unknown>>;
+            };
+            if (Array.isArray(raw.data)) {
+              setData(raw.data);
+            }
+          } catch {
+            // ignore — run-sql effect will refresh
+          }
+        };
 
         if (!parsedSpec) {
           return (
@@ -252,7 +423,7 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
           );
         }
 
-        if (error) {
+        if (error && !parsedSpec) {
           return (
             <div
               style={{
@@ -310,6 +481,36 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
                     : ""}
                 </div>
               </div>
+
+              {controlsEnabled ? (
+                <PinnedChartControls
+                  fields={
+                    effectiveData[0]
+                      ? Object.keys(effectiveData[0])
+                      : []
+                  }
+                  rows={effectiveData}
+                  disabled={isModifying || isLoading}
+                  canUndo={Boolean(undoSnapshot)}
+                  colors={resolvedColors}
+                  currentChartType={currentChartType}
+                  onApply={handleControlsApply}
+                  onUndo={handleUndo}
+                />
+              ) : null}
+
+              {error ? (
+                <div
+                  style={{
+                    marginBottom: "0.5rem",
+                    fontSize: "0.75rem",
+                    color: resolvedColors.error,
+                  }}
+                >
+                  {error}
+                </div>
+              ) : null}
+
               <div
                 style={{
                   width: "100%",
