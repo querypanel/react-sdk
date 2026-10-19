@@ -86,6 +86,8 @@ export type MastraChartMessage = {
 	content: string;
 	/** Mastra stream turns use `turn`; classic generate-chart replies omit `kind`. */
 	kind?: "turn";
+	/** Charts @-tagged in a user message. */
+	taggedCharts?: Array<{ chartId: string; label: string }>;
 	sourceAssistantId?: string;
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;

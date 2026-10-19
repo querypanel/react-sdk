@@ -38,6 +38,17 @@ import type {
   SqlExecutionArtifact,
   ToolEvent,
 } from "./ai-chart-modal/types";
+import { ChartChip, ChartTagPicker } from "./ai-chart-modal/ChartTagUi";
+import type { ChartBlockSummary } from "./dashboardEditorController";
+import {
+  buildDashboardContext,
+  chartLabel,
+  detectMention,
+  filterChartsForPicker,
+  removeMention,
+  resolveDatasourceId,
+  resolveTags,
+} from "./workspaceState";
 import "./AIChartModal.css";
 
 /** Unique React list keys; `Date.now()` alone can collide (Strict Mode, same tick). */
@@ -138,6 +149,12 @@ export interface AssistantPanelProps {
   autoFocus?: boolean;
   /** Increment to focus the prompt on demand (e.g. the Workspace "/" slash item). */
   focusRequest?: number;
+  /** Charts on the Dashboard. When set, `@` in the prompt tags a chart. Omit to disable tagging. */
+  charts?: ChartBlockSummary[];
+  /** Live spec of a chart by chart id; sent in full for tagged charts. */
+  getChartSpec?: (chartId: string) => unknown;
+  /** Chip click: scroll to and highlight the chart's block (by block id). */
+  onChartChipClick?: (blockId: string) => void;
 }
 
 type Message = MastraChartMessage;
@@ -328,6 +345,9 @@ export function AssistantPanel({
   onStatusChange,
   autoFocus = true,
   focusRequest = 0,
+  charts,
+  getChartSpec,
+  onChartChipClick,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -343,6 +363,25 @@ export function AssistantPanel({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [taggedChartIds, setTaggedChartIds] = useState<string[]>([]);
+  const [pickerIndex, setPickerIndex] = useState(0);
+  const taggingEnabled = charts !== undefined;
+  const mention = taggingEnabled ? detectMention(inputValue) : null;
+  const pickerOptions = mention ? filterChartsForPicker(charts ?? [], mention.query) : [];
+  const chartLabelFor = (chartId: string) => {
+    const index = (charts ?? []).findIndex((chart) => chart.chartId === chartId);
+    return index >= 0 ? chartLabel((charts ?? [])[index]!, index) : "Removed chart";
+  };
+  const selectTag = (chartId: string) => {
+    setTaggedChartIds((prev) => (prev.includes(chartId) ? prev : [...prev, chartId]));
+    setInputValue((prev) => removeMention(prev));
+    setPickerIndex(0);
+    promptInputRef.current?.focus();
+  };
+  const chipClickHandler = (chartId: string) => {
+    const chart = (charts ?? []).find((candidate) => candidate.chartId === chartId);
+    return chart && onChartChipClick ? () => onChartChipClick(chart.id) : undefined;
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [transientStatus, setTransientStatus] = useState<string | null>(null);
   const [selectedDatasourceIds, setSelectedDatasourceIds] = useState<string[]>([]);
@@ -462,7 +501,10 @@ export function AssistantPanel({
     const messageText = prompt || inputValue.trim();
     if (!messageText || isLoading) return;
     streamFailureHandledRef.current = false;
-    if (useMastraStream && selectedDatasourceIds.length !== 1) {
+    const { resolved: taggedCharts } = resolveTags(taggedChartIds, charts ?? []);
+    const requestDatasourceId = resolveDatasourceId(taggedCharts, selectedDatasourceIds[0]);
+    const taggedHasDatasource = taggedCharts.some((chart) => chart.datasourceIds.length > 0);
+    if (useMastraStream && !taggedHasDatasource && selectedDatasourceIds.length !== 1) {
       setMessages((prev) => [
         ...prev,
         {
@@ -490,19 +532,41 @@ export function AssistantPanel({
       role: "user",
       content: messageText,
       timestamp: new Date(),
+      ...(taggedCharts.length > 0
+        ? {
+            taggedCharts: taggedCharts.map((chart) => ({
+              chartId: chart.chartId,
+              label: chartLabelFor(chart.chartId),
+            })),
+          }
+        : {}),
     };
+    const dashboardContext = taggingEnabled
+      ? buildDashboardContext(charts ?? [], taggedChartIds, (id) => getChartSpec?.(id))
+      : undefined;
 
     const latestResultId = shouldReuseLatestResultId(messageText)
       ? getLatestResultId(messages)
       : undefined;
     const previewTenant = tenantInputsEnabled ? previewTenantId.trim() : "";
+    // A tagged chart's datasource may differ from the chat's selection, so resolve its tenant field.
+    const requestTenantField =
+      requestDatasourceId && requestDatasourceId !== selectedDatasourceIds[0]
+        ? resolveAiChartTenantFieldName(
+            [requestDatasourceId],
+            tenantFieldByDatasource,
+            defaultTenantFieldName,
+            dashboardType,
+          )
+        : tenantFieldName;
     const requestTenantFieldName =
-      tenantFieldName.trim() && (dashboardType !== "internal" || previewTenant)
-        ? tenantFieldName.trim()
+      requestTenantField.trim() && (dashboardType !== "internal" || previewTenant)
+        ? requestTenantField.trim()
         : undefined;
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    setTaggedChartIds([]);
     setIsLoading(true);
     setTransientStatus("Thinking");
     setToolEvents([]);
@@ -547,9 +611,10 @@ export function AssistantPanel({
             },
             requestContext: {
               organizationId,
-              datasourceId: selectedDatasourceIds[0],
+              datasourceId: requestDatasourceId,
               dashboardId,
               dashboardType,
+              ...(dashboardContext ? { dashboardContext } : {}),
               ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(!tenantInputsEnabled
                 ? {}
@@ -830,6 +895,24 @@ export function AssistantPanel({
   };
 
   const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (mention && pickerOptions.length > 0) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setPickerIndex((i) => (i + step + pickerOptions.length) % pickerOptions.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        selectTag(pickerOptions[Math.min(pickerIndex, pickerOptions.length - 1)]!.chart.chartId);
+        return;
+      }
+    }
+    if (mention && e.key === "Escape") {
+      e.preventDefault();
+      setInputValue((prev) => removeMention(prev));
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       handleSendMessage();
@@ -990,6 +1073,21 @@ export function AssistantPanel({
                       className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
+                        {message.role === "user" && message.taggedCharts && (
+                          <div className="qp-ai-tag-row">
+                            {message.taggedCharts.map((tag) => {
+                              const onClick = chipClickHandler(tag.chartId);
+                              return (
+                                <ChartChip
+                                  key={tag.chartId}
+                                  label={tag.label}
+                                  dead={!onClick}
+                                  onClick={onClick}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
                         {message.role === "user" && message.content.trim().length > 0 && (
                           <div>{message.content}</div>
                         )}
@@ -1097,12 +1195,37 @@ export function AssistantPanel({
               )}
 
               <div className="qp-ai-modal-footer">
+                {mention && (
+                  <ChartTagPicker
+                    options={pickerOptions.map(({ chart, label }) => ({ chartId: chart.chartId, label }))}
+                    activeIndex={Math.min(pickerIndex, Math.max(pickerOptions.length - 1, 0))}
+                    onSelect={(option) => selectTag(option.chartId)}
+                  />
+                )}
+                {taggedChartIds.length > 0 && (
+                  <div className="qp-ai-tag-row">
+                    {taggedChartIds.map((chartId) => (
+                      <ChartChip
+                        key={chartId}
+                        label={chartLabelFor(chartId)}
+                        dead={!chipClickHandler(chartId)}
+                        onClick={chipClickHandler(chartId)}
+                        onRemove={() =>
+                          setTaggedChartIds((prev) => prev.filter((id) => id !== chartId))
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
                 <div className="qp-ai-modal-pill-compose">
                   <input
                     ref={promptInputRef}
                     type="text"
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    onChange={(e) => {
+                      setInputValue(e.target.value);
+                      setPickerIndex(0);
+                    }}
                     onKeyDown={handlePromptKeyDown}
                     placeholder="Ask a question or request a chart or table"
                     className="qp-ai-modal-pill-input"

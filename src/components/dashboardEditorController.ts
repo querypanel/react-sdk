@@ -25,7 +25,10 @@ export interface ChartPayload {
 export type ChartPatch = ChartPayload & { title?: string };
 
 export interface ChartBlockSummary {
+  /** BlockNote block id (editor-internal; use for scrolling/updating). */
   id: string;
+  /** Stable chart id persisted in the block props; empty until lazily assigned. */
+  chartId: string;
   type: ChartBlockType;
   title: string;
   presentationKind: "chart" | "table" | "metric" | null;
@@ -158,6 +161,7 @@ function summarizeChartBlock(block: BlockLike): ChartBlockSummary {
   const datasourceIds = parseJson(props.datasourceIds);
   return {
     id: block.id,
+    chartId: typeof props.chartId === "string" ? props.chartId : "",
     type,
     title: typeof props.title === "string" ? props.title : "",
     presentationKind,

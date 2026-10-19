@@ -36,6 +36,7 @@ import {
   type ChartBlockSummary,
   type DashboardEditorController,
 } from "./dashboardEditorController";
+import { collectMissingChartIds, findChartSpec } from "./workspaceState";
 import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -88,6 +89,12 @@ const editorStyles = `
   }
   [data-theme="dark"] .bn-menu-item:hover {
     background-color: hsl(217.2 32.6% 25%);
+  }
+  [data-qp-chart-highlight] {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+    transition: outline-color 0.3s;
   }
 `;
 
@@ -503,6 +510,57 @@ export function DashboardAiEditor({
     return editor.onChange(emit);
   }, [editor, mounted]);
 
+  // Chart ids are assigned lazily (no migration) and persisted by the next save.
+  useEffect(() => {
+    if (!mounted || !editable) return;
+    const assign = () => {
+      const missing = collectMissingChartIds(editor.document);
+      if (missing.length === 0) return;
+      editor.transact(() => {
+        for (const { blockId, chartId } of missing) {
+          editor.updateBlock(blockId, { props: { chartId } } as never);
+        }
+      });
+    };
+    assign();
+    return editor.onChange(assign);
+  }, [editor, mounted, editable]);
+
+  const [taggableCharts, setTaggableCharts] = useState<ChartBlockSummary[]>([]);
+  useEffect(() => {
+    if (!mounted || !isWorkspace) return;
+    let lastSignature = "";
+    const emit = () => {
+      const charts = listChartBlocks(editor.document).filter((chart) => chart.chartId);
+      const signature = JSON.stringify(charts);
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+      setTaggableCharts(charts);
+    };
+    emit();
+    return editor.onChange(emit);
+  }, [editor, mounted, isWorkspace]);
+
+  const getChartSpec = useCallback(
+    (chartId: string) => findChartSpec(editor.document, chartId),
+    [editor]
+  );
+
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleChipClick = useCallback(
+    (blockId: string) => {
+      if (!isChartBlockType(editor.getBlock(blockId)?.type ?? "")) return;
+      editor.setTextCursorPosition(blockId);
+      const el = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.setAttribute("data-qp-chart-highlight", "");
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => el.removeAttribute("data-qp-chart-highlight"), 1800);
+    },
+    [editor]
+  );
+
   const stripDataFromChartBlocks = useCallback(() => {
     return stripEmbeddedDataFromBlocks(editor.document);
   }, [editor]);
@@ -654,6 +712,9 @@ export function DashboardAiEditor({
                 onChartGeneration={onChartGeneration}
                 autoFocus={false}
                 focusRequest={focusRequest}
+                charts={taggableCharts}
+                getChartSpec={getChartSpec}
+                onChartChipClick={handleChipClick}
               />
             )}
           />

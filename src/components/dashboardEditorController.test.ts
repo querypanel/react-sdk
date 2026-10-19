@@ -111,8 +111,8 @@ describe("listChartBlocks", () => {
       },
     ];
     expect(listChartBlocks(blocks)).toEqual([
-      { id: "c1", type: "chart", title: "Revenue", presentationKind: "chart", sql: "select 1", datasourceIds: ["ds1"], resultId: "" },
-      { id: "j1", type: "json-render-chart", title: "Total", presentationKind: "metric", sql: "", datasourceIds: [], resultId: "r9" },
+      { id: "c1", chartId: "", type: "chart", title: "Revenue", presentationKind: "chart", sql: "select 1", datasourceIds: ["ds1"], resultId: "" },
+      { id: "j1", chartId: "", type: "json-render-chart", title: "Total", presentationKind: "metric", sql: "", datasourceIds: [], resultId: "r9" },
     ]);
   });
 

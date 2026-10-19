@@ -56,6 +56,9 @@ export function createChartBlockSpec({
           default: undefined,
           type: "string" as const,
         },
+        chartId: {
+          default: "",
+        },
         title: {
           default: "Chart",
         },

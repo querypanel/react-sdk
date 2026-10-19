@@ -1938,3 +1938,102 @@
   min-height: 0;
   min-width: 0;
 }
+
+/* @-tagging of Dashboard charts (Workspace) */
+[data-qp-ai-modal] .qp-ai-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0 0.25rem 0.375rem;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  background: rgba(99, 102, 241, 0.15);
+  color: #4f46e5;
+}
+
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-tag-chip {
+  color: #a5b4fc;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip[data-dead="true"] {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip-label,
+[data-qp-ai-modal] .qp-ai-tag-chip-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip-label {
+  padding: 0.125rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip-label:disabled {
+  cursor: default;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-chip-remove {
+  display: inline-flex;
+  padding: 0.125rem 0.375rem 0.125rem 0;
+}
+
+[data-qp-ai-modal] .qp-ai-modal-footer {
+  position: relative;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-picker {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 100%;
+  z-index: 5;
+  max-height: 12rem;
+  overflow-y: auto;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  background: #fff;
+  border: 1px solid rgb(229 231 235);
+  color: #111827;
+}
+
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-tag-picker {
+  background: #111827;
+  border-color: rgb(31 41 55);
+  color: #f3f4f6;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-picker-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-qp-ai-modal] .qp-ai-tag-picker-item[data-active="true"],
+[data-qp-ai-modal] .qp-ai-tag-picker-item:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+[data-qp-ai-modal] .qp-ai-tag-picker-empty {
+  padding: 0.5rem 0.75rem;
+  opacity: 0.7;
+}
