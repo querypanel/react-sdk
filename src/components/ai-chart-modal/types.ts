@@ -88,6 +88,8 @@ export type MastraChartMessage = {
 	kind?: "turn";
 	/** Charts @-tagged in a user message. */
 	taggedCharts?: Array<{ chartId: string; label: string }>;
+	/** Intent recorded for a user message (restored from a stored Thread). */
+	intent?: string;
 	sourceAssistantId?: string;
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;

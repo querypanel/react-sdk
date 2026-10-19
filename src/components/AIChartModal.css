@@ -2037,3 +2037,56 @@
   padding: 0.5rem 0.75rem;
   opacity: 0.7;
 }
+
+/* Assistant Threads bar */
+[data-qp-ai-modal] .qp-ai-thread-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-select option {
+  color: #111827;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-new {
+  flex: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-new:disabled,
+[data-qp-ai-modal] .qp-ai-thread-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-error {
+  margin: 0 0.75rem;
+  font-size: 0.75rem;
+  color: #dc2626;
+}
+
+[data-qp-ai-modal] .qp-ai-thread-intent {
+  margin-bottom: 0.25rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}

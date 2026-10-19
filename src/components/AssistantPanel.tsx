@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useId,
   useSyncExternalStore,
+  useMemo,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -39,6 +40,12 @@ import type {
   ToolEvent,
 } from "./ai-chart-modal/types";
 import { ChartChip, ChartTagPicker } from "./ai-chart-modal/ChartTagUi";
+import {
+  createThreadsClient,
+  threadMessagesToChatMessages,
+  threadTitleFromQuestion,
+  type AssistantThreadSummary,
+} from "./ai-chart-modal/assistantThreads";
 import type { ChartBlockSummary } from "./dashboardEditorController";
 import {
   buildDashboardContext,
@@ -155,6 +162,11 @@ export interface AssistantPanelProps {
   getChartSpec?: (chartId: string) => unknown;
   /** Chip click: scroll to and highlight the chart's block (by block id). */
   onChartChipClick?: (blockId: string) => void;
+  /**
+   * Assistant Threads endpoint (e.g. `/api/assistant-threads`). When set, the conversation is
+   * stored per user and Dashboard: it is restored on reload and can be restarted or switched.
+   */
+  threadsUrl?: string;
 }
 
 type Message = MastraChartMessage;
@@ -348,6 +360,7 @@ export function AssistantPanel({
   charts,
   getChartSpec,
   onChartChipClick,
+  threadsUrl,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -378,6 +391,79 @@ export function AssistantPanel({
     setPickerIndex(0);
     promptInputRef.current?.focus();
   };
+  const threadsClient = useMemo(
+    () => (threadsUrl ? createThreadsClient({ baseUrl: threadsUrl, dashboardId, headers }) : null),
+    // headers is a fresh object per render for most hosts; the endpoint and Dashboard identify the client.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [threadsUrl, dashboardId, organizationId]
+  );
+  const [threads, setThreads] = useState<AssistantThreadSummary[]>([]);
+  const [activeThread, setActiveThread] = useState<AssistantThreadSummary | null>(null);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const threadLoadSeqRef = useRef(0);
+
+  const resetConversation = (next: Message[]) => {
+    setMessages(next);
+    setTaggedChartIds([]);
+    setInputValue("");
+    setToolEvents([]);
+    setLastSqlExecution(null);
+    setActiveAssistantMessageId(null);
+    setQuerypanelSessionId(null);
+  };
+
+  const openThread = async (thread: AssistantThreadSummary) => {
+    if (!threadsClient) return;
+    const seq = ++threadLoadSeqRef.current;
+    setThreadsLoading(true);
+    setThreadsError(null);
+    try {
+      const stored = await threadsClient.messages(thread.id);
+      if (seq !== threadLoadSeqRef.current) return;
+      resetConversation(threadMessagesToChatMessages(stored, () => null));
+      setActiveThread(thread);
+      setQuerypanelSessionId(thread.mastra_thread_id);
+    } catch (err) {
+      if (seq === threadLoadSeqRef.current) {
+        setThreadsError(err instanceof Error ? err.message : "Failed to load the conversation");
+      }
+    } finally {
+      if (seq === threadLoadSeqRef.current) setThreadsLoading(false);
+    }
+  };
+
+  // Restore the most recent Thread on mount.
+  useEffect(() => {
+    if (!threadsClient) return;
+    let cancelled = false;
+    setThreadsLoading(true);
+    threadsClient
+      .list()
+      .then((list) => {
+        if (cancelled) return;
+        setThreads(list);
+        if (list[0]) void openThread(list[0]);
+        else setThreadsLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setThreadsError(err instanceof Error ? err.message : "Failed to load conversations");
+        setThreadsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadsClient]);
+
+  const startNewConversation = () => {
+    threadLoadSeqRef.current += 1;
+    setActiveThread(null);
+    setThreadsError(null);
+    resetConversation([]);
+  };
+
   const chipClickHandler = (chartId: string) => {
     const chart = (charts ?? []).find((candidate) => candidate.chartId === chartId);
     return chart && onChartChipClick ? () => onChartChipClick(chart.id) : undefined;
@@ -575,7 +661,16 @@ export function AssistantPanel({
 
     try {
       if (useMastraStream) {
-        const threadId = querypanelSessionId || createMessageId(`chart-${dashboardId}`);
+        let thread = activeThread;
+        if (threadsClient && !thread) {
+          thread = await threadsClient.create(threadTitleFromQuestion(messageText));
+          setActiveThread(thread);
+          setThreads((prev) => [thread!, ...prev]);
+        }
+        const threadId =
+          thread?.mastra_thread_id ||
+          querypanelSessionId ||
+          createMessageId(`chart-${dashboardId}`);
         const currentAssistantMessageId = createMessageId("assistant");
         assistantMessageId = currentAssistantMessageId;
         setActiveAssistantMessageId(currentAssistantMessageId);
@@ -998,6 +1093,40 @@ export function AssistantPanel({
               className="qp-ai-modal-chat-pane"
               inert={isNarrowLayout && mobileSettingsOpen ? true : undefined}
             >
+              {threadsClient && (
+                <div className="qp-ai-thread-bar">
+                  <select
+                    className="qp-ai-thread-select"
+                    aria-label="Conversation"
+                    value={activeThread?.id ?? ""}
+                    disabled={isLoading || threadsLoading}
+                    onChange={(e) => {
+                      const next = threads.find((thread) => thread.id === e.target.value);
+                      if (next) void openThread(next);
+                    }}
+                  >
+                    {!activeThread && <option value="">New conversation</option>}
+                    {threads.map((thread) => (
+                      <option key={thread.id} value={thread.id}>
+                        {thread.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="qp-ai-thread-new"
+                    disabled={isLoading || threadsLoading || (!activeThread && messages.length === 0)}
+                    onClick={startNewConversation}
+                  >
+                    New conversation
+                  </button>
+                </div>
+              )}
+              {threadsError && (
+                <div className="qp-ai-thread-error" role="alert">
+                  {threadsError}
+                </div>
+              )}
               <div className="qp-ai-modal-messages">
                 {messages.length === 0 && (
                   <div className="qp-ai-modal-empty">
@@ -1080,13 +1209,16 @@ export function AssistantPanel({
                               return (
                                 <ChartChip
                                   key={tag.chartId}
-                                  label={tag.label}
+                                  label={onClick ? chartLabelFor(tag.chartId) : tag.label}
                                   dead={!onClick}
                                   onClick={onClick}
                                 />
                               );
                             })}
                           </div>
+                        )}
+                        {message.role === "user" && message.intent && (
+                          <div className="qp-ai-thread-intent">{message.intent}</div>
                         )}
                         {message.role === "user" && message.content.trim().length > 0 && (
                           <div>{message.content}</div>

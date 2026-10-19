@@ -167,6 +167,8 @@ export interface DashboardAiEditorProps {
    * menu. "workspace" shows the Dashboard on the left and the Assistant on the right (admin).
    */
   assistantLayout?: "modal" | "workspace";
+  /** Assistant Threads endpoint for workspace mode (e.g. /api/assistant-threads). Omit for no persistence. */
+  assistantThreadsUrl?: string;
 }
 
 export function DashboardAiEditor({
@@ -201,6 +203,7 @@ export function DashboardAiEditor({
   controllerRef,
   onChartsChange,
   assistantLayout = "modal",
+  assistantThreadsUrl,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -715,6 +718,7 @@ export function DashboardAiEditor({
                 charts={taggableCharts}
                 getChartSpec={getChartSpec}
                 onChartChipClick={handleChipClick}
+                threadsUrl={assistantThreadsUrl}
               />
             )}
           />
