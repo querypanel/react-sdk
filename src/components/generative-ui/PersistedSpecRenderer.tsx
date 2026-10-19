@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { autoFixSpec, type Spec } from "@json-render/core";
 import { Renderer } from "@json-render/react";
 import { registry } from "./registry";
@@ -10,10 +10,12 @@ export function PersistedSpecRenderer({
   spec,
   queryResultBaseUrl = "",
   requestHeaders,
+  headerActions,
 }: {
   spec: unknown;
   queryResultBaseUrl?: string;
   requestHeaders?: Record<string, string>;
+  headerActions?: ReactNode;
 }) {
   const fixedSpec = useMemo(() => {
     if (!spec || typeof spec !== "object") return null;
@@ -26,6 +28,7 @@ export function PersistedSpecRenderer({
     <GenerativeUIProvider
       queryResultBaseUrl={queryResultBaseUrl}
       requestHeaders={requestHeaders}
+      headerActions={headerActions}
     >
       <Renderer spec={fixedSpec} registry={registry} />
     </GenerativeUIProvider>

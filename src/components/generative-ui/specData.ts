@@ -58,7 +58,7 @@ function getElementsRecord(spec: JsonRenderSpec) {
     : null;
 }
 
-function getRootElement(spec: JsonRenderSpec) {
+export function getRootElement(spec: JsonRenderSpec) {
   if (typeof spec.root !== "string") return null;
   const elements = getElementsRecord(spec);
   if (!elements) return null;
@@ -414,11 +414,21 @@ export function withJsonRenderResultId(spec: unknown, resultId?: string | null) 
   };
 }
 
+export type InjectRowsOptions = {
+  /**
+   * When true (pinned modify), always use the incoming rows — including empty —
+   * instead of preserving prior series when remap yields nothing.
+   */
+  replaceExisting?: boolean;
+};
+
 export function injectRowsIntoJsonRenderSpec(
   spec: unknown,
   rows: Array<Record<string, unknown>>,
-  fields: string[]
+  fields: string[],
+  options?: InjectRowsOptions
 ) {
+  const replaceExisting = options?.replaceExisting === true;
   const root = getRootElement((spec ?? {}) as JsonRenderSpec);
   if (!root || !root.element.props || typeof root.element.props !== "object") {
     return spec;
@@ -440,7 +450,7 @@ export function injectRowsIntoJsonRenderSpec(
 
   if (root.element.type === "DataTable") {
     const nextRows = rows.map((row) => headers.map((field) => String(row[field] ?? "")));
-    if (nextRows.length === 0) return spec;
+    if (nextRows.length === 0 && !replaceExisting) return spec;
     return withProps({ ...inlined(props), headers, rows: nextRows });
   }
 
@@ -453,10 +463,15 @@ export function injectRowsIntoJsonRenderSpec(
     const existingData = Array.isArray(props.data)
       ? (props.data as Array<Record<string, unknown>>)
       : [];
-    // Keep existing series if remap yields nothing.
     const nextData = normalizeRowsForJsonRenderChart(rows, fieldHints);
-    const data = nextData.length > 0 ? nextData : existingData;
-    if (data.length === 0) return spec;
+    // Default: keep existing series if remap yields nothing (initial hydrate).
+    // Modify path: replace so empty/new windows actually update the chart.
+    const data = replaceExisting
+      ? nextData
+      : nextData.length > 0
+        ? nextData
+        : existingData;
+    if (data.length === 0 && !replaceExisting) return spec;
     return withProps({ ...inlined(props), data });
   }
 

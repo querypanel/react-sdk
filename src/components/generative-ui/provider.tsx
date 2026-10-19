@@ -10,6 +10,8 @@ import {
 type GenerativeUIConfig = {
   queryResultBaseUrl: string;
   requestHeaders?: Record<string, string>;
+  /** Optional actions rendered on the right of ChartShell's title row (e.g. pinned cog). */
+  headerActions?: React.ReactNode;
 };
 
 const GenerativeUIConfigContext = React.createContext<GenerativeUIConfig>({
@@ -21,14 +23,16 @@ export function GenerativeUIProvider({
   children,
   queryResultBaseUrl = "",
   requestHeaders,
+  headerActions,
 }: {
   children: React.ReactNode;
   queryResultBaseUrl?: string;
   requestHeaders?: Record<string, string>;
+  headerActions?: React.ReactNode;
 }) {
   const value = React.useMemo(
-    () => ({ queryResultBaseUrl, requestHeaders }),
-    [queryResultBaseUrl, requestHeaders]
+    () => ({ queryResultBaseUrl, requestHeaders, headerActions }),
+    [queryResultBaseUrl, requestHeaders, headerActions]
   );
 
   return (

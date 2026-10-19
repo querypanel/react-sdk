@@ -2,24 +2,34 @@
 "use client";
 
 import { createReactBlockSpec } from "@blocknote/react";
-import { useEffect, useMemo, useState } from "react";
-import type { ThemeColors } from "../../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChartType, ThemeColors } from "../../types";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import { PersistedSpecRenderer } from "../generative-ui/PersistedSpecRenderer";
 import {
+  getRootElement,
   hasInlineJsonRenderData,
   injectRowsIntoJsonRenderSpec,
   withJsonRenderResultId,
 } from "../generative-ui/specData";
 import { runDedupedRequest } from "../../utils/requestDedup";
 import { parseBlockHeight } from "./chartBlockHeight";
+import { getBlockNoteEditor } from "./blockNoteEditor";
+import { chartTypeFromJsonRenderSpec } from "./pinnedChartModify";
+import { usePinnedChartChrome } from "./PinnedChartChrome";
+import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
+
+/** Chart types `swapJsonRenderChartType` can render (no scatter). */
+const JSON_RENDER_CHART_TYPES: ChartType[] = ["column", "bar", "line", "area", "pie"];
 
 type JsonRenderChartBlockOptions = {
   apiBaseUrl?: string;
   colors: ThemeColors;
   queryResultBaseUrl?: string;
   runSqlUrl?: string;
+  modifyChartUrl?: string;
+  enableChartControls?: boolean;
   organizationId?: string;
   dashboardId?: string;
   headers?: Record<string, string>;
@@ -33,11 +43,49 @@ function getHeadersSignature(headers: Record<string, string>) {
   );
 }
 
+function extractControlData(spec: unknown): {
+  fields: string[];
+  rows: Array<Record<string, unknown>>;
+} {
+  // Prefer nested chart props (where injectRows writes); fall back to top-level.
+  const root = getRootElement(
+    (spec ?? {}) as Parameters<typeof getRootElement>[0]
+  );
+  const nestedProps =
+    root?.element?.props && typeof root.element.props === "object"
+      ? (root.element.props as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [];
+  if (nestedProps) {
+    if (Array.isArray(nestedProps.data)) candidates.push(nestedProps.data);
+    if (Array.isArray(nestedProps.rows)) candidates.push(nestedProps.rows);
+  }
+  if (spec && typeof spec === "object") {
+    const top = spec as { data?: unknown; rows?: unknown };
+    if (Array.isArray(top.data)) candidates.push(top.data);
+    if (Array.isArray(top.rows)) candidates.push(top.rows);
+  }
+
+  for (const data of candidates) {
+    if (!Array.isArray(data) || data.length === 0) continue;
+    // Chart series: array of objects
+    if (data[0] && typeof data[0] === "object" && !Array.isArray(data[0])) {
+      return {
+        fields: Object.keys(data[0] as Record<string, unknown>),
+        rows: data as Array<Record<string, unknown>>,
+      };
+    }
+  }
+  return { fields: [], rows: [] };
+}
+
 export function createJsonRenderChartBlockSpec({
   apiBaseUrl = "",
   colors,
   queryResultBaseUrl = "/api/query-results",
   runSqlUrl,
+  modifyChartUrl,
+  enableChartControls = true,
   organizationId,
   dashboardId,
   headers = EMPTY_HEADERS,
@@ -57,6 +105,9 @@ export function createJsonRenderChartBlockSpec({
           default: "",
         },
         rationale: {
+          default: "",
+        },
+        question: {
           default: "",
         },
         sql: {
@@ -92,9 +143,10 @@ export function createJsonRenderChartBlockSpec({
       render: (props) => {
         const { darkMode } = useThemeContext();
         const resolvedColors = getColorsForMode(colors, darkMode);
-        const [error, setError] = useState<string | null>(null);
+        const [loadError, setLoadError] = useState<string | null>(null);
         const [hydratedSpec, setHydratedSpec] = useState<unknown>(null);
         const [isLoading, setIsLoading] = useState(false);
+        const lastSqlFetchKeyRef = useRef<string>("");
 
         const parsedSpec = useMemo(() => {
           if (!props.block.props.jsonRenderSpec) return null;
@@ -106,7 +158,7 @@ export function createJsonRenderChartBlockSpec({
               props.block.props.resultId || undefined
             );
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Invalid JSON Render spec");
+            setLoadError(err instanceof Error ? err.message : "Invalid JSON Render spec");
             return null;
           }
         }, [props.block.props.jsonRenderSpec, props.block.props.resultId]);
@@ -133,13 +185,32 @@ export function createJsonRenderChartBlockSpec({
         }, [props.block.props.datasourceIds]);
 
         const chartHeight = parseBlockHeight(props.block.props.height) ?? 400;
+        const editor = getBlockNoteEditor(props);
+
+        const modify = usePinnedChartBlockModify({
+          format: "json-render",
+          block: props.block,
+          editor,
+          modifyChartUrl,
+          enableChartControls,
+          organizationId,
+          dashboardId,
+          headers,
+          datasourceIds,
+          sqlParams,
+          currentJsonRenderSpec: hydratedSpec ?? parsedSpec,
+        });
+        const chrome = usePinnedChartChrome({
+          modify,
+          colors: resolvedColors,
+          disabled: isLoading,
+          sqlParams,
+          currentChartType: chartTypeFromJsonRenderSpec(specForRenderer),
+          chartTypes: JSON_RENDER_CHART_TYPES,
+        });
 
         useEffect(() => {
           if (!parsedSpec) return;
-          if (hasInlineJsonRenderData(parsedSpec)) {
-            setHydratedSpec(parsedSpec);
-            return;
-          }
 
           if (!props.block.props.sql || datasourceIds.length === 0) {
             setHydratedSpec(parsedSpec);
@@ -161,10 +232,34 @@ export function createJsonRenderChartBlockSpec({
             requestPayload
           )}:${getHeadersSignature(headers)}`;
 
+          // Same SQL/params: reuse hydrated rows onto a possibly type-swapped spec.
+          // Do this before trusting inline data so chart-type swaps still work.
+          if (lastSqlFetchKeyRef.current === requestKey) {
+            setHydratedSpec((prev: unknown) => {
+              const { rows, fields } = extractControlData(prev);
+              if (rows.length === 0 && hasInlineJsonRenderData(parsedSpec)) {
+                return parsedSpec;
+              }
+              if (rows.length === 0) {
+                return injectRowsIntoJsonRenderSpec(parsedSpec, [], fields);
+              }
+              return injectRowsIntoJsonRenderSpec(parsedSpec, rows, fields);
+            });
+            return;
+          }
+
+          // Params/SQL changed (e.g. date-range modify). Prefer fresh inline rows from
+          // the modify response when present; otherwise refetch.
+          if (hasInlineJsonRenderData(parsedSpec)) {
+            lastSqlFetchKeyRef.current = requestKey;
+            setHydratedSpec(parsedSpec);
+            return;
+          }
+
           let cancelled = false;
           const fetchData = async () => {
             setIsLoading(true);
-            setError(null);
+            setLoadError(null);
             try {
               const payload = await runDedupedRequest(
                 requestKey,
@@ -195,11 +290,12 @@ export function createJsonRenderChartBlockSpec({
                 const fields = Array.isArray(payload?.fields)
                   ? (payload.fields as string[])
                   : [];
+                lastSqlFetchKeyRef.current = requestKey;
                 setHydratedSpec(injectRowsIntoJsonRenderSpec(parsedSpec, rows, fields));
               }
             } catch (err) {
               if (!cancelled) {
-                setError(
+                setLoadError(
                   err instanceof Error ? err.message : "Failed to load visualization data"
                 );
                 setHydratedSpec(parsedSpec);
@@ -223,6 +319,8 @@ export function createJsonRenderChartBlockSpec({
           props.block.props.tenantFieldName,
           props.block.props.previewTenantId,
         ]);
+
+        const error = modify.error || loadError;
 
         if (!parsedSpec) {
           return (
@@ -294,13 +392,27 @@ export function createJsonRenderChartBlockSpec({
                 maxWidth: "56rem",
                 minHeight: `${chartHeight}px`,
                 boxSizing: "border-box",
+                position: "relative",
               }}
             >
+              {error ? (
+                <div
+                  style={{
+                    marginBottom: "0.5rem",
+                    fontSize: "0.75rem",
+                    color: resolvedColors.error,
+                  }}
+                >
+                  {error}
+                </div>
+              ) : null}
               <PersistedSpecRenderer
                 spec={specForRenderer}
                 queryResultBaseUrl={queryResultBaseUrl}
                 requestHeaders={headers}
+                headerActions={chrome.titleActions}
               />
+              {chrome.controls}
             </div>
           </div>
         );

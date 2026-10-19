@@ -34,6 +34,15 @@ describe("buildChartBlockInput", () => {
     expect(input?.props).not.toHaveProperty("resultId");
   });
 
+  it("stores the original question on both block types", () => {
+    expect(buildChartBlockInput({ chartSpec: vizSpec, question: "Revenue?" })?.props.question).toBe(
+      "Revenue?",
+    );
+    expect(buildChartBlockInput({ jsonRenderSpec, question: "Total?" })?.props.question).toBe(
+      "Total?",
+    );
+  });
+
   it("builds a json-render block and keeps the result id", () => {
     const input = buildChartBlockInput({ jsonRenderSpec, resultId: "r1" });
     expect(input?.type).toBe("json-render-chart");

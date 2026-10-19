@@ -5,12 +5,20 @@ import type { ThemeColors } from "../../types";
 export function ChartBlockFrame({
   title,
   datasourceCount = 0,
+  titleActions,
+  error,
+  overlay,
   height,
   colors,
   children,
 }: {
   title: string;
   datasourceCount?: number;
+  /** Replaces the datasource count in the title row (e.g. pinned chart controls). */
+  titleActions?: ReactNode;
+  error?: ReactNode;
+  /** Rendered over the chart area (e.g. pinned chart control popovers). */
+  overlay?: ReactNode;
   height: number;
   colors: ThemeColors;
   children: ReactNode;
@@ -47,12 +55,20 @@ export function ChartBlockFrame({
           }}
         >
           <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>{title}</div>
-          <div style={{ fontSize: "0.75rem", color: colors.muted }}>
-            {datasourceCount > 0
-              ? `${datasourceCount} datasource${datasourceCount > 1 ? "s" : ""}`
-              : ""}
-          </div>
+          {titleActions ?? (
+            <div style={{ fontSize: "0.75rem", color: colors.muted }}>
+              {datasourceCount > 0
+                ? `${datasourceCount} datasource${datasourceCount > 1 ? "s" : ""}`
+                : ""}
+            </div>
+          )}
         </div>
+        {error ? (
+          <div style={{ marginBottom: "0.5rem", fontSize: "0.75rem", color: colors.error }}>
+            {error}
+          </div>
+        ) : null}
+        <div style={{ position: "relative" }}>
         <div
           style={{
             width: "100%",
@@ -67,6 +83,8 @@ export function ChartBlockFrame({
           }}
         >
           {children}
+        </div>
+        {overlay}
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@ export interface ChartPayload {
   chartSpec?: unknown;
   jsonRenderSpec?: unknown;
   rationale?: string;
+  /** Original NL question, used by pinned chart controls when modifying the chart. */
+  question?: string;
   sql?: string;
   sqlParams?: Record<string, unknown> | null;
   datasourceIds?: string[];
@@ -70,6 +72,7 @@ function specTitle(type: ChartBlockType, spec: unknown): string {
 function metadataProps(type: ChartBlockType, payload: ChartPayload): Record<string, string> {
   return {
     rationale: payload.rationale || "",
+    question: payload.question || "",
     sql: payload.sql || "",
     sqlParams: JSON.stringify(payload.sqlParams || {}),
     datasourceIds: JSON.stringify(payload.datasourceIds || []),
@@ -118,6 +121,7 @@ export function buildChartPropsPatch(
   }
   if (patch.title !== undefined) props.title = patch.title;
   if (patch.rationale !== undefined) props.rationale = patch.rationale;
+  if (patch.question !== undefined) props.question = patch.question;
   if (patch.sql !== undefined) props.sql = patch.sql;
   if (patch.sqlParams !== undefined) props.sqlParams = JSON.stringify(patch.sqlParams || {});
   if (patch.datasourceIds !== undefined) props.datasourceIds = JSON.stringify(patch.datasourceIds);

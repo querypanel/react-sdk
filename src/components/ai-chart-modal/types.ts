@@ -69,6 +69,8 @@ export type DashboardReportInsertBlock =
 			chartSpec?: unknown;
 			jsonRenderSpec?: unknown;
 			rationale?: string;
+			/** Original NL question used when modifying the pinned chart. */
+			question?: string;
 			sql?: string;
 			sqlParams?: Record<string, unknown> | null;
 			resultId?: string;

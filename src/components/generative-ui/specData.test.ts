@@ -169,6 +169,34 @@ describe("injectRowsIntoJsonRenderSpec", () => {
     expect(hydrated.elements.c1.props.resultId).toBeUndefined();
   });
 
+  it("replaceExisting clears prior series when modify returns no plottable rows", () => {
+    const existing = [
+      { label: "2026-05-11T00:00:00.000Z", value: 3 },
+      { label: "2026-05-18T00:00:00.000Z", value: 10 },
+    ];
+    const spec = {
+      root: "c1",
+      elements: {
+        c1: {
+          type: "LineChart",
+          props: {
+            title: "Accumulated",
+            data: existing,
+            labelField: "week",
+            valueField: "total_users",
+          },
+          children: [],
+        },
+      },
+    };
+
+    const hydrated = injectRowsIntoJsonRenderSpec(spec, [], ["week", "total_users"], {
+      replaceExisting: true,
+    }) as typeof spec;
+
+    expect(hydrated.elements.c1.props.data).toEqual([]);
+  });
+
   it("keeps resultId when nothing could be inlined, so artifact fetch still works", () => {
     const spec = {
       root: "c1",

@@ -29,6 +29,7 @@ import {
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
+import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import { VizSpecPreview } from "./ai-chart-modal/VizSpecPreview";
 import type {
   DashboardReportInsertBlock,
@@ -94,7 +95,8 @@ export interface AssistantPanelProps {
     sqlParams?: Record<string, unknown> | null,
     tenantFieldName?: string,
     previewTenantId?: string,
-    resultId?: string
+    resultId?: string,
+    question?: string
   ) => void;
   /** Insert a multi-block report (text + viz) into the dashboard editor. */
   onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
@@ -758,7 +760,8 @@ export function AssistantPanel({
       message.sqlParams,
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
-      message.resultId ?? message.queryResult?.resultId
+      message.resultId ?? message.queryResult?.resultId,
+      findPrecedingUserQuestion(messages, message)
     );
   };
 
@@ -771,15 +774,18 @@ export function AssistantPanel({
       block.sqlParams ?? turn?.sqlParams ?? null,
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
-      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId
+      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
+      turn ? findPrecedingUserQuestion(messages, turn) : undefined
     );
   };
 
   const handleAddReportToEditor = (message: Message) => {
+    const question = findPrecedingUserQuestion(messages, message);
     const blocks = collectDashboardReportBlocks(message).map((block) => {
       if (block.type !== "viz") return block;
       return {
         ...block,
+        question,
         datasourceIds: selectedDatasourceIds,
         tenantFieldName: tenantInputsEnabled
           ? tenantFieldName.trim() || undefined
@@ -807,7 +813,8 @@ export function AssistantPanel({
           ? firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined)
           : undefined,
         tenantInputsEnabled ? firstViz.previewTenantId : undefined,
-        firstViz.resultId ?? message.resultId
+        firstViz.resultId ?? message.resultId,
+        question
       );
     }
   };

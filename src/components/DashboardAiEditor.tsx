@@ -113,6 +113,8 @@ export interface DashboardAiEditorProps {
   apiBaseUrl?: string;
   /** Override run-sql URL (e.g. /api/dashboards/run-sql for admin) */
   runSqlUrl?: string;
+  /** Override modify-chart URL for pinned chart controls */
+  modifyChartUrl?: string;
   /** Override AI chart URL. Pass a Mastra agent stream URL to get the streaming agent UI. */
   generateChartWithSqlUrl?: string;
   /** Override datasources URL */
@@ -164,6 +166,7 @@ export function DashboardAiEditor({
   editable = true,
   apiBaseUrl = "",
   runSqlUrl,
+  modifyChartUrl,
   generateChartWithSqlUrl,
   datasourcesUrl,
   queryResultBaseUrl,
@@ -233,6 +236,11 @@ export function DashboardAiEditor({
     override ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}${embedPath}` : adminPath);
 
   const resolvedRunSqlUrl = resolveUrl(runSqlUrl, "/query/run-sql", "/api/dashboards/run-sql");
+  const resolvedModifyChartUrl = resolveUrl(
+    modifyChartUrl,
+    "/query/modify-chart",
+    "/api/dashboards/modify-chart"
+  );
   const resolvedGenerateChartWithSqlUrl = resolveUrl(
     generateChartWithSqlUrl,
     "/ai/generate-chart-with-sql",
@@ -251,11 +259,20 @@ export function DashboardAiEditor({
         apiBaseUrl: apiBaseUrl || "",
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
+        modifyChartUrl: resolvedModifyChartUrl,
         organizationId,
         dashboardId,
         headers,
       }),
-    [apiBaseUrl, themeColors, resolvedRunSqlUrl, organizationId, dashboardId, headers]
+    [
+      apiBaseUrl,
+      themeColors,
+      resolvedRunSqlUrl,
+      resolvedModifyChartUrl,
+      organizationId,
+      dashboardId,
+      headers,
+    ]
   );
 
   const jsonRenderBlockSpec = useMemo(
@@ -265,6 +282,7 @@ export function DashboardAiEditor({
         colors: themeColors,
         queryResultBaseUrl: resolvedQueryResultBaseUrl,
         runSqlUrl: resolvedRunSqlUrl,
+        modifyChartUrl: resolvedModifyChartUrl,
         organizationId,
         dashboardId,
         headers,
@@ -274,6 +292,7 @@ export function DashboardAiEditor({
       themeColors,
       resolvedQueryResultBaseUrl,
       resolvedRunSqlUrl,
+      resolvedModifyChartUrl,
       organizationId,
       dashboardId,
       headers,
@@ -335,7 +354,8 @@ export function DashboardAiEditor({
       sqlParams?: Record<string, unknown> | null,
       tenantFieldName?: string,
       previewTenantId?: string,
-      resultId?: string
+      resultId?: string,
+      question?: string
     ) => {
       const input = buildChartBlockInput({
         chartSpec,
@@ -346,6 +366,7 @@ export function DashboardAiEditor({
         tenantFieldName,
         previewTenantId,
         resultId,
+        question,
       });
       if (!input) return;
       editor.insertBlocks(
