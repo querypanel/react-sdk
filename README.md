@@ -1,6 +1,20 @@
 # @querypanel/react-sdk
 
-React components for QueryPanel - AI-powered data visualization.
+`@querypanel/react-sdk` is the headful React SDK for [QueryPanel](https://querypanel.io) embedded analytics. It renders multi-tenant, customer-facing dashboards inside your React app (React 18 or 19) as normal components, not an iframe. The main component, `QuerypanelEmbedded`, loads a deployed dashboard into a block-based (Notion-like) editor with a built-in AI assistant: your customers ask questions in plain language, QueryPanel turns them into SQL (natural-language-to-SQL) against your Postgres, ClickHouse, or BigQuery data, and each tenant can customize its own copy of the dashboard. Tenant scoping comes from a JWT you mint on your server.
+
+- Docs: [querypanel.io/docs/react-sdk](https://querypanel.io/docs/react-sdk)
+- Tenant isolation: [querypanel.io/docs/tenant-isolation](https://querypanel.io/docs/tenant-isolation)
+- JWT setup: [querypanel.io/docs/jwt](https://querypanel.io/docs/jwt)
+- Why native React instead of an iframe: [iframe vs native React embedded analytics (2026)](https://querypanel.io/blog/iframe-vs-native-react-embedded-analytics-2026)
+
+## When to use the React SDK vs the Node SDK
+
+- **React SDK (this package, headful):** start here if you want ready-made dashboards, an AI assistant, and per-tenant customization in your React UI. Your server still mints the tenant JWT.
+- **[Node SDK](https://www.npmjs.com/package/@querypanel/node-sdk) (headless):** use `@querypanel/node-sdk` on your server to mint JWTs, sync your database schema, and call `ask()` from your own API routes. Choose it alone when you want to build your own UI on top of natural-language-to-SQL results; SQL runs against your database from your server.
+
+Most React apps use both: the Node SDK on the server, `QuerypanelEmbedded` in the browser.
+
+How it compares to other embedded analytics tools: [querypanel.io/compare](https://querypanel.io/compare).
 
 ## Installation
 
@@ -76,7 +90,7 @@ function Dashboard() {
 ### Using Individual Components
 
 ```tsx
-import { VegaChart, DataTable, ChartControls } from "@querypanel/react-sdk";
+import { VizSpecRenderer, DataTable, ChartControls } from "@querypanel/react-sdk";
 import { getColorsByPreset } from "@querypanel/react-sdk/themes";
 
 function MyChart({ spec, data, fields }) {
@@ -88,7 +102,7 @@ function MyChart({ spec, data, fields }) {
         fields={fields}
         onApply={(options) => console.log(options)}
       />
-      <VegaChart spec={spec} colors={colors} />
+      <VizSpecRenderer spec={spec} data={data} colors={colors} />
       <DataTable rows={data} fields={fields} />
     </div>
   );
@@ -123,8 +137,8 @@ Notes:
 ### `QueryInput`
 Search input with prompt chips for quick queries.
 
-### `VegaChart`
-Renders Vega-Lite specifications with automatic theming.
+### `VizSpecRenderer`
+Renders a VizSpec (chart, table, or metric) with the given data and theme colors. `VizSpecChart`, `VizSpecTable`, and `VizSpecMetric` render each kind directly.
 
 ### `DataTable`
 Displays query results in a styled table.
@@ -134,6 +148,9 @@ Controls for modifying chart type, axes, time granularity, and colors.
 
 ### `QueryResult`
 Combined display of chart, SQL, and data table.
+
+### `DashboardViewer`, `DashboardEditor`, `DashboardAiEditor`
+Lower-level dashboard building blocks. `QuerypanelEmbedded` uses `DashboardAiEditor` (block editor plus AI chart assistant) internally.
 
 ### `LoadingState`, `ErrorState`, `EmptyState`
 UI states for loading, errors, and empty results.
@@ -168,20 +185,26 @@ const customTheme = createTheme({
 
 ## White-Labeling
 
-All components accept a `colors` prop for custom styling:
+Components accept a `colors` prop for custom styling (`ThemeColors`; some components, such as `DataTable` and `QueryResult`, also accept a partial object). Start from a preset and override what you need:
 
 ```tsx
-<VegaChart
+import { VizSpecRenderer } from "@querypanel/react-sdk";
+import { defaultColors } from "@querypanel/react-sdk/themes";
+
+<VizSpecRenderer
   spec={spec}
+  data={data}
   colors={{
+    ...defaultColors,
     primary: "#YOUR_BRAND_COLOR",
     range: ["#color1", "#color2", "#color3"],
     text: "#ffffff",
     muted: "#888888",
-    // ...
   }}
 />
 ```
+
+`QuerypanelEmbedded` also takes `colorPreset`, `theme`, `darkMode`, and `branding` props.
 
 ## Types
 
@@ -201,14 +224,22 @@ interface ThemeColors {
   error: string;
 }
 
+// Exported as `QueryResultType`
 interface QueryResult {
   success: boolean;
   sql?: string;
+  params?: Record<string, unknown>;
+  rationale?: string;
   rows?: Array<Record<string, unknown>>;
   fields?: string[];
   chart?: {
-    vegaLiteSpec?: Record<string, unknown>;
+    vegaLiteSpec?: Record<string, unknown> | null;
+    vizSpec?: Record<string, unknown> | null;
+    specType: "vega-lite" | "vizspec";
+    notes: string | null;
   };
+  modified?: { sqlChanged: boolean; vizChanged: boolean };
+  error?: string;
 }
 ```
 
