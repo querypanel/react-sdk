@@ -186,6 +186,8 @@ function ChartShell({
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
+  const { headerActions } = useGenerativeUIConfig();
+  const showHeader = Boolean(title) || Boolean(headerActions);
 
   return (
     <div
@@ -196,16 +198,23 @@ function ChartShell({
         padding: "0.75rem",
       }}
     >
-      {title ? (
+      {showHeader ? (
         <div
           style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.5rem",
             marginBottom: "0.5rem",
             color: colors.text,
-            fontSize: "0.875rem",
-            fontWeight: 600,
           }}
         >
-          {title}
+          <div style={{ fontSize: "0.875rem", fontWeight: 600, minWidth: 0 }}>
+            {title || ""}
+          </div>
+          {headerActions ? (
+            <div style={{ flexShrink: 0 }}>{headerActions}</div>
+          ) : null}
         </div>
       ) : null}
       {children}

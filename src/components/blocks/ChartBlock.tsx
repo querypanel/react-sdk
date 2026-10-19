@@ -6,12 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
-import type { ChartType, ThemeColors } from "../../types";
+import type { ThemeColors } from "../../types";
 import { runDedupedRequest } from "../../utils/requestDedup";
-import { ChartControls } from "../ChartControls";
 import { resolveChartBlockHeight } from "./chartBlockHeight";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromVizSpec } from "./pinnedChartModify";
+import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
 type ChartBlockOptions = {
@@ -152,14 +152,7 @@ export function createChartBlockSpec({
 
         const editor = getBlockNoteEditor(props);
 
-        const {
-          controlsEnabled,
-          isModifying,
-          error: modifyError,
-          canUndo,
-          onApply,
-          onUndo,
-        } = usePinnedChartBlockModify({
+        const modify = usePinnedChartBlockModify({
           format: "vizspec",
           block: props.block,
           editor,
@@ -175,6 +168,13 @@ export function createChartBlockSpec({
             Array.isArray(parsedSpec?.embeddedData) && parsedSpec.embeddedData.length > 0
               ? parsedSpec.embeddedData
               : (data ?? []),
+        });
+        const chrome = usePinnedChartChrome({
+          modify,
+          colors: resolvedColors,
+          disabled: isLoading,
+          sqlParams,
+          currentChartType: chartTypeFromVizSpec(parsedSpec?.spec),
         });
 
         // biome-ignore lint/correctness/useExhaustiveDependencies: values come from createChartBlockSpec closure
@@ -266,8 +266,7 @@ export function createChartBlockSpec({
         const effectiveData =
           hasEmbeddedData && parsedSpec ? parsedSpec.embeddedData : (data ?? []);
 
-        const currentChartType: ChartType | "" = chartTypeFromVizSpec(parsedSpec?.spec);
-        const error = modifyError || loadError;
+        const error = modify.error || loadError;
 
         if (!parsedSpec) {
           return (
@@ -339,29 +338,14 @@ export function createChartBlockSpec({
                 <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
                   {props.block.props.title || "Chart"}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
-                  {datasourceIds.length > 0
-                    ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
-                    : ""}
-                </div>
+                {chrome.titleActions ?? (
+                  <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
+                    {datasourceIds.length > 0
+                      ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
+                      : ""}
+                  </div>
+                )}
               </div>
-
-              {controlsEnabled ? (
-                <ChartControls
-                  variant="pinned"
-                  fields={
-                    effectiveData[0]
-                      ? Object.keys(effectiveData[0])
-                      : []
-                  }
-                  disabled={isModifying || isLoading}
-                  canUndo={canUndo}
-                  colors={resolvedColors}
-                  currentChartType={currentChartType}
-                  onApply={onApply}
-                  onUndo={onUndo}
-                />
-              ) : null}
 
               {error ? (
                 <div
@@ -375,6 +359,7 @@ export function createChartBlockSpec({
                 </div>
               ) : null}
 
+              <div style={{ position: "relative" }}>
               <div
                 style={{
                   width: "100%",
@@ -394,6 +379,8 @@ export function createChartBlockSpec({
                   colors={resolvedColors}
                   chartHeight="100%"
                 />
+              </div>
+              {chrome.controls}
               </div>
             </div>
           </div>

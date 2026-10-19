@@ -11,11 +11,6 @@ export { VizSpecTable, type VizSpecTableProps, type TableSpec } from "./componen
 export { VizSpecMetric, type VizSpecMetricProps, type MetricSpec } from "./components/VizSpecMetric";
 export { DataTable, type DataTableProps } from "./components/DataTable";
 export { ChartControls, type ChartControlsProps } from "./components/ChartControls";
-export {
-  DATE_RANGE_PRESETS,
-  resolveDateRangePreset,
-  type DateRangePreset,
-} from "./components/dateRangePresets";
 export { QueryInput, type QueryInputProps } from "./components/QueryInput";
 export { QueryResult, type QueryResultProps } from "./components/QueryResult";
 export { LoadingState, type LoadingStateProps } from "./components/LoadingState";

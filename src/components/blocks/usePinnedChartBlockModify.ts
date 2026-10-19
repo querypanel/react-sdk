@@ -6,6 +6,7 @@ import type { VizSpec } from "../VizSpecRenderer";
 import {
   callPinnedChartModify,
   chartTypeFromVizSpec,
+  patchVizSpecChartType,
   swapJsonRenderChartType,
   type PinnedChartModifyResponse,
 } from "./pinnedChartModify";
@@ -39,27 +40,40 @@ function isVizSpec(value: unknown): value is VizSpec {
   return kind === "chart" || kind === "table" || kind === "metric";
 }
 
+function parseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw || "null");
+  } catch {
+    return null;
+  }
+}
+
 function buildVizspecProps(
   result: PinnedChartModifyResponse,
   previous: VizspecSnapshot,
-  fallbackSpec: VizSpec | null,
-  fallbackRows: Array<Record<string, unknown>>
+  currentSpec: VizSpec | null,
+  fallbackRows: Array<Record<string, unknown>>,
+  options: PinnedChartApplyOptions
 ): Partial<VizspecSnapshot> {
-  const nextSpec =
-    result.chart?.vizSpec ?? result.chartSpec ?? (fallbackSpec ? { ...fallbackSpec } : null);
-  if (!nextSpec || !isVizSpec(nextSpec)) {
+  // Date-only / viz-skip paths return rows without a regenerated chart — reuse prior encoding.
+  const returnedSpec =
+    result.chart?.vizSpec ??
+    result.chartSpec ??
+    currentSpec;
+  if (!returnedSpec || !isVizSpec(returnedSpec)) {
     throw new Error("Modify did not return a VizSpec chart");
   }
+  const requestedChartType = options.vizModifications?.chartType;
+  const nextSpec = requestedChartType
+    ? patchVizSpecChartType(returnedSpec, requestedChartType)
+    : returnedSpec;
   const rows = Array.isArray(result.rows) ? result.rows : fallbackRows;
   const specWithData = { ...nextSpec, data: rows };
   return {
     chartSpec: JSON.stringify(specWithData),
-    sql: typeof result.sql === "string" ? result.sql : previous.sql,
+    sql: result.sql ?? previous.sql,
     sqlParams: JSON.stringify(result.params ?? JSON.parse(previous.sqlParams || "{}")),
-    rationale:
-      typeof result.rationale === "string" && result.rationale
-        ? result.rationale
-        : previous.rationale,
+    rationale: result.rationale || previous.rationale,
     title:
       (nextSpec as { description?: string; title?: string }).description ||
       (nextSpec as { title?: string }).title ||
@@ -85,16 +99,15 @@ function buildJsonRenderProps(
     if (swapped) nextSpec = swapped;
   }
 
-  nextSpec = injectRowsIntoJsonRenderSpec(nextSpec, rows, fields);
+  nextSpec = injectRowsIntoJsonRenderSpec(nextSpec, rows, fields, {
+    replaceExisting: true,
+  });
 
   return {
     jsonRenderSpec: JSON.stringify(nextSpec),
-    sql: typeof result.sql === "string" ? result.sql : previous.sql,
+    sql: result.sql ?? previous.sql,
     sqlParams: JSON.stringify(result.params ?? JSON.parse(previous.sqlParams || "{}")),
-    rationale:
-      typeof result.rationale === "string" && result.rationale
-        ? result.rationale
-        : previous.rationale,
+    rationale: result.rationale || previous.rationale,
     resultId: "",
   };
 }
@@ -147,16 +160,6 @@ export function usePinnedChartBlockModify(input: {
     Boolean(typeof block.props.sql === "string" && block.props.sql) &&
     datasourceIds.length > 0;
 
-  const snapshotCommon = useCallback((): CommonProps => {
-    return {
-      sql: String(block.props.sql || ""),
-      sqlParams: String(block.props.sqlParams || "{}"),
-      rationale: String(block.props.rationale || ""),
-      title: String(block.props.title || ""),
-      question: String(block.props.question || ""),
-    };
-  }, [block.props]);
-
   const applyPropsUpdate = useCallback(
     (next: Record<string, unknown>) => {
       editor?.updateBlock(block, { props: next });
@@ -165,23 +168,73 @@ export function usePinnedChartBlockModify(input: {
   );
 
   const onApply = useCallback(
-    async (options: PinnedChartApplyOptions) => {
-      if (!modifyChartUrl || !editor?.updateBlock || modifyingRef.current) return;
-      if (!options.sqlModifications && !options.vizModifications) return;
+    async (options: PinnedChartApplyOptions): Promise<boolean> => {
+      if (!editor?.updateBlock || modifyingRef.current) return false;
+      if (!options.sqlModifications && !options.vizModifications) return false;
 
-      modifyingRef.current = true;
-      setIsModifying(true);
+      const common: CommonProps = {
+        sql: String(block.props.sql || ""),
+        sqlParams: String(block.props.sqlParams || "{}"),
+        rationale: String(block.props.rationale || ""),
+        title: String(block.props.title || ""),
+        question: String(block.props.question || ""),
+      };
+      const vizspecSnapshot: VizspecSnapshot = {
+        ...common,
+        chartSpec: String(block.props.chartSpec || ""),
+      };
+      const jsonRenderSnapshot: JsonRenderSnapshot = {
+        ...common,
+        jsonRenderSpec: String(block.props.jsonRenderSpec || ""),
+        resultId: String(block.props.resultId || ""),
+      };
+      const previous = format === "vizspec" ? vizspecSnapshot : jsonRenderSnapshot;
       setError(null);
 
-      const common = snapshotCommon();
-      const previous: VizspecSnapshot | JsonRenderSnapshot =
-        format === "vizspec"
-          ? { ...common, chartSpec: String(block.props.chartSpec || "") }
-          : {
-              ...common,
-              jsonRenderSpec: String(block.props.jsonRenderSpec || ""),
-              resultId: String(block.props.resultId || ""),
+      // Chart-type-only changes are applied locally (no API call).
+      const localChartType = options.vizModifications?.chartType;
+      const isChartTypeOnly =
+        Boolean(localChartType) &&
+        !options.sqlModifications &&
+        !options.vizModifications?.xAxis &&
+        !options.vizModifications?.yAxis;
+
+      if (isChartTypeOnly && localChartType) {
+        let nextProps: Record<string, unknown> | null = null;
+        if (format === "vizspec") {
+          if (currentVizSpec) {
+            nextProps = {
+              chartSpec: JSON.stringify(
+                patchVizSpecChartType(currentVizSpec, localChartType)
+              ),
             };
+          }
+        } else {
+          const swapped = swapJsonRenderChartType(
+            parseJson(jsonRenderSnapshot.jsonRenderSpec),
+            localChartType
+          );
+          if (!swapped) {
+            setError("This chart type is not supported for this chart");
+            return false;
+          }
+          nextProps = { jsonRenderSpec: JSON.stringify(swapped) };
+        }
+        // Skip no-ops so the undo snapshot is not clobbered.
+        if (
+          !nextProps ||
+          Object.entries(nextProps).every(([key, value]) => value === block.props[key])
+        ) {
+          return false;
+        }
+        setUndoSnapshot(previous);
+        applyPropsUpdate(nextProps);
+        return true;
+      }
+
+      if (!modifyChartUrl) return false;
+      modifyingRef.current = true;
+      setIsModifying(true);
 
       try {
         const question =
@@ -217,21 +270,24 @@ export function usePinnedChartBlockModify(input: {
           format === "vizspec"
             ? buildVizspecProps(
                 result,
-                previous as VizspecSnapshot,
+                vizspecSnapshot,
                 currentVizSpec,
-                fallbackRows
+                fallbackRows,
+                options
               )
             : buildJsonRenderProps(
                 result,
-                previous as JsonRenderSnapshot,
+                jsonRenderSnapshot,
                 currentJsonRenderSpec,
                 options
               );
 
         setUndoSnapshot(previous);
         applyPropsUpdate(nextProps);
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to modify chart");
+        return false;
       } finally {
         modifyingRef.current = false;
         setIsModifying(false);
@@ -240,7 +296,6 @@ export function usePinnedChartBlockModify(input: {
     [
       modifyChartUrl,
       editor,
-      snapshotCommon,
       format,
       block.props,
       sqlParams,
@@ -265,7 +320,6 @@ export function usePinnedChartBlockModify(input: {
     controlsEnabled,
     isModifying,
     error,
-    setError,
     canUndo: Boolean(undoSnapshot),
     onApply,
     onUndo,

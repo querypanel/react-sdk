@@ -1,4 +1,6 @@
 import type { ChartType, SqlModifications, VizModifications } from "../../types";
+import type { VizSpec } from "../VizSpecRenderer";
+import { getRootElement } from "../generative-ui/specData";
 
 export type PinnedChartModifyRequest = {
   sql: string;
@@ -102,18 +104,34 @@ export function swapJsonRenderChartType(
   const nextType = jsonRenderTypeForChartType(chartType);
   if (!nextType || !spec || typeof spec !== "object") return null;
 
-  const clone = structuredClone(spec) as {
-    root?: { element?: { type?: string; props?: Record<string, unknown> } };
-    element?: { type?: string };
-  };
+  const clone = structuredClone(spec) as Parameters<typeof getRootElement>[0];
+  const root = getRootElement(clone);
+  if (!root) return null;
+  root.element.type = nextType;
+  return clone;
+}
 
-  if (clone.root?.element?.type) {
-    clone.root.element.type = nextType;
-    return clone;
+/** Derive the pinned selector's current chart type from a json-render spec. */
+export function chartTypeFromJsonRenderSpec(spec: unknown): ChartType | "" {
+  if (!spec || typeof spec !== "object") return "";
+  const root = getRootElement(spec as Parameters<typeof getRootElement>[0]);
+  switch (root?.element.type) {
+    case "BarChart":
+      return "column";
+    case "LineChart":
+      return "line";
+    case "PieChart":
+      return "pie";
+    default:
+      return "";
   }
-  if (clone.element?.type) {
-    clone.element.type = nextType;
-    return clone;
-  }
-  return null;
+}
+
+/** Clone a VizSpec chart and set its encoding chart type. */
+export function patchVizSpecChartType(spec: VizSpec, chartType: ChartType): VizSpec {
+  if (spec.kind !== "chart") return spec;
+  return {
+    ...spec,
+    encoding: { ...spec.encoding, chartType },
+  };
 }

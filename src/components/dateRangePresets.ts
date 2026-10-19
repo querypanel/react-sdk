@@ -6,14 +6,24 @@ export type DateRangePreset =
   | "ytd"
   | "custom";
 
-export const DATE_RANGE_PRESETS: { label: string; value: DateRangePreset }[] = [
-  { label: "Last 7 days", value: "last_7" },
-  { label: "Last 30 days", value: "last_30" },
-  { label: "Last 90 days", value: "last_90" },
-  { label: "This month", value: "this_month" },
-  { label: "YTD", value: "ytd" },
-  { label: "Custom", value: "custom" },
+/** `label` is the full name (aria/title); `chip` the compact button text. */
+export const DATE_RANGE_PRESETS: {
+  label: string;
+  chip: string;
+  value: DateRangePreset;
+}[] = [
+  { label: "Last 7 days", chip: "7d", value: "last_7" },
+  { label: "Last 30 days", chip: "30d", value: "last_30" },
+  { label: "Last 90 days", chip: "90d", value: "last_90" },
+  { label: "This month", chip: "Month", value: "this_month" },
+  { label: "YTD", chip: "YTD", value: "ytd" },
+  { label: "Custom", chip: "Custom", value: "custom" },
 ];
+
+/** Quick chips shown in the pinned title row. */
+export const DATE_RANGE_SHORTCUTS = DATE_RANGE_PRESETS.filter(
+  (p) => p.value === "last_7" || p.value === "last_30"
+);
 
 function toIsoDate(d: Date): string {
   const y = d.getFullYear();
@@ -60,4 +70,24 @@ export function resolveDateRangePreset(
   }
 
   return { from: toIsoDate(start), to: toIsoDate(end) };
+}
+
+/** Which shortcut (if any) the block's persisted SQL params currently match. */
+export function activeDateShortcut(
+  sqlParams: Record<string, unknown>,
+  now = new Date()
+): DateRangePreset | "" {
+  const values = Object.values(sqlParams).filter(
+    (v): v is string => typeof v === "string"
+  );
+  const match = DATE_RANGE_SHORTCUTS.find(({ value }) => {
+    const range = resolveDateRangePreset(value, undefined, undefined, now);
+    return (
+      range?.from &&
+      range.to &&
+      values.some((v) => v.startsWith(range.from as string)) &&
+      values.some((v) => v.startsWith(range.to as string))
+    );
+  });
+  return match?.value ?? "";
 }

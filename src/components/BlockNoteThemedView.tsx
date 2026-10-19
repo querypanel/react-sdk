@@ -39,6 +39,13 @@ const columnLayoutStyles = `
       flex-direction: column !important;
     }
   }
+  /* Drop BlockNote's blue selection ring around pinned charts — it fights the card chrome. */
+  .bn-block-content[data-content-type="chart"].ProseMirror-selectednode > *,
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="chart"] > *,
+  .bn-block-content[data-content-type="json-render-chart"].ProseMirror-selectednode > *,
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="json-render-chart"] > * {
+    outline: none !important;
+  }
 `;
 
 function toRgba(color: string, alpha: number): string {

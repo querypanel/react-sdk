@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDateRangePreset } from "../dateRangePresets";
+import { activeDateShortcut, resolveDateRangePreset } from "../dateRangePresets";
 
 describe("resolveDateRangePreset", () => {
   it("resolves relative and calendar presets", () => {
@@ -33,5 +33,26 @@ describe("resolveDateRangePreset", () => {
       from: "2024-01-01",
       to: "2024-02-01",
     });
+  });
+});
+
+describe("activeDateShortcut", () => {
+  const now = new Date(2024, 5, 15);
+
+  it("matches persisted params, including datetime values", () => {
+    expect(
+      activeDateShortcut({ start_date: "2024-06-09", end_date: "2024-06-15" }, now)
+    ).toBe("last_7");
+    expect(
+      activeDateShortcut(
+        { start: "2024-05-17 00:00:00", end: "2024-06-15 23:59:59" },
+        now
+      )
+    ).toBe("last_30");
+  });
+
+  it("returns empty when params match no shortcut", () => {
+    expect(activeDateShortcut({ start: "2024-01-01", end: "2024-01-31" }, now)).toBe("");
+    expect(activeDateShortcut({}, now)).toBe("");
   });
 });
