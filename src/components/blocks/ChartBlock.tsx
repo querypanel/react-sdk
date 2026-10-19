@@ -4,11 +4,13 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { useEffect, useMemo, useState } from "react";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
+import { isVizSpec } from "../vizSpecGuard";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import type { ThemeColors } from "../../types";
 import { runDedupedRequest } from "../../utils/requestDedup";
 import { resolveChartBlockHeight } from "./chartBlockHeight";
+import { ChartBlockFrame } from "./ChartBlockFrame";
 
 type ChartBlockOptions = {
   apiBaseUrl: string;
@@ -26,12 +28,6 @@ function getHeadersSignature(headers: Record<string, string>) {
   return JSON.stringify(
     Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
   );
-}
-
-function isVizSpec(value: unknown): value is VizSpec {
-  if (!value || typeof value !== "object") return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return kind === "chart" || kind === "table" || kind === "metric";
 }
 
 export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizationId, dashboardId, headers = EMPTY_HEADERS }: ChartBlockOptions) {
@@ -271,67 +267,19 @@ export function createChartBlockSpec({ apiBaseUrl, colors, runSqlUrl, organizati
         }
 
         return (
-          <div
-            style={{
-              width: "100%",
-              minWidth: 0,
-              display: "flex",
-              justifyContent: "center",
-              padding: "0.25rem 0",
-            }}
+          <ChartBlockFrame
+            title={props.block.props.title || "Chart"}
+            datasourceCount={datasourceIds.length}
+            height={chartHeight}
+            colors={resolvedColors}
           >
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "56rem",
-                minWidth: 0,
-                padding: "0.75rem",
-                boxSizing: "border-box",
-                background: resolvedColors.surface,
-                border: `1px solid ${resolvedColors.border}`,
-                borderRadius: "0.75rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "0.5rem",
-                  color: resolvedColors.text,
-                }}
-              >
-                <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>
-                  {props.block.props.title || "Chart"}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: resolvedColors.muted }}>
-                  {datasourceIds.length > 0
-                    ? `${datasourceIds.length} datasource${datasourceIds.length > 1 ? "s" : ""}`
-                    : ""}
-                </div>
-              </div>
-              <div
-                style={{
-                  width: "100%",
-                  minWidth: 0,
-                  height: `${chartHeight}px`,
-                  borderRadius: "0.5rem",
-                  background: resolvedColors.background,
-                  border: `1px solid ${resolvedColors.border}`,
-                  padding: "0.5rem",
-                  boxSizing: "border-box",
-                  overflow: "hidden",
-                }}
-              >
-                <VizSpecRenderer
-                  spec={parsedSpec.spec}
-                  data={effectiveData}
-                  colors={resolvedColors}
-                  chartHeight="100%"
-                />
-              </div>
-            </div>
-          </div>
+            <VizSpecRenderer
+              spec={parsedSpec.spec}
+              data={effectiveData}
+              colors={resolvedColors}
+              chartHeight="100%"
+            />
+          </ChartBlockFrame>
         );
       },
     }

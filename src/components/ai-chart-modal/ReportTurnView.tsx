@@ -10,6 +10,7 @@ import {
 	hydrateJsonRenderSpecFromRows,
 } from "../generative-ui/specData";
 import { formatToolStatus } from "./mastraChartStream";
+import { VizSpecPreview } from "./VizSpecPreview";
 import type {
 	MastraChartMessage,
 	ReportBlock,
@@ -83,22 +84,14 @@ function VizPreview({
 	queryResultBaseUrl,
 	requestHeaders,
 	fallbackRows,
-	ChartPreview,
-	withVizSpecDataFallback,
+	datasourceCount,
 	darkMode,
 }: {
 	block: ReportVizBlock;
 	queryResultBaseUrl?: string;
 	requestHeaders?: Record<string, string>;
 	fallbackRows: Array<Record<string, unknown>> | null;
-	ChartPreview: ComponentType<{
-		chartSpec: unknown;
-		darkMode?: boolean;
-	}>;
-	withVizSpecDataFallback: (
-		chartSpec: unknown,
-		rows: Array<Record<string, unknown>> | null,
-	) => unknown;
+	datasourceCount?: number;
 	darkMode?: boolean;
 }) {
 	const rows =
@@ -132,9 +125,11 @@ function VizPreview({
 						/>
 					</div>
 				) : (
-					<ChartPreview
-						chartSpec={withVizSpecDataFallback(block.chartSpec, rows)}
+					<VizSpecPreview
+						chartSpec={block.chartSpec}
+						fallbackRows={rows}
 						darkMode={darkMode}
+						datasourceCount={datasourceCount}
 					/>
 				)}
 			</div>
@@ -152,8 +147,7 @@ export function ReportTurnView({
 	queryResultBaseUrl,
 	requestHeaders,
 	darkMode,
-	ChartPreview,
-	withVizSpecDataFallback,
+	datasourceCount,
 	ThoughtSummaryRail,
 	onAddViz,
 	onAddReport,
@@ -167,14 +161,7 @@ export function ReportTurnView({
 	queryResultBaseUrl?: string;
 	requestHeaders?: Record<string, string>;
 	darkMode?: boolean;
-	ChartPreview: ComponentType<{
-		chartSpec: unknown;
-		darkMode?: boolean;
-	}>;
-	withVizSpecDataFallback: (
-		chartSpec: unknown,
-		rows: Array<Record<string, unknown>> | null,
-	) => unknown;
+	datasourceCount?: number;
 	ThoughtSummaryRail: ComponentType<{ events: ToolEvent[] }>;
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
@@ -258,8 +245,7 @@ export function ReportTurnView({
 								queryResultBaseUrl={queryResultBaseUrl}
 								requestHeaders={requestHeaders}
 								fallbackRows={fallbackRows}
-								ChartPreview={ChartPreview}
-								withVizSpecDataFallback={withVizSpecDataFallback}
+								datasourceCount={datasourceCount}
 								darkMode={darkMode}
 							/>
 							<div className="qp-ai-modal-chart-action-item">

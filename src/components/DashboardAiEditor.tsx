@@ -27,9 +27,13 @@ import { DeploySuccessModal } from "./DeploySuccessModal";
 import { ThemeProvider } from "../context/ThemeContext";
 import { normalizeBlockNoteContent } from "./blocknoteContent";
 import {
-  getJsonRenderTitle,
-  isJsonRenderSpecLike,
-} from "./generative-ui/specData";
+  buildChartBlockInput,
+  buildChartPropsPatch,
+  isChartBlockType,
+  listChartBlocks,
+  type ChartBlockSummary,
+  type DashboardEditorController,
+} from "./dashboardEditorController";
 import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -143,6 +147,10 @@ export interface DashboardAiEditorProps {
   embedBranding?: EmbedBranding;
   /** Host analytics hook for chart asks. */
   onChartGeneration?: (event: ChartGenerationEvent) => void;
+  /** Optional ref filled with an imperative controller for Chart blocks (list/insert/update/replace/focus). */
+  controllerRef?: React.MutableRefObject<DashboardEditorController | null>;
+  /** Fires with the Chart blocks on mount and whenever the set or content of Chart blocks changes. */
+  onChartsChange?: (charts: ChartBlockSummary[]) => void;
 }
 
 export function DashboardAiEditor({
@@ -173,6 +181,8 @@ export function DashboardAiEditor({
   hideTenantInputsInAiModal = false,
   embedBranding,
   onChartGeneration,
+  controllerRef,
+  onChartsChange,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -327,47 +337,19 @@ export function DashboardAiEditor({
       previewTenantId?: string,
       resultId?: string
     ) => {
-      if (isJsonRenderSpecLike(chartSpec)) {
-        editor.insertBlocks(
-          [
-            {
-              type: "json-render-chart",
-              props: {
-                jsonRenderSpec: JSON.stringify(chartSpec),
-                title: getJsonRenderTitle(chartSpec) || "Visualization",
-                rationale: rationale || "",
-                sql: sql || "",
-                sqlParams: JSON.stringify(sqlParams || {}),
-                datasourceIds: JSON.stringify(datasourceIds || []),
-                tenantFieldName: tenantFieldName || "",
-                previewTenantId: previewTenantId || "",
-                resultId: resultId || "",
-              },
-            },
-          ],
-          editor.getTextCursorPosition().block,
-          "after"
-        );
-        setIsAIModalOpen(false);
-        return;
-      }
-
+      const input = buildChartBlockInput({
+        chartSpec,
+        rationale,
+        sql,
+        sqlParams,
+        datasourceIds,
+        tenantFieldName,
+        previewTenantId,
+        resultId,
+      });
+      if (!input) return;
       editor.insertBlocks(
-        [
-          {
-            type: "chart",
-            props: {
-              chartSpec: JSON.stringify(chartSpec),
-              title: (chartSpec as { description?: string }).description || "Chart",
-              rationale: rationale || "",
-              sql: sql || "",
-              sqlParams: JSON.stringify(sqlParams || {}),
-              datasourceIds: JSON.stringify(datasourceIds || []),
-              tenantFieldName: tenantFieldName || "",
-              previewTenantId: previewTenantId || "",
-            },
-          },
-        ],
+        [input as never],
         editor.getTextCursorPosition().block,
         "after"
       );
@@ -401,39 +383,8 @@ export function DashboardAiEditor({
           continue;
         }
 
-        const spec = block.jsonRenderSpec ?? block.chartSpec;
-        if (!spec) continue;
-
-        if (isJsonRenderSpecLike(spec)) {
-          insertables.push({
-            type: "json-render-chart",
-            props: {
-              jsonRenderSpec: JSON.stringify(spec),
-              title: getJsonRenderTitle(spec) || "Visualization",
-              rationale: block.rationale || "",
-              sql: block.sql || "",
-              sqlParams: JSON.stringify(block.sqlParams || {}),
-              datasourceIds: JSON.stringify(block.datasourceIds || []),
-              tenantFieldName: block.tenantFieldName || "",
-              previewTenantId: block.previewTenantId || "",
-              resultId: block.resultId || "",
-            },
-          });
-        } else {
-          insertables.push({
-            type: "chart",
-            props: {
-              chartSpec: JSON.stringify(spec),
-              title: (spec as { description?: string }).description || "Chart",
-              rationale: block.rationale || "",
-              sql: block.sql || "",
-              sqlParams: JSON.stringify(block.sqlParams || {}),
-              datasourceIds: JSON.stringify(block.datasourceIds || []),
-              tenantFieldName: block.tenantFieldName || "",
-              previewTenantId: block.previewTenantId || "",
-            },
-          });
-        }
+        const input = buildChartBlockInput(block);
+        if (input) insertables.push(input);
       }
 
       if (insertables.length === 0) return;
@@ -447,6 +398,78 @@ export function DashboardAiEditor({
     },
     [editor]
   );
+
+  useEffect(() => {
+    if (!controllerRef) return;
+    const controller: DashboardEditorController = {
+      listCharts: () => listChartBlocks(editor.document),
+      insertChart: (payload, options) => {
+        const input = buildChartBlockInput(payload);
+        if (!input) return undefined;
+        const reference =
+          (options?.referenceBlockId && editor.getBlock(options.referenceBlockId)) ||
+          editor.getTextCursorPosition().block;
+        const [inserted] = editor.insertBlocks(
+          [input as never],
+          reference,
+          options?.placement ?? "after"
+        );
+        return inserted?.id;
+      },
+      updateChart: (blockId, patch) => {
+        const block = editor.getBlock(blockId);
+        if (!block || !isChartBlockType(block.type)) return false;
+        const props = buildChartPropsPatch(block.type, patch);
+        if (!props) return false;
+        // updateBlock is one transaction; transact guards it staying one if that changes.
+        editor.transact(() => {
+          editor.updateBlock(blockId, { props } as never);
+        });
+        return true;
+      },
+      replaceChart: (blockId, payload) => {
+        const block = editor.getBlock(blockId);
+        if (!block || !isChartBlockType(block.type)) return false;
+        const input = buildChartBlockInput(payload);
+        if (!input) return false;
+        editor.transact(() => {
+          editor.updateBlock(blockId, input as never);
+        });
+        return true;
+      },
+      focusChart: (blockId) => {
+        const block = editor.getBlock(blockId);
+        if (!block || !isChartBlockType(block.type)) return false;
+        editor.setTextCursorPosition(blockId);
+        const el =
+          typeof document !== "undefined" && typeof CSS !== "undefined"
+            ? document.querySelector(`[data-id="${CSS.escape(blockId)}"]`)
+            : null;
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return true;
+      },
+    };
+    controllerRef.current = controller;
+    return () => {
+      if (controllerRef.current === controller) controllerRef.current = null;
+    };
+  }, [controllerRef, editor]);
+
+  const onChartsChangeRef = useRef(onChartsChange);
+  onChartsChangeRef.current = onChartsChange;
+  useEffect(() => {
+    if (!mounted || !onChartsChangeRef.current) return;
+    let lastSignature = "";
+    const emit = () => {
+      const charts = listChartBlocks(editor.document);
+      const signature = JSON.stringify(charts);
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+      onChartsChangeRef.current?.(charts);
+    };
+    emit();
+    return editor.onChange(emit);
+  }, [editor, mounted]);
 
   const stripDataFromChartBlocks = useCallback(() => {
     return stripEmbeddedDataFromBlocks(editor.document);

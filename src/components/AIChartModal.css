@@ -1929,3 +1929,12 @@
   }
 }
 
+
+/* Inline AssistantPanel root: fills whatever container hosts it (modal dialog or workspace pane). */
+[data-qp-ai-modal].qp-ai-assistant-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}

@@ -26,6 +26,18 @@ export {
   type AIChartModalProps,
   type AIChartModelOption,
 } from "./components/AIChartModal";
+export {
+  AssistantPanel,
+  type AssistantPanelProps,
+  type AssistantPanelStatus,
+} from "./components/AssistantPanel";
+export type {
+  ChartBlockSummary,
+  ChartPatch,
+  ChartPayload,
+  DashboardEditorController,
+  InsertChartOptions,
+} from "./components/dashboardEditorController";
 export { DatasourceSelector, type DatasourceSelectorProps } from "./components/DatasourceSelector";
 export { DeploySuccessModal, type DeploySuccessModalProps } from "./components/DeploySuccessModal";
 export { BlockNoteThemedView, type BlockNoteThemedViewProps } from "./components/BlockNoteThemedView";
