@@ -21,6 +21,8 @@ import {
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
+import { AssistantPanel } from "./AssistantPanel";
+import { Workspace, type WorkspaceHandle } from "./Workspace";
 import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
 import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
@@ -153,6 +155,11 @@ export interface DashboardAiEditorProps {
   controllerRef?: React.MutableRefObject<DashboardEditorController | null>;
   /** Fires with the Chart blocks on mount and whenever the set or content of Chart blocks changes. */
   onChartsChange?: (charts: ChartBlockSummary[]) => void;
+  /**
+   * Where the Assistant lives. "modal" (default, customer embed) opens it in a dialog from the "/"
+   * menu. "workspace" shows the Dashboard on the left and the Assistant on the right (admin).
+   */
+  assistantLayout?: "modal" | "workspace";
 }
 
 export function DashboardAiEditor({
@@ -186,6 +193,7 @@ export function DashboardAiEditor({
   onChartGeneration,
   controllerRef,
   onChartsChange,
+  assistantLayout = "modal",
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -193,6 +201,8 @@ export function DashboardAiEditor({
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [showDeploySuccess, setShowDeploySuccess] = useState(false);
   const lastLoadedSignatureRef = useRef<string | null>(null);
+  const workspaceRef = useRef<WorkspaceHandle>(null);
+  const isWorkspace = assistantLayout === "workspace";
 
   // Detect dark mode from DOM to avoid flushSync when parent re-renders on theme change.
   // When darkMode prop is provided, use it as override; otherwise auto-detect from DOM.
@@ -329,14 +339,15 @@ export function DashboardAiEditor({
   const insertAIChartItem = useCallback(
     (): DefaultReactSuggestionItem => ({
       title: "AI Chart Assistant",
-      onItemClick: () => setIsAIModalOpen(true),
+      onItemClick: () =>
+        isWorkspace ? workspaceRef.current?.openAssistant() : setIsAIModalOpen(true),
       aliases: ["ai", "chart", "assistant", "generate", "visualization", "graph"],
       group: "AI Tools",
       icon: <SparklesIcon size={18} />,
       subtext: "Generate charts with AI assistance",
       badge: "AI",
     }),
-    []
+    [isWorkspace]
   );
 
   const getCustomSlashMenuItems = useCallback(
@@ -547,6 +558,35 @@ export function DashboardAiEditor({
     );
   }
 
+  const dashboardNode = (
+    <ThemeProvider darkMode={effectiveDarkMode}>
+      <div
+        className="border rounded-lg overflow-hidden"
+        data-theme={effectiveDarkMode ? "dark" : "light"}
+        style={{ borderColor: themeColors.border }}
+      >
+        <BlockNoteThemedView
+          editor={editor}
+          editable={editable}
+          darkMode={effectiveDarkMode}
+          themeColors={themeColors}
+          fontFamily={fontFamily}
+          style={{ minHeight: "calc(100vh - 16rem)" }}
+          slashMenu={false}
+        >
+          {editable && (
+            <SuggestionMenuController
+              triggerCharacter="/"
+              getItems={async (query) =>
+                filterSuggestionItems(getCustomSlashMenuItems(), query)
+              }
+            />
+          )}
+        </BlockNoteThemedView>
+      </div>
+    </ThemeProvider>
+  );
+
   return (
     <>
       <style>{editorStyles}</style>
@@ -588,35 +628,41 @@ export function DashboardAiEditor({
           </div>
         )}
 
-        <ThemeProvider darkMode={effectiveDarkMode}>
-          <div
-            className="border rounded-lg overflow-hidden"
-            data-theme={effectiveDarkMode ? "dark" : "light"}
-            style={{ borderColor: themeColors.border }}
-          >
-            <BlockNoteThemedView
-              editor={editor}
-              editable={editable}
-              darkMode={effectiveDarkMode}
-              themeColors={themeColors}
-              fontFamily={fontFamily}
-              style={{ minHeight: "calc(100vh - 16rem)" }}
-              slashMenu={false}
-            >
-              {editable && (
-                <SuggestionMenuController
-                  triggerCharacter="/"
-                  getItems={async (query) =>
-                    filterSuggestionItems(getCustomSlashMenuItems(), query)
-                  }
-                />
-              )}
-            </BlockNoteThemedView>
-          </div>
-        </ThemeProvider>
+        {isWorkspace && editable && organizationId && dashboardId ? (
+          <Workspace
+            ref={workspaceRef}
+            darkMode={effectiveDarkMode}
+            assistantTitle={embedBranding?.aiChartModalTitle ?? "AI Assistant"}
+            dashboard={dashboardNode}
+            renderAssistant={({ focusRequest }) => (
+              <AssistantPanel
+                onAddChart={handleAddChart}
+                onAddReport={handleAddReport}
+                organizationId={organizationId}
+                dashboardId={dashboardId}
+                dashboardType={dashboardType}
+                generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
+                datasourcesUrl={resolvedDatasourcesUrl}
+                queryResultBaseUrl={resolvedQueryResultBaseUrl}
+                headers={headers}
+                darkMode={effectiveDarkMode}
+                availableDatasourceIds={availableDatasourceIds}
+                defaultTenantFieldName={tenantFieldNameProp}
+                tenantFieldByDatasource={tenantFieldByDatasource}
+                hideTenantInputs={hideTenantInputsInAiModal}
+                createTitle={embedBranding?.aiChartModalCreateTitle}
+                onChartGeneration={onChartGeneration}
+                autoFocus={false}
+                focusRequest={focusRequest}
+              />
+            )}
+          />
+        ) : (
+          dashboardNode
+        )}
       </div>
 
-      {editable && organizationId && dashboardId && (
+      {editable && !isWorkspace && organizationId && dashboardId && (
         <AIChartModal
           isOpen={isAIModalOpen}
           onClose={() => setIsAIModalOpen(false)}

@@ -19,6 +19,17 @@ export { EmptyState, type EmptyStateProps } from "./components/EmptyState";
 export { QuerypanelEmbedded, type QuerypanelEmbeddedProps } from "./components/QuerypanelEmbedded";
 export { DashboardViewer, type DashboardViewerProps } from "./components/DashboardViewer";
 export { DashboardEditor, type DashboardEditorProps } from "./components/DashboardEditor";
+export {
+  Workspace,
+  type WorkspaceHandle,
+  type WorkspaceProps,
+} from "./components/Workspace";
+export {
+  clampAssistantWidth,
+  resolveLayoutMode,
+  DRAWER_BREAKPOINT,
+  type WorkspaceLayoutMode,
+} from "./components/workspaceLayout";
 export { DashboardAiEditor, type DashboardAiEditorProps } from "./components/DashboardAiEditor";
 export {
   AIChartModal,

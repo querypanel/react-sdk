@@ -136,6 +136,8 @@ export interface AssistantPanelProps {
   onStatusChange?: (status: AssistantPanelStatus) => void;
   /** Focus the prompt on mount (default: true). */
   autoFocus?: boolean;
+  /** Increment to focus the prompt on demand (e.g. the Workspace "/" slash item). */
+  focusRequest?: number;
 }
 
 type Message = MastraChartMessage;
@@ -325,6 +327,7 @@ export function AssistantPanel({
   onRequestClose,
   onStatusChange,
   autoFocus = true,
+  focusRequest = 0,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -374,6 +377,13 @@ export function AssistantPanel({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading, transientStatus, toolEvents, lastSqlExecution, activeAssistantMessageId]);
+
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    // Defer so a pane that was just expanded or opened is visible before it takes focus.
+    const timer = setTimeout(() => promptInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [focusRequest]);
 
   useEffect(() => {
     if (!autoFocus) return;
