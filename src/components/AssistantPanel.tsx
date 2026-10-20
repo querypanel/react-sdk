@@ -41,6 +41,10 @@ import type {
 } from "./ai-chart-modal/types";
 import { ChartChip, ChartTagPicker } from "./ai-chart-modal/ChartTagUi";
 import {
+  fetchTagIntent,
+  NEEDS_SINGLE_CHART_MESSAGE,
+} from "./ai-chart-modal/tagIntent";
+import {
   createThreadsClient,
   hydrateThreadCharts,
   threadMessagesToChatMessages,
@@ -53,6 +57,9 @@ import {
   buildDashboardContext,
   chartLabel,
   detectMention,
+  nextIntent,
+  TAG_INTENT_LABELS,
+  type TagIntent,
   filterChartsForPicker,
   removeMention,
   resolveChartRef,
@@ -175,6 +182,8 @@ export interface AssistantPanelProps {
   runSqlUrl?: string;
   /** Tag a chart in the composer and focus it (the Dashboard's "Ask about this"). Bump `nonce` per request. */
   tagRequest?: { chartId: string; nonce: number };
+  /** Tag-intent endpoint (e.g. `/api/ai/tag-intent`). When set, tagged messages get an intent (investigate/modify/replace). */
+  tagIntentUrl?: string;
 }
 
 type Message = MastraChartMessage;
@@ -371,6 +380,7 @@ export function AssistantPanel({
   threadsUrl,
   runSqlUrl = "/api/dashboards/run-sql",
   tagRequest,
+  tagIntentUrl,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -396,6 +406,13 @@ export function AssistantPanel({
     return index >= 0 ? chartLabel((charts ?? [])[index]!, index) : "Removed chart";
   };
   const [sendError, setSendError] = useState<string | null>(null);
+  const [decidingIntent, setDecidingIntent] = useState(false);
+  /** A message waiting for the user to pick its intent (both deciders failed or were unsure). */
+  const [pendingIntent, setPendingIntent] = useState<{
+    text: string;
+    tagIds: string[];
+    options: TagIntent[];
+  } | null>(null);
   const selectTag = (chartId: string) => {
     setSendError(null);
     setTaggedChartIds((prev) => (prev.includes(chartId) ? prev : [...prev, chartId]));
@@ -634,17 +651,21 @@ export function AssistantPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tagRequest?.nonce]);
 
-  const handleSendMessage = async (prompt?: string) => {
+  const handleSendMessage = async (
+    prompt?: string,
+    opts?: { taggedChartIds?: string[]; intent?: TagIntent },
+  ) => {
     const messageText = prompt || inputValue.trim();
-    if (!messageText || isLoading) return;
-    const tagError = taggingEnabled ? validateTagsForSend(taggedChartIds, charts ?? []) : null;
+    if (!messageText || isLoading || decidingIntent) return;
+    const tagIds = opts?.taggedChartIds ?? taggedChartIds;
+    const tagError = taggingEnabled ? validateTagsForSend(tagIds, charts ?? []) : null;
     if (tagError) {
       setSendError(tagError);
       return;
     }
     setSendError(null);
     streamFailureHandledRef.current = false;
-    const { resolved: taggedCharts } = resolveTags(taggedChartIds, charts ?? []);
+    const { resolved: taggedCharts } = resolveTags(tagIds, charts ?? []);
     const requestDatasourceId = resolveDatasourceId(taggedCharts, selectedDatasourceIds[0]);
     const taggedHasDatasource = taggedCharts.some((chart) => chart.datasourceIds.length > 0);
     if (useMastraStream && !taggedHasDatasource && selectedDatasourceIds.length !== 1) {
@@ -657,6 +678,58 @@ export function AssistantPanel({
           timestamp: new Date(),
         },
       ]);
+      return;
+    }
+
+    let intent = opts?.intent;
+    let needsSingleChart = false;
+    if (taggedCharts.length > 0 && tagIntentUrl && !intent) {
+      setDecidingIntent(true);
+      const decision = await fetchTagIntent(
+        tagIntentUrl,
+        { "x-organization-id": organizationId, ...headers },
+        {
+          question: messageText,
+          tagged: taggedCharts.map((chart) => ({
+            title: chart.title,
+            sql: chart.sql,
+            kind: chart.presentationKind,
+          })),
+        },
+      );
+      setDecidingIntent(false);
+      if (decision.intent === "ask") {
+        setPendingIntent({ text: messageText, tagIds, options: decision.options ?? ["investigate"] });
+        return;
+      }
+      intent = decision.intent;
+      needsSingleChart = decision.needsSingleChart === true;
+    }
+    setPendingIntent(null);
+
+    if (needsSingleChart) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createMessageId("user"),
+          role: "user",
+          content: messageText,
+          timestamp: new Date(),
+          intent,
+          taggedCharts: taggedCharts.map((chart) => ({
+            chartId: chart.chartId,
+            label: chartLabelFor(chart.chartId),
+          })),
+        },
+        {
+          id: createMessageId("assistant"),
+          role: "assistant",
+          content: NEEDS_SINGLE_CHART_MESSAGE,
+          timestamp: new Date(),
+        },
+      ]);
+      setInputValue("");
+      setTaggedChartIds([]);
       return;
     }
 
@@ -675,6 +748,7 @@ export function AssistantPanel({
       role: "user",
       content: messageText,
       timestamp: new Date(),
+      ...(intent ? { intent } : {}),
       ...(taggedCharts.length > 0
         ? {
             taggedCharts: taggedCharts.map((chart) => ({
@@ -685,7 +759,7 @@ export function AssistantPanel({
         : {}),
     };
     const dashboardContext = taggingEnabled
-      ? buildDashboardContext(charts ?? [], taggedChartIds, (id) => getChartSpec?.(id))
+      ? buildDashboardContext(charts ?? [], tagIds, (id) => getChartSpec?.(id), intent)
       : undefined;
 
     const latestResultId = shouldReuseLatestResultId(messageText)
@@ -1047,6 +1121,19 @@ export function AssistantPanel({
     }
   };
 
+  /** Badge click: drop this turn and ask again with the next intent. */
+  const rerunWithIntent = (userMessage: Message, nextTagIntent: TagIntent) => {
+    const tagIds = (userMessage.taggedCharts ?? []).map((tag) => tag.chartId);
+    setMessages((prev) => {
+      const start = prev.findIndex((m) => m.id === userMessage.id);
+      if (start < 0) return prev;
+      let end = start + 1;
+      while (end < prev.length && prev[end]!.role !== "user") end += 1;
+      return [...prev.slice(0, start), ...prev.slice(end)];
+    });
+    void handleSendMessage(userMessage.content, { taggedChartIds: tagIds, intent: nextTagIntent });
+  };
+
   const handlePromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (mention && pickerOptions.length > 0) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -1260,9 +1347,9 @@ export function AssistantPanel({
                       className={`qp-ai-modal-msg-row ${message.role === "user" ? "user" : ""}`}
                     >
                       <div className={`qp-ai-modal-msg-bubble ${message.role}`}>
-                        {message.role === "user" && message.taggedCharts && (
+                        {message.role === "user" && (message.taggedCharts || message.intent) && (
                           <div className="qp-ai-tag-row">
-                            {message.taggedCharts.map((tag) => {
+                            {(message.taggedCharts ?? []).map((tag) => {
                               const onClick = chipClickHandler(tag.chartId);
                               return (
                                 <ChartChip
@@ -1273,10 +1360,26 @@ export function AssistantPanel({
                                 />
                               );
                             })}
+                            {message.intent && (
+                              <button
+                                type="button"
+                                className="qp-ai-intent-badge"
+                                disabled={
+                                  isLoading ||
+                                  decidingIntent ||
+                                  !tagIntentUrl ||
+                                  (message.taggedCharts?.length ?? 0) !== 1
+                                }
+                                title="Switch intent and re-run"
+                                onClick={() => {
+                                  const current = message.intent as TagIntent;
+                                  rerunWithIntent(message, nextIntent(current, message.taggedCharts?.length ?? 0));
+                                }}
+                              >
+                                {TAG_INTENT_LABELS[message.intent as TagIntent] ?? message.intent}
+                              </button>
+                            )}
                           </div>
-                        )}
-                        {message.role === "user" && message.intent && (
-                          <div className="qp-ai-thread-intent">{message.intent}</div>
                         )}
                         {message.role === "user" && message.content.trim().length > 0 && (
                           <div>{message.content}</div>
@@ -1406,6 +1509,27 @@ export function AssistantPanel({
                     onSelect={(option) => selectTag(option.chartId)}
                   />
                 )}
+                {pendingIntent && (
+                  <div className="qp-ai-intent-ask" role="group" aria-label="What should I do with the tagged chart?">
+                    <span>What should I do with the tagged chart?</span>
+                    {pendingIntent.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="qp-ai-intent-badge"
+                        onClick={() =>
+                          void handleSendMessage(pendingIntent.text, {
+                            taggedChartIds: pendingIntent.tagIds,
+                            intent: option,
+                          })
+                        }
+                      >
+                        {TAG_INTENT_LABELS[option]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {decidingIntent && <div className="qp-ai-thread-intent">Deciding what to do…</div>}
                 {sendError && (
                   <div className="qp-ai-thread-error" role="alert">
                     {sendError}
@@ -1435,6 +1559,7 @@ export function AssistantPanel({
                     onChange={(e) => {
                       setInputValue(e.target.value);
                       setPickerIndex(0);
+                      setPendingIntent(null);
                     }}
                     onKeyDown={handlePromptKeyDown}
                     placeholder="Ask a question or request a chart or table"

@@ -170,6 +170,8 @@ export interface DashboardAiEditorProps {
   assistantLayout?: "modal" | "workspace";
   /** Assistant Threads endpoint for workspace mode (e.g. /api/assistant-threads). Omit for no persistence. */
   assistantThreadsUrl?: string;
+  /** Tag-intent endpoint for workspace mode (e.g. /api/ai/tag-intent). Omit to skip intent decisions. */
+  assistantTagIntentUrl?: string;
 }
 
 export function DashboardAiEditor({
@@ -205,6 +207,7 @@ export function DashboardAiEditor({
   onChartsChange,
   assistantLayout = "modal",
   assistantThreadsUrl,
+  assistantTagIntentUrl,
 }: DashboardAiEditorProps) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -729,6 +732,7 @@ export function DashboardAiEditor({
                 onChartChipClick={handleChipClick}
                 tagRequest={tagRequest}
                 threadsUrl={assistantThreadsUrl}
+                tagIntentUrl={assistantTagIntentUrl}
                 runSqlUrl={resolvedRunSqlUrl}
               />
             )}

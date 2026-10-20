@@ -8,6 +8,8 @@ import {
   chartRefKey,
   collectMissingChartIds,
   linkifyChartRefs,
+  nextIntent,
+  selectableIntents,
   resolveChartRef,
   validateTagsForSend,
   detectMention,
@@ -201,5 +203,25 @@ describe("validateTagsForSend", () => {
     expect(validateTagsForSend(["1"], charts)).toBeNull();
     expect(validateTagsForSend([], charts)).toBeNull();
     expect(validateTagsForSend(["1", "gone"], charts)).toMatch(/removed/);
+  });
+});
+
+describe("tag intent helpers", () => {
+  it("only offers modify/replace for exactly one tagged chart", () => {
+    expect(selectableIntents(1)).toEqual(["investigate", "modify", "replace"]);
+    expect(selectableIntents(2)).toEqual(["investigate"]);
+  });
+
+  it("cycles the badge intent and stays investigate with several tags", () => {
+    expect(nextIntent("investigate", 1)).toBe("modify");
+    expect(nextIntent("modify", 1)).toBe("replace");
+    expect(nextIntent("replace", 1)).toBe("investigate");
+    expect(nextIntent("investigate", 3)).toBe("investigate");
+  });
+
+  it("includes the decided intent in the request context", () => {
+    const ctx = buildDashboardContext([chart({ chartId: "1" })], ["1"], () => undefined, "modify");
+    expect(ctx.tagIntent).toBe("modify");
+    expect(buildDashboardContext([], [], () => undefined).tagIntent).toBeUndefined();
   });
 });

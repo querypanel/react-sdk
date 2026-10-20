@@ -123,7 +123,29 @@ export interface DashboardContextTaggedChart extends DashboardContextChart {
   spec: unknown;
 }
 
+export type TagIntent = "investigate" | "modify" | "replace";
+
+export const TAG_INTENT_LABELS: Record<TagIntent, string> = {
+  investigate: "Investigate",
+  modify: "Modify",
+  replace: "Replace",
+};
+
+/** Intents a user can switch to: modify/replace need exactly one tagged chart. */
+export function selectableIntents(taggedCount: number): TagIntent[] {
+  return taggedCount === 1 ? ["investigate", "modify", "replace"] : ["investigate"];
+}
+
+/** Next intent when the badge is clicked (cycles); stays put when there is nothing to switch to. */
+export function nextIntent(current: TagIntent, taggedCount: number): TagIntent {
+  const options = selectableIntents(taggedCount);
+  const index = options.indexOf(current);
+  return options[(index + 1) % options.length] ?? "investigate";
+}
+
 export interface DashboardContext {
+  /** Decided Tag intent for this request; the agent defaults to investigate when absent. */
+  tagIntent?: TagIntent;
   charts: DashboardContextChart[];
   tagged: DashboardContextTaggedChart[];
 }
@@ -136,6 +158,7 @@ export function buildDashboardContext(
   charts: ReadonlyArray<ChartBlockSummary>,
   taggedChartIds: ReadonlyArray<string>,
   getSpec: (chartId: string) => unknown,
+  tagIntent?: TagIntent,
 ): DashboardContext {
   const compact = (chart: ChartBlockSummary, index: number) => ({
     ref: chartRefKey(index),
@@ -146,6 +169,7 @@ export function buildDashboardContext(
   });
   const { resolved } = resolveTags(taggedChartIds, charts);
   return {
+    ...(tagIntent ? { tagIntent } : {}),
     charts: charts.slice(0, MAX_CONTEXT_CHARTS).map((chart, index) => ({
       ...compact(chart, index),
       sql: truncate(chart.sql, MAX_COMPACT_SQL_LENGTH),
