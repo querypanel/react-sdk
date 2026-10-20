@@ -25,6 +25,8 @@ type ChartBlockOptions = {
   modifyChartUrl?: string;
   /** Show date-range / chart-type controls when modifyChartUrl is set. Default true. */
   enableChartControls?: boolean;
+  /** Workspace: adds an "Ask about this" shortcut to each chart's controls. */
+  onAskAboutThis?: (chartId: string) => void;
   organizationId?: string;
   dashboardId?: string;
   headers?: Record<string, string>;
@@ -44,6 +46,7 @@ export function createChartBlockSpec({
   runSqlUrl,
   modifyChartUrl,
   enableChartControls = true,
+  onAskAboutThis,
   organizationId,
   dashboardId,
   headers = EMPTY_HEADERS,
@@ -168,8 +171,13 @@ export function createChartBlockSpec({
               ? parsedSpec.embeddedData
               : (data ?? []),
         });
+        const askChartId = props.block.props.chartId;
         const chrome = usePinnedChartChrome({
           modify,
+          onAsk:
+            onAskAboutThis && typeof askChartId === "string" && askChartId
+              ? () => onAskAboutThis(askChartId)
+              : undefined,
           colors: resolvedColors,
           disabled: isLoading,
           sqlParams,

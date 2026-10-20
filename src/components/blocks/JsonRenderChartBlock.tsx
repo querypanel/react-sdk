@@ -30,6 +30,8 @@ type JsonRenderChartBlockOptions = {
   runSqlUrl?: string;
   modifyChartUrl?: string;
   enableChartControls?: boolean;
+  /** Workspace: adds an "Ask about this" shortcut to each chart's controls. */
+  onAskAboutThis?: (chartId: string) => void;
   organizationId?: string;
   dashboardId?: string;
   headers?: Record<string, string>;
@@ -86,6 +88,7 @@ export function createJsonRenderChartBlockSpec({
   runSqlUrl,
   modifyChartUrl,
   enableChartControls = true,
+  onAskAboutThis,
   organizationId,
   dashboardId,
   headers = EMPTY_HEADERS,
@@ -203,8 +206,13 @@ export function createJsonRenderChartBlockSpec({
           sqlParams,
           currentJsonRenderSpec: hydratedSpec ?? parsedSpec,
         });
+        const askChartId = props.block.props.chartId;
         const chrome = usePinnedChartChrome({
           modify,
+          onAsk:
+            onAskAboutThis && typeof askChartId === "string" && askChartId
+              ? () => onAskAboutThis(askChartId)
+              : undefined,
           colors: resolvedColors,
           disabled: isLoading,
           sqlParams,

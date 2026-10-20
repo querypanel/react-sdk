@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
+import { MessageSquareIcon } from "lucide-react";
 import type { ChartType, ThemeColors } from "../../types";
 import {
   DATE_RANGE_SHORTCUTS,
@@ -11,6 +12,37 @@ import {
 import { PinnedChartSettingsPanel } from "./PinnedChartSettingsPanel";
 import type { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
+/** "Ask about this" shortcut: sits in the title row with the other chart controls. */
+function AskAboutThisButton({
+  style,
+  onAsk,
+}: {
+  style: CSSProperties;
+  onAsk: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onAsk}
+      aria-label="Ask about this chart"
+      title="Ask about this chart"
+      data-qp-ask-about
+      style={{
+        ...style,
+        width: "1.75rem",
+        padding: 0,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        opacity: 1,
+      }}
+    >
+      <MessageSquareIcon size={14} aria-hidden="true" />
+    </button>
+  );
+}
+
 type PinnedTitleActionsProps = {
   colors: ThemeColors;
   disabled: boolean;
@@ -20,6 +52,7 @@ type PinnedTitleActionsProps = {
   onToggleControls: () => void;
   onUndo: () => void;
   onDateShortcut: (preset: DateRangePreset) => void;
+  onAsk?: () => void;
 };
 
 /** Undo + date shortcuts + cog on the right of a pinned chart's title row. */
@@ -32,6 +65,7 @@ function PinnedTitleActions({
   onToggleControls,
   onUndo,
   onDateShortcut,
+  onAsk,
 }: PinnedTitleActionsProps) {
   const buttonStyle = {
     height: "1.75rem",
@@ -47,6 +81,7 @@ function PinnedTitleActions({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+      {onAsk ? <AskAboutThisButton style={buttonStyle} onAsk={onAsk} /> : null}
       {canUndo ? (
         <button type="button" disabled={disabled} onClick={onUndo} style={buttonStyle}>
           Undo
@@ -122,6 +157,7 @@ export function usePinnedChartChrome({
   sqlParams,
   currentChartType,
   chartTypes,
+  onAsk,
 }: {
   modify: ReturnType<typeof usePinnedChartBlockModify>;
   colors: ThemeColors;
@@ -130,6 +166,8 @@ export function usePinnedChartChrome({
   sqlParams: Record<string, unknown>;
   currentChartType: ChartType | "";
   chartTypes?: ChartType[];
+  /** Adds an "Ask about this" shortcut to the title row (Workspace only). */
+  onAsk?: () => void;
 }): { titleActions: ReactNode; controls: ReactNode } {
   const { controlsEnabled, isModifying, canUndo, onApply, onUndo } = modify;
   const [open, setOpen] = useState(false);
@@ -154,6 +192,18 @@ export function usePinnedChartChrome({
       onDateShortcut={(preset) => {
         const range = resolveDateRangePreset(preset);
         if (range) void apply({ sqlModifications: { dateRange: range } });
+      }}
+      onAsk={onAsk}
+    />
+  ) : onAsk ? (
+    <AskAboutThisButton
+      onAsk={onAsk}
+      style={{
+        height: "1.75rem",
+        borderRadius: "0.375rem",
+        border: `1px solid ${colors.border}`,
+        background: colors.background,
+        color: colors.text,
       }}
     />
   ) : null;

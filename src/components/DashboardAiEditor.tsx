@@ -23,7 +23,6 @@ import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import { AssistantPanel } from "./AssistantPanel";
 import { Workspace, type WorkspaceHandle } from "./Workspace";
-import { AskAboutThisHost } from "./AskAboutThis";
 import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
 import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
@@ -284,6 +283,16 @@ export function DashboardAiEditor({
     "/api/query-results"
   );
 
+  // Bridge to askAboutChart (defined below) so the block specs stay stable across renders.
+  const askAboutChartRef = useRef<((chartId: string) => void) | null>(null);
+  const onAskAboutThis = useMemo(
+    () =>
+      isWorkspace && editable
+        ? (chartId: string) => askAboutChartRef.current?.(chartId)
+        : undefined,
+    [isWorkspace, editable]
+  );
+
   const chartBlockSpec = useMemo(
     () =>
       createChartBlockSpec({
@@ -291,6 +300,7 @@ export function DashboardAiEditor({
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
         modifyChartUrl: resolvedModifyChartUrl,
+        onAskAboutThis,
         organizationId,
         dashboardId,
         headers,
@@ -300,6 +310,7 @@ export function DashboardAiEditor({
       themeColors,
       resolvedRunSqlUrl,
       resolvedModifyChartUrl,
+      onAskAboutThis,
       organizationId,
       dashboardId,
       headers,
@@ -314,6 +325,7 @@ export function DashboardAiEditor({
         queryResultBaseUrl: resolvedQueryResultBaseUrl,
         runSqlUrl: resolvedRunSqlUrl,
         modifyChartUrl: resolvedModifyChartUrl,
+        onAskAboutThis,
         organizationId,
         dashboardId,
         headers,
@@ -324,6 +336,7 @@ export function DashboardAiEditor({
       resolvedQueryResultBaseUrl,
       resolvedRunSqlUrl,
       resolvedModifyChartUrl,
+      onAskAboutThis,
       organizationId,
       dashboardId,
       headers,
@@ -545,6 +558,7 @@ export function DashboardAiEditor({
     setTagRequest((prev) => ({ chartId, nonce: (prev?.nonce ?? 0) + 1 }));
     workspaceRef.current?.openAssistant();
   }, []);
+  askAboutChartRef.current = askAboutChart;
 
   const [taggableCharts, setTaggableCharts] = useState<ChartBlockSummary[]>([]);
   useEffect(() => {
@@ -651,7 +665,6 @@ export function DashboardAiEditor({
   }
 
   const dashboardNode = (
-    <AskAboutThisHost editor={editor} onAsk={isWorkspace && editable ? askAboutChart : undefined}>
     <ThemeProvider darkMode={effectiveDarkMode}>
       <div
         className="border rounded-lg overflow-hidden"
@@ -678,7 +691,6 @@ export function DashboardAiEditor({
         </BlockNoteThemedView>
       </div>
     </ThemeProvider>
-    </AskAboutThisHost>
   );
 
   return (
