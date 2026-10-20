@@ -84,7 +84,7 @@ export function DashboardViewer({
   const schema = useMemo(
     () =>
       createDashboardSchema({
-        chart: chartBlockSpec,
+        chart: chartBlockSpec(),
       }),
     [chartBlockSpec]
   );

@@ -333,8 +333,8 @@ export function DashboardAiEditor({
   const schema = useMemo(
     () =>
       createDashboardSchema({
-        chart: chartBlockSpec,
-        "json-render-chart": jsonRenderBlockSpec,
+        chart: chartBlockSpec(),
+        "json-render-chart": jsonRenderBlockSpec(),
       }),
     [chartBlockSpec, jsonRenderBlockSpec]
   );

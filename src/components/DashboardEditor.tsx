@@ -75,7 +75,7 @@ export function DashboardEditor({
   const schema = useMemo(
     () =>
       createDashboardSchema({
-        chart: chartBlockSpec,
+        chart: chartBlockSpec(),
       }),
     [chartBlockSpec]
   );
