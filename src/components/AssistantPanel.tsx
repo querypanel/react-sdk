@@ -444,7 +444,14 @@ export function AssistantPanel({
     promptInputRef.current?.focus();
   };
   const threadsClient = useMemo(
-    () => (threadsUrl ? createThreadsClient({ baseUrl: threadsUrl, dashboardId, headers }) : null),
+    () =>
+      threadsUrl
+        ? createThreadsClient({
+            baseUrl: threadsUrl,
+            dashboardId,
+            headers: { "x-organization-id": organizationId, ...headers },
+          })
+        : null,
     // headers is a fresh object per render for most hosts; the endpoint and Dashboard identify the client.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [threadsUrl, dashboardId, organizationId]
@@ -1707,6 +1714,14 @@ export function AssistantPanel({
                 {settingsPaneInner}
               </aside>
             )}
+
+            {/* Keep the settings mounted while the sheet is closed so the datasource selector still
+                loads and auto-selects a lone datasource (it only does so on mount). */}
+            {isNarrowLayout && !mobileSettingsOpen ? (
+              <div hidden aria-hidden="true">
+                {settingsPaneInner}
+              </div>
+            ) : null}
 
             {isNarrowLayout && mobileSettingsOpen ? (
               <div

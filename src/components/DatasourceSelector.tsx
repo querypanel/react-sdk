@@ -59,31 +59,37 @@ export function DatasourceSelector({
   const headersSignature = getHeadersSignature(extraHeaders);
 
   useEffect(() => {
-    const fetchDatasources = async () => {
-      try {
-        const response = await fetch(datasourcesUrl, {
-          headers: {
-            "Content-Type": "application/json",
-            "x-organization-id": organizationId,
-            ...extraHeaders,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setDatasources(data.datasources || []);
-        }
-      } catch (error) {
-        console.error("Failed to fetch datasources:", error);
-      } finally {
-        setLoading(false);
-      }
+    if (!organizationId) return;
+    const fetchDatasources = async (): Promise<Datasource[]> => {
+      const response = await fetch(datasourcesUrl, {
+        headers: {
+          "Content-Type": "application/json",
+          "x-organization-id": organizationId,
+          ...extraHeaders,
+        },
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.datasources || [];
     };
 
-    if (organizationId) {
-      const requestKey = `datasources:${datasourcesUrl}:${organizationId}:${headersSignature}`;
-      void runDedupedRequest(requestKey, fetchDatasources);
-    }
+    // Concurrent mounts share one request, so each caller must apply the shared result itself;
+    // a mount that was deduped against another instance's in-flight request would otherwise never load.
+    let cancelled = false;
+    const requestKey = `datasources:${datasourcesUrl}:${organizationId}:${headersSignature}`;
+    runDedupedRequest(requestKey, fetchDatasources)
+      .then((list) => {
+        if (!cancelled) setDatasources(list);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch datasources:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [organizationId, datasourcesUrl, headersSignature, extraHeaders]);
 
   const filteredDatasources = useMemo(
