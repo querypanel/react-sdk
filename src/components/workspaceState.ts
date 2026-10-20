@@ -103,7 +103,14 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** Short per-request handle the Assistant cites in answers as `[↗ c1]`. */
+export function chartRefKey(index: number): string {
+  return `c${index + 1}`;
+}
+
 export interface DashboardContextChart {
+  /** Short handle for citing this chart in an answer (`c1`, `c2`, ...). */
+  ref: string;
   id: string;
   title: string;
   kind: string | null;
@@ -131,6 +138,7 @@ export function buildDashboardContext(
   getSpec: (chartId: string) => unknown,
 ): DashboardContext {
   const compact = (chart: ChartBlockSummary, index: number) => ({
+    ref: chartRefKey(index),
     id: chart.chartId,
     title: chartLabel(chart, index),
     kind: chart.presentationKind,
@@ -179,4 +187,52 @@ export function detectMention(text: string): { query: string; start: number } | 
 export function removeMention(text: string): string {
   const mention = detectMention(text);
   return mention ? text.slice(0, mention.start) : text;
+}
+
+/** Chart refs a request offered, kept on the answer so its chips can be resolved later. */
+export type ChartRefMap = Record<string, { chartId: string; title: string }>;
+
+export function buildChartRefMap(context: DashboardContext): ChartRefMap {
+  return Object.fromEntries(context.charts.map((chart) => [chart.ref, { chartId: chart.id, title: chart.title }]));
+}
+
+const CHART_REF_PATTERN = /\[↗\s*(c\d+)\s*\]/g;
+export const CHART_REF_HREF_PREFIX = "#qp-chart-";
+
+/** Turn `[↗ c1]` in answer markdown into links the renderer shows as chart chips. */
+export function linkifyChartRefs(markdown: string): string {
+  return markdown.replace(CHART_REF_PATTERN, (_match, ref: string) => `[${ref}](${CHART_REF_HREF_PREFIX}${ref})`);
+}
+
+export interface ResolvedChartRef {
+  label: string;
+  /** Block-independent chart id, when the ref is known. */
+  chartId: string | null;
+  /** True when the chart is no longer on the Dashboard (or the ref is unknown). */
+  removed: boolean;
+}
+
+/** Resolve a cited ref against the Dashboard now; removed charts keep their title snapshot. */
+export function resolveChartRef(
+  ref: string,
+  refMap: ChartRefMap | undefined,
+  charts: ReadonlyArray<ChartBlockSummary>,
+): ResolvedChartRef {
+  const entry = refMap?.[ref];
+  if (!entry) return { label: ref, chartId: null, removed: true };
+  const index = charts.findIndex((chart) => chart.chartId === entry.chartId);
+  if (index < 0) return { label: entry.title, chartId: entry.chartId, removed: true };
+  return { label: chartLabel(charts[index]!, index), chartId: entry.chartId, removed: false };
+}
+
+/** Error text when a message tags a chart that was deleted, else null. */
+export function validateTagsForSend(
+  taggedChartIds: ReadonlyArray<string>,
+  charts: ReadonlyArray<ChartBlockSummary>,
+): string | null {
+  const { missingIds } = resolveTags(taggedChartIds, charts);
+  if (missingIds.length === 0) return null;
+  return missingIds.length === 1
+    ? "A tagged chart was removed from the Dashboard. Remove its tag to send this message."
+    : "Some tagged charts were removed from the Dashboard. Remove their tags to send this message.";
 }

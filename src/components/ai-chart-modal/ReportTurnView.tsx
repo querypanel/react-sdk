@@ -11,6 +11,8 @@ import {
 } from "../generative-ui/specData";
 import { formatToolStatus } from "./mastraChartStream";
 import { VizSpecPreview } from "./VizSpecPreview";
+import { ChartChip } from "./ChartTagUi";
+import { CHART_REF_HREF_PREFIX, linkifyChartRefs } from "../workspaceState";
 import type {
 	MastraChartMessage,
 	ReportBlock,
@@ -21,10 +23,50 @@ import type {
 
 const DATA_PREVIEW_ROW_LIMIT = 8;
 
-function AssistantMessageMarkdown({ content }: { content: string }) {
+/** How a `[↗ cN]` citation in an answer renders and behaves. */
+export type ChartRefResolver = (ref: string) => {
+	label: string;
+	removed: boolean;
+	onClick?: () => void;
+};
+
+function AssistantMessageMarkdown({
+	content,
+	resolveChartRef,
+}: {
+	content: string;
+	resolveChartRef?: ChartRefResolver;
+}) {
 	return (
 		<div className="qp-ai-modal-md">
-			<ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				components={
+					resolveChartRef
+						? {
+								a: ({ href, children, ...rest }) => {
+									if (href?.startsWith(CHART_REF_HREF_PREFIX)) {
+										const resolved = resolveChartRef(href.slice(CHART_REF_HREF_PREFIX.length));
+										return (
+											<ChartChip
+												label={`↗ ${resolved.label}`}
+												dead={resolved.removed}
+												onClick={resolved.onClick}
+											/>
+										);
+									}
+									return (
+										<a href={href} {...rest}>
+											{children}
+										</a>
+									);
+								},
+							}
+						: undefined
+				}
+			>
+				{resolveChartRef ? linkifyChartRefs(content) : content}
+			</ReactMarkdown>
 		</div>
 	);
 }
@@ -151,6 +193,7 @@ export function ReportTurnView({
 	ThoughtSummaryRail,
 	onAddViz,
 	onAddReport,
+	resolveChartRef,
 }: {
 	message: MastraChartMessage;
 	isActive: boolean;
@@ -165,6 +208,8 @@ export function ReportTurnView({
 	ThoughtSummaryRail: ComponentType<{ events: ToolEvent[] }>;
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
+	/** When set, `[↗ cN]` citations in answer text render as chart chips. */
+	resolveChartRef?: ChartRefResolver;
 }) {
 	const liveTools = isActive && isLoading ? toolEvents : [];
 	const finishedTools = message.toolEvents ?? [];
@@ -215,7 +260,7 @@ export function ReportTurnView({
 				if (block.type === "text") {
 					return (
 						<div key={block.id} className="qp-ai-modal-report-text">
-							<AssistantMessageMarkdown content={block.content} />
+							<AssistantMessageMarkdown content={block.content} resolveChartRef={resolveChartRef} />
 							{block.streaming && isActive && isLoading ? (
 								<span className="qp-ai-modal-stream-caret" aria-hidden>
 									|
@@ -275,7 +320,7 @@ export function ReportTurnView({
 			{/* Fallback when content exists on the message but not yet as blocks */}
 			{blocks.length === 0 && message.content.trim().length > 0 && (
 				<div className="qp-ai-modal-report-text">
-					<AssistantMessageMarkdown content={message.content} />
+					<AssistantMessageMarkdown content={message.content} resolveChartRef={resolveChartRef} />
 					{isActive && isLoading ? (
 						<span className="qp-ai-modal-stream-caret" aria-hidden>
 							|

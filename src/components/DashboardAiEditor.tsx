@@ -23,6 +23,7 @@ import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import { AssistantPanel } from "./AssistantPanel";
 import { Workspace, type WorkspaceHandle } from "./Workspace";
+import { AskAboutThisHost } from "./AskAboutThis";
 import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
 import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
@@ -529,6 +530,12 @@ export function DashboardAiEditor({
     return editor.onChange(assign);
   }, [editor, mounted, editable]);
 
+  const [tagRequest, setTagRequest] = useState<{ chartId: string; nonce: number } | undefined>();
+  const askAboutChart = useCallback((chartId: string) => {
+    setTagRequest((prev) => ({ chartId, nonce: (prev?.nonce ?? 0) + 1 }));
+    workspaceRef.current?.openAssistant();
+  }, []);
+
   const [taggableCharts, setTaggableCharts] = useState<ChartBlockSummary[]>([]);
   useEffect(() => {
     if (!mounted || !isWorkspace) return;
@@ -620,6 +627,7 @@ export function DashboardAiEditor({
   }
 
   const dashboardNode = (
+    <AskAboutThisHost editor={editor} onAsk={isWorkspace && editable ? askAboutChart : undefined}>
     <ThemeProvider darkMode={effectiveDarkMode}>
       <div
         className="border rounded-lg overflow-hidden"
@@ -646,6 +654,7 @@ export function DashboardAiEditor({
         </BlockNoteThemedView>
       </div>
     </ThemeProvider>
+    </AskAboutThisHost>
   );
 
   return (
@@ -718,6 +727,7 @@ export function DashboardAiEditor({
                 charts={taggableCharts}
                 getChartSpec={getChartSpec}
                 onChartChipClick={handleChipClick}
+                tagRequest={tagRequest}
                 threadsUrl={assistantThreadsUrl}
                 runSqlUrl={resolvedRunSqlUrl}
               />

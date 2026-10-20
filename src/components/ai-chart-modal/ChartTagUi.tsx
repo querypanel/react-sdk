@@ -66,6 +66,7 @@ export function ChartChip({
         title={dead ? "This chart is no longer on the Dashboard" : "Show on the Dashboard"}
       >
         @{label}
+        {dead ? " · removed" : ""}
       </button>
       {onRemove && (
         <button type="button" className="qp-ai-tag-chip-remove" onClick={onRemove} aria-label={`Remove ${label}`}>

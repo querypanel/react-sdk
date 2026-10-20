@@ -49,13 +49,16 @@ import {
 } from "./ai-chart-modal/assistantThreads";
 import type { ChartBlockSummary } from "./dashboardEditorController";
 import {
+  buildChartRefMap,
   buildDashboardContext,
   chartLabel,
   detectMention,
   filterChartsForPicker,
   removeMention,
+  resolveChartRef,
   resolveDatasourceId,
   resolveTags,
+  validateTagsForSend,
 } from "./workspaceState";
 import "./AIChartModal.css";
 
@@ -170,6 +173,8 @@ export interface AssistantPanelProps {
   threadsUrl?: string;
   /** Run-sql URL used to redraw chart previews of a restored Thread (default: /api/dashboards/run-sql). */
   runSqlUrl?: string;
+  /** Tag a chart in the composer and focus it (the Dashboard's "Ask about this"). Bump `nonce` per request. */
+  tagRequest?: { chartId: string; nonce: number };
 }
 
 type Message = MastraChartMessage;
@@ -365,6 +370,7 @@ export function AssistantPanel({
   onChartChipClick,
   threadsUrl,
   runSqlUrl = "/api/dashboards/run-sql",
+  tagRequest,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -389,7 +395,9 @@ export function AssistantPanel({
     const index = (charts ?? []).findIndex((chart) => chart.chartId === chartId);
     return index >= 0 ? chartLabel((charts ?? [])[index]!, index) : "Removed chart";
   };
+  const [sendError, setSendError] = useState<string | null>(null);
   const selectTag = (chartId: string) => {
+    setSendError(null);
     setTaggedChartIds((prev) => (prev.includes(chartId) ? prev : [...prev, chartId]));
     setInputValue((prev) => removeMention(prev));
     setPickerIndex(0);
@@ -620,9 +628,21 @@ export function AssistantPanel({
     dashboardType,
   ]);
 
+  useEffect(() => {
+    if (!tagRequest) return;
+    selectTag(tagRequest.chartId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagRequest?.nonce]);
+
   const handleSendMessage = async (prompt?: string) => {
     const messageText = prompt || inputValue.trim();
     if (!messageText || isLoading) return;
+    const tagError = taggingEnabled ? validateTagsForSend(taggedChartIds, charts ?? []) : null;
+    if (tagError) {
+      setSendError(tagError);
+      return;
+    }
+    setSendError(null);
     streamFailureHandledRef.current = false;
     const { resolved: taggedCharts } = resolveTags(taggedChartIds, charts ?? []);
     const requestDatasourceId = resolveDatasourceId(taggedCharts, selectedDatasourceIds[0]);
@@ -723,6 +743,7 @@ export function AssistantPanel({
             blocks: [],
             sqlParams: null,
             timestamp: new Date(),
+            ...(dashboardContext ? { chartRefs: buildChartRefMap(dashboardContext) } : {}),
           },
         ]);
         setQuerypanelSessionId(threadId);
@@ -1276,6 +1297,20 @@ export function AssistantPanel({
                             ThoughtSummaryRail={ThoughtSummaryRail}
                             onAddViz={(block) => handleAddVizBlock(block, message)}
                             onAddReport={handleAddReportToEditor}
+                            resolveChartRef={
+                              taggingEnabled
+                                ? (ref) => {
+                                    const resolved = resolveChartRef(ref, message.chartRefs, charts ?? []);
+                                    return {
+                                      label: resolved.label,
+                                      removed: resolved.removed,
+                                      onClick: resolved.removed
+                                        ? undefined
+                                        : chipClickHandler(resolved.chartId ?? ""),
+                                    };
+                                  }
+                                : undefined
+                            }
                           />
                         )}
 
@@ -1371,6 +1406,11 @@ export function AssistantPanel({
                     onSelect={(option) => selectTag(option.chartId)}
                   />
                 )}
+                {sendError && (
+                  <div className="qp-ai-thread-error" role="alert">
+                    {sendError}
+                  </div>
+                )}
                 {taggedChartIds.length > 0 && (
                   <div className="qp-ai-tag-row">
                     {taggedChartIds.map((chartId) => (
@@ -1379,9 +1419,10 @@ export function AssistantPanel({
                         label={chartLabelFor(chartId)}
                         dead={!chipClickHandler(chartId)}
                         onClick={chipClickHandler(chartId)}
-                        onRemove={() =>
-                          setTaggedChartIds((prev) => prev.filter((id) => id !== chartId))
-                        }
+                        onRemove={() => {
+                          setSendError(null);
+                          setTaggedChartIds((prev) => prev.filter((id) => id !== chartId));
+                        }}
                       />
                     ))}
                   </div>

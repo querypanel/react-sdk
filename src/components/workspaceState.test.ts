@@ -4,7 +4,12 @@ import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 import {
   buildDashboardContext,
   chartLabel,
+  buildChartRefMap,
+  chartRefKey,
   collectMissingChartIds,
+  linkifyChartRefs,
+  resolveChartRef,
+  validateTagsForSend,
   detectMention,
   removeMention,
   filterChartsForPicker,
@@ -128,7 +133,7 @@ describe("buildDashboardContext", () => {
     expect(ctx.charts[0]!.sql.length).toBe(MAX_COMPACT_SQL_LENGTH + 1);
     expect(ctx.charts[1]!.title).toBe("Untitled chart 2");
     expect(ctx.tagged).toEqual([
-      { id: "1", title: "A", kind: "chart", datasourceId: "ds", sql: longSql, spec: { spec: "1" } },
+      { ref: "c1", id: "1", title: "A", kind: "chart", datasourceId: "ds", sql: longSql, spec: { spec: "1" } },
     ]);
   });
 });
@@ -159,5 +164,42 @@ describe("mentions", () => {
   it("removes the trailing mention", () => {
     expect(removeMention("how is @rev")).toBe("how is ");
     expect(removeMention("plain")).toBe("plain");
+  });
+});
+
+describe("chart refs in answers", () => {
+  const charts = [chart({ chartId: "1", title: "A" }), chart({ chartId: "2", title: "B" })];
+  const refMap = buildChartRefMap(buildDashboardContext(charts, [], () => undefined));
+
+  it("hands out positional refs", () => {
+    expect(chartRefKey(0)).toBe("c1");
+    expect(refMap).toEqual({ c1: { chartId: "1", title: "A" }, c2: { chartId: "2", title: "B" } });
+  });
+
+  it("linkifies [↗ cN] only", () => {
+    expect(linkifyChartRefs("See [↗ c1] and [↗c12], not [c1] or [↗ x]")).toBe(
+      "See [c1](#qp-chart-c1) and [c12](#qp-chart-c12), not [c1] or [↗ x]",
+    );
+  });
+
+  it("resolves a live ref against the current Dashboard", () => {
+    const renamed = [chart({ chartId: "1", title: "A renamed" })];
+    expect(resolveChartRef("c1", refMap, renamed)).toEqual({ label: "A renamed", chartId: "1", removed: false });
+  });
+
+  it("keeps the title snapshot for a deleted chart and treats unknown refs as removed", () => {
+    expect(resolveChartRef("c2", refMap, [charts[0]!])).toEqual({ label: "B", chartId: "2", removed: true });
+    expect(resolveChartRef("c9", refMap, charts)).toEqual({ label: "c9", chartId: null, removed: true });
+    expect(resolveChartRef("c1", undefined, charts).removed).toBe(true);
+  });
+});
+
+describe("validateTagsForSend", () => {
+  const charts = [chart({ chartId: "1" })];
+
+  it("allows live tags and blocks removed ones", () => {
+    expect(validateTagsForSend(["1"], charts)).toBeNull();
+    expect(validateTagsForSend([], charts)).toBeNull();
+    expect(validateTagsForSend(["1", "gone"], charts)).toMatch(/removed/);
   });
 });

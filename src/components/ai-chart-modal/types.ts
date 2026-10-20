@@ -90,6 +90,8 @@ export type MastraChartMessage = {
 	kind?: "turn";
 	/** Charts @-tagged in a user message. */
 	taggedCharts?: Array<{ chartId: string; label: string }>;
+	/** Chart refs (`c1`...) the Assistant could cite in this answer, with title snapshots. */
+	chartRefs?: Record<string, { chartId: string; title: string }>;
 	/** Intent recorded for a user message (restored from a stored Thread). */
 	intent?: string;
 	sourceAssistantId?: string;
