@@ -35,6 +35,7 @@ import {
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
+import { pendingSelectedVizIds, selectableTurn } from "./ai-chart-modal/selectionBar";
 import { PlanChecklist } from "./ai-chart-modal/PlanChecklist";
 import { withDerivedPlanProgress } from "./ai-chart-modal/planProgress";
 import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
@@ -678,6 +679,10 @@ export function AssistantPanel({
     return null;
   }, [messages]);
   const pinnedPlanId = pinnedPlanMessage?.id ?? null;
+  const selectionTurn = selectableTurn(messages, reportMode);
+  const selectionPendingIds = selectionTurn
+    ? pendingSelectedVizIds(selectionTurn, (id) => vizSelected[id] ?? true, (id) => Boolean(vizAdded[id]))
+    : [];
   const pinnedPlanRunning = pinnedPlanId !== null && isLoading && pinnedPlanId === activeAssistantMessageId;
   useEffect(() => {
     setPlanOpen(pinnedPlanRunning);
@@ -1480,8 +1485,7 @@ export function AssistantPanel({
                             onAddViz={(block) => handleAddVizBlock(block, message)}
                             onAddReport={(turn) => handleAddReportToEditor(turn)}
                             selection={
-                              reportMode &&
-                              (message.blocks ?? []).filter((b) => b.type === "viz").length >= 2
+                              reportMode
                                 ? {
                                     isSelected: (id) => vizSelected[id] ?? true,
                                     isAdded: (id) => Boolean(vizAdded[id]),
@@ -1636,6 +1640,27 @@ export function AssistantPanel({
 
                 <div ref={messagesEndRef} />
               </div>
+
+              {selectionTurn && (
+                <div className="qp-ai-selection-bar">
+                  <button
+                    type="button"
+                    disabled={isLoading || selectionPendingIds.length === 0}
+                    onClick={() => handleAddReportToEditor(selectionTurn, selectionPendingIds)}
+                    className="qp-ai-modal-add-chart-btn"
+                  >
+                    Add {selectionPendingIds.length} selected
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => handleAddReportToEditor(selectionTurn)}
+                    className="qp-ai-modal-add-report-btn"
+                  >
+                    Add report
+                  </button>
+                </div>
+              )}
 
               <div className="qp-ai-modal-footer">
                 {mention && (

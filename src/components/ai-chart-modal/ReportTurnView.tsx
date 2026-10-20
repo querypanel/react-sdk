@@ -149,7 +149,10 @@ export function VizPreview({
 				? Object.keys(rows[0])
 				: [];
 
+	// One renderer for live and restored charts: the VizSpec preview whenever the block has a
+	// VizSpec (live blocks carry both). The json-render spec is only a fallback for blocks without one.
 	const hydratedJsonRenderSpec =
+		!block.chartSpec &&
 		block.jsonRenderSpec &&
 		rows &&
 		rows.length > 0 &&
@@ -160,7 +163,7 @@ export function VizPreview({
 	return (
 		<div className="qp-ai-modal-chart-stack">
 			<div className="qp-ai-modal-chart-stack-preview">
-				{hydratedJsonRenderSpec ? (
+				{!block.chartSpec && hydratedJsonRenderSpec ? (
 					<div className="qp-ai-modal-chart-preview">
 						<PersistedSpecRenderer
 							spec={hydratedJsonRenderSpec}
@@ -181,7 +184,7 @@ export function VizPreview({
 	);
 }
 
-/** Per-chart checkbox + "Added" state for report turns with several charts. */
+/** Per-chart checkbox + "Added" state for selectable (Workspace) report turns. */
 export type VizSelection = {
 	isSelected: (vizId: string) => boolean;
 	isAdded: (vizId: string) => boolean;
@@ -225,13 +228,14 @@ export function ReportTurnView({
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
 	/** When set, `[↗ cN]` citations in answer text render as chart chips. */
-	resolveChartRef?: ChartRefResolver;	/**
+	resolveChartRef?: ChartRefResolver;
+		/**
 	 * Replace the default viz block (preview + "Add to dashboard"), e.g. with a before/after card
 	 * for a tagged chart. `preview` is the default preview of the proposed chart. Return null to
 	 * keep the default.
 	 */
 	renderVizBlock?: (block: ReportVizBlock, preview: ReactNode) => ReactNode | null;
-	/** When set, each chart renders as a selectable card with an "Add selected" footer. */
+	/** When set, each chart renders as a selectable card (the host docks the "Add selected" bar). */
 	selection?: VizSelection;
 	/** The host pins this turn's plan above the composer, so do not repeat it inline. */
 	hidePlan?: boolean;
@@ -245,12 +249,6 @@ export function ReportTurnView({
 		hasViz ||
 		blocks.some((b) => b.type === "text" && b.content.trim().length > 0) ||
 		Boolean(message.jsonRenderSpec || message.chartSpec);
-
-	const pendingSelectedIds = selection
-		? vizBlocks
-				.filter((b) => selection.isSelected(b.id) && !selection.isAdded(b.id))
-				.map((b) => b.id)
-		: [];
 
 	const fallbackRows =
 		Array.isArray(message.queryResult?.rows) && message.queryResult.rows.length > 0
@@ -412,27 +410,6 @@ export function ReportTurnView({
 							|
 						</span>
 					) : null}
-				</div>
-			)}
-
-			{selection && canAddReport && (
-				<div className="qp-ai-modal-report-actions qp-ai-modal-report-actions-sticky">
-					<button
-						type="button"
-						disabled={isLoading || pendingSelectedIds.length === 0}
-						onClick={() => selection.onAddSelected(pendingSelectedIds)}
-						className="qp-ai-modal-add-chart-btn"
-					>
-						Add selected ({pendingSelectedIds.length})
-					</button>
-					<button
-						type="button"
-						disabled={isLoading}
-						onClick={() => onAddReport(message)}
-						className="qp-ai-modal-add-report-btn"
-					>
-						Add report to dashboard
-					</button>
 				</div>
 			)}
 
