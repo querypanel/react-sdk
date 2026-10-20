@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createThreadsClient,
+  hydrateThreadCharts,
   DEFAULT_THREAD_TITLE,
   threadMessagesToChatMessages,
   threadTitleFromQuestion,
@@ -53,6 +54,38 @@ describe("threadMessagesToChatMessages", () => {
       ],
       intent: "investigate",
     });
+  });
+});
+
+describe("chart previews in history", () => {
+  const chart = { resultId: "r1", datasourceId: "ds", sql: "select 1", params: null, rationale: null, spec: { kind: "chart" } };
+
+  it("turns stored chart refs into viz blocks, even without text", () => {
+    const [message] = threadMessagesToChatMessages(
+      [stored({ role: "assistant", text: "", charts: [chart] })],
+      () => null,
+    );
+    expect(message!.blocks).toEqual([
+      expect.objectContaining({ type: "viz", chartSpec: { kind: "chart" }, sql: "select 1", datasourceId: "ds", resultId: "r1" }),
+    ]);
+  });
+
+  it("hydrates rows by re-running SQL and drops charts that fail", async () => {
+    const messages = threadMessagesToChatMessages(
+      [
+        stored({ id: "ok", role: "assistant", text: "a", charts: [chart] }),
+        stored({ id: "bad", role: "assistant", text: "b", charts: [{ ...chart, resultId: "r2" }] }),
+      ],
+      () => null,
+    );
+    const hydrated = await hydrateThreadCharts(messages, async (block) => {
+      if (block.resultId === "r2") throw new Error("expired");
+      return { fields: ["x"], rows: [{ x: 1 }], rowCount: 1 };
+    });
+    const vizOf = (i: number) => hydrated[i]!.blocks!.filter((b) => b.type === "viz");
+    expect(vizOf(0)).toEqual([expect.objectContaining({ queryResult: { fields: ["x"], rows: [{ x: 1 }], rowCount: 1 } })]);
+    expect(vizOf(1)).toEqual([]);
+    expect(hydrated[1]!.blocks).toHaveLength(1);
   });
 });
 

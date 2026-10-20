@@ -1,4 +1,4 @@
-import type { MastraChartMessage } from "./types";
+import type { MastraChartMessage, ReportBlock, ReportVizBlock, SqlExecutionArtifact } from "./types";
 
 /** Shapes returned by the Assistant Threads endpoints (`/assistant-threads`). */
 export interface AssistantThreadSummary {
@@ -7,6 +7,17 @@ export interface AssistantThreadSummary {
   mastra_thread_id: string;
   last_activity_at: string;
   created_at: string;
+}
+
+/** A chart an Assistant turn produced, without rows; the SQL is re-run to redraw it. */
+export interface StoredChartRef {
+  resultId: string;
+  datasourceId?: string;
+  sql: string;
+  params: Record<string, unknown> | null;
+  presentationKind?: "chart" | "table" | "metric";
+  rationale: string | null;
+  spec: unknown;
 }
 
 export interface StoredThreadMessage {
@@ -20,6 +31,7 @@ export interface StoredThreadMessage {
     tags?: string[];
     intent?: string;
   };
+  charts?: StoredChartRef[];
 }
 
 const MAX_TITLE_LENGTH = 60;
@@ -59,17 +71,62 @@ export function threadMessagesToChatMessages(
       });
       continue;
     }
-    if (!message.text.trim()) continue;
+    if (!message.text.trim() && !(message.charts?.length)) continue;
+    const blocks: ReportBlock[] = message.text.trim()
+      ? [{ id: `${message.id}-text`, type: "text", content: message.text }]
+      : [];
+    for (const chart of message.charts ?? []) {
+      blocks.push({
+        id: `${message.id}-viz-${chart.resultId}`,
+        type: "viz",
+        chartSpec: chart.spec,
+        resultId: chart.resultId,
+        presentationKind: chart.presentationKind,
+        sql: chart.sql,
+        sqlParams: chart.params,
+        rationale: chart.rationale ?? undefined,
+        datasourceId: chart.datasourceId,
+      });
+    }
     out.push({
       id: message.id,
       role: "assistant",
       kind: "turn",
       content: message.text,
-      blocks: [{ id: `${message.id}-text`, type: "text", content: message.text }],
+      blocks,
       timestamp,
     });
   }
   return out;
+}
+
+/**
+ * Fill each restored chart with fresh rows by re-running its SQL. Charts whose SQL fails (or that
+ * cannot be run) are dropped from the turn so history never shows a broken preview.
+ */
+export async function hydrateThreadCharts(
+  messages: ReadonlyArray<MastraChartMessage>,
+  runSql: (chart: ReportVizBlock) => Promise<SqlExecutionArtifact | null>,
+): Promise<MastraChartMessage[]> {
+  return Promise.all(
+    messages.map(async (message) => {
+      if (!message.blocks?.some((block) => block.type === "viz")) return message;
+      const blocks = (
+        await Promise.all(
+          message.blocks.map(async (block): Promise<ReportBlock | null> => {
+            if (block.type !== "viz") return block;
+            try {
+              const queryResult = await runSql(block);
+              return queryResult ? { ...block, queryResult } : null;
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((block): block is ReportBlock => block !== null);
+      return { ...message, blocks };
+    }),
+  );
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;

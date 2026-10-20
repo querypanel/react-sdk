@@ -42,6 +42,7 @@ import type {
 import { ChartChip, ChartTagPicker } from "./ai-chart-modal/ChartTagUi";
 import {
   createThreadsClient,
+  hydrateThreadCharts,
   threadMessagesToChatMessages,
   threadTitleFromQuestion,
   type AssistantThreadSummary,
@@ -167,6 +168,8 @@ export interface AssistantPanelProps {
    * stored per user and Dashboard: it is restored on reload and can be restarted or switched.
    */
   threadsUrl?: string;
+  /** Run-sql URL used to redraw chart previews of a restored Thread (default: /api/dashboards/run-sql). */
+  runSqlUrl?: string;
 }
 
 type Message = MastraChartMessage;
@@ -361,6 +364,7 @@ export function AssistantPanel({
   getChartSpec,
   onChartChipClick,
   threadsUrl,
+  runSqlUrl = "/api/dashboards/run-sql",
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -413,6 +417,35 @@ export function AssistantPanel({
     setQuerypanelSessionId(null);
   };
 
+  /** Re-run a restored chart's SQL as the signed-in admin; null when it cannot be run. */
+  const runSqlForRestoredChart = async (chart: ReportVizBlock): Promise<SqlExecutionArtifact | null> => {
+    const datasourceId = chart.datasourceId ?? selectedDatasourceIds[0];
+    if (!chart.sql || !datasourceId) return null;
+    const previewTenant = tenantInputsEnabled ? previewTenantId.trim() : "";
+    const tenantField = tenantInputsEnabled ? tenantFieldName.trim() : "";
+    const response = await fetch(runSqlUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-organization-id": organizationId, ...headers },
+      body: JSON.stringify({
+        sql: chart.sql,
+        datasourceIds: [datasourceId],
+        dashboardId,
+        params: chart.sqlParams ?? {},
+        ...(tenantField ? { tenantFieldName: tenantField } : {}),
+        ...(previewTenant ? { previewTenantId: previewTenant } : {}),
+      }),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { rows?: unknown; fields?: unknown };
+    const rows = Array.isArray(payload.rows) ? (payload.rows as Array<Record<string, unknown>>) : [];
+    const fields = Array.isArray(payload.fields)
+      ? (payload.fields as unknown[]).filter((f): f is string => typeof f === "string")
+      : rows[0]
+        ? Object.keys(rows[0])
+        : [];
+    return { resultId: chart.resultId, fields, rows, rowCount: rows.length };
+  };
+
   const openThread = async (thread: AssistantThreadSummary) => {
     if (!threadsClient) return;
     const seq = ++threadLoadSeqRef.current;
@@ -420,8 +453,12 @@ export function AssistantPanel({
     setThreadsError(null);
     try {
       const stored = await threadsClient.messages(thread.id);
+      const hydrated = await hydrateThreadCharts(
+        threadMessagesToChatMessages(stored, () => null),
+        runSqlForRestoredChart,
+      );
       if (seq !== threadLoadSeqRef.current) return;
-      resetConversation(threadMessagesToChatMessages(stored, () => null));
+      resetConversation(hydrated);
       setActiveThread(thread);
       setQuerypanelSessionId(thread.mastra_thread_id);
     } catch (err) {
@@ -940,7 +977,7 @@ export function AssistantPanel({
       block.jsonRenderSpec ?? block.chartSpec,
       block.rationale ?? (turn ? getMessageRationale(turn) : undefined),
       block.sql ?? turn?.sql,
-      selectedDatasourceIds,
+      block.datasourceId ? [block.datasourceId] : selectedDatasourceIds,
       block.sqlParams ?? turn?.sqlParams ?? null,
       tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
       tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,

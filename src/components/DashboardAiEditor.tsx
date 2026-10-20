@@ -719,6 +719,7 @@ export function DashboardAiEditor({
                 getChartSpec={getChartSpec}
                 onChartChipClick={handleChipClick}
                 threadsUrl={assistantThreadsUrl}
+                runSqlUrl={resolvedRunSqlUrl}
               />
             )}
           />

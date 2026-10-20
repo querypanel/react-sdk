@@ -44,6 +44,8 @@ export type ReportVizBlock = {
 	sqlParams?: Record<string, unknown> | null;
 	queryResult?: SqlExecutionArtifact;
 	rationale?: string;
+	/** Datasource the SQL ran on (restored from a stored Thread). */
+	datasourceId?: string;
 };
 
 export type ReportAskBlock = {
