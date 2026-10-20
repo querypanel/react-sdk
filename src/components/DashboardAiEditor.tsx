@@ -35,9 +35,16 @@ import {
   isChartBlockType,
   listChartBlocks,
   type ChartBlockSummary,
+  type ChartPayload,
   type DashboardEditorController,
 } from "./dashboardEditorController";
-import { collectMissingChartIds, findChartSpec } from "./workspaceState";
+import {
+  applyChartChange,
+  collectMissingChartIds,
+  findChartBlockSnapshot,
+  type ChartChangeMode,
+  type ChartEditorLike,
+} from "./workspaceState";
 import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -554,9 +561,23 @@ export function DashboardAiEditor({
     return editor.onChange(emit);
   }, [editor, mounted, isWorkspace]);
 
-  const getChartSpec = useCallback(
-    (chartId: string) => findChartSpec(editor.document, chartId),
+  const getChartSnapshot = useCallback(
+    (chartId: string) =>
+      findChartBlockSnapshot(editor.document, chartId, listChartBlocks(editor.document)),
     [editor]
+  );
+
+  const applyChartChangeToEditor = useCallback(
+    (change: { chartId: string; mode: ChartChangeMode; payload: ChartPayload }) => {
+      const snapshot = getChartSnapshot(change.chartId);
+      if (!snapshot) return false;
+      return applyChartChange(editor as unknown as ChartEditorLike, {
+        blockId: snapshot.blockId,
+        mode: change.mode,
+        payload: change.payload,
+      }).ok;
+    },
+    [editor, getChartSnapshot]
   );
 
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -728,7 +749,8 @@ export function DashboardAiEditor({
                 autoFocus={false}
                 focusRequest={focusRequest}
                 charts={taggableCharts}
-                getChartSpec={getChartSpec}
+                getChartSnapshot={getChartSnapshot}
+                onApplyChartChange={applyChartChangeToEditor}
                 onChartChipClick={handleChipClick}
                 tagRequest={tagRequest}
                 threadsUrl={assistantThreadsUrl}

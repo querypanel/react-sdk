@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LoaderCircleIcon } from "lucide-react";
@@ -121,7 +121,7 @@ function DataPreviewTable({ queryResult }: { queryResult: SqlExecutionArtifact }
 	);
 }
 
-function VizPreview({
+export function VizPreview({
 	block,
 	queryResultBaseUrl,
 	requestHeaders,
@@ -194,6 +194,7 @@ export function ReportTurnView({
 	onAddViz,
 	onAddReport,
 	resolveChartRef,
+	renderVizBlock,
 }: {
 	message: MastraChartMessage;
 	isActive: boolean;
@@ -209,7 +210,12 @@ export function ReportTurnView({
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
 	/** When set, `[↗ cN]` citations in answer text render as chart chips. */
-	resolveChartRef?: ChartRefResolver;
+	resolveChartRef?: ChartRefResolver;	/**
+	 * Replace the default viz block (preview + "Add to dashboard"), e.g. with a before/after card
+	 * for a tagged chart. `preview` is the default preview of the proposed chart. Return null to
+	 * keep the default.
+	 */
+	renderVizBlock?: (block: ReportVizBlock, preview: ReactNode) => ReactNode | null;
 }) {
 	const liveTools = isActive && isLoading ? toolEvents : [];
 	const finishedTools = message.toolEvents ?? [];
@@ -283,16 +289,27 @@ export function ReportTurnView({
 				}
 
 				if (block.type === "viz") {
+					const preview = (
+						<VizPreview
+							block={block}
+							queryResultBaseUrl={queryResultBaseUrl}
+							requestHeaders={requestHeaders}
+							fallbackRows={fallbackRows}
+							datasourceCount={datasourceCount}
+							darkMode={darkMode}
+						/>
+					);
+					const custom = renderVizBlock?.(block, preview) ?? null;
+					if (custom) {
+						return (
+							<div key={block.id} className="qp-ai-modal-report-viz">
+								{custom}
+							</div>
+						);
+					}
 					return (
 						<div key={block.id} className="qp-ai-modal-report-viz">
-							<VizPreview
-								block={block}
-								queryResultBaseUrl={queryResultBaseUrl}
-								requestHeaders={requestHeaders}
-								fallbackRows={fallbackRows}
-								datasourceCount={datasourceCount}
-								darkMode={darkMode}
-							/>
+							{preview}
 							<div className="qp-ai-modal-chart-action-item">
 								<button
 									type="button"

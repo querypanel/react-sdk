@@ -1,5 +1,10 @@
 /** Pure Workspace state: lazy chart ids, @-tag resolution, and the context sent to the Assistant. */
-import { isChartBlockType, type ChartBlockSummary } from "./dashboardEditorController";
+import {
+  buildChartBlockInput,
+  isChartBlockType,
+  type ChartBlockSummary,
+  type ChartPayload,
+} from "./dashboardEditorController";
 
 type BlockLike = {
   id: string;
@@ -121,6 +126,8 @@ export interface DashboardContextChart {
 export interface DashboardContextTaggedChart extends DashboardContextChart {
   /** Full spec (VizSpec or json-render), as stored in the block. */
   spec: unknown;
+  /** SQL params the chart runs with, so an edit can start from the exact query. */
+  params?: Record<string, unknown> | null;
 }
 
 export type TagIntent = "investigate" | "modify" | "replace";
@@ -159,6 +166,7 @@ export function buildDashboardContext(
   taggedChartIds: ReadonlyArray<string>,
   getSpec: (chartId: string) => unknown,
   tagIntent?: TagIntent,
+  getParams?: (chartId: string) => Record<string, unknown> | null | undefined,
 ): DashboardContext {
   const compact = (chart: ChartBlockSummary, index: number) => ({
     ref: chartRefKey(index),
@@ -178,6 +186,7 @@ export function buildDashboardContext(
       ...compact(chart, charts.indexOf(chart)),
       sql: chart.sql,
       spec: getSpec(chart.chartId),
+      ...(getParams ? { params: getParams(chart.chartId) ?? null } : {}),
     })),
   };
 }
@@ -259,4 +268,148 @@ export function validateTagsForSend(
   return missingIds.length === 1
     ? "A tagged chart was removed from the Dashboard. Remove its tag to send this message."
     : "Some tagged charts were removed from the Dashboard. Remove their tags to send this message.";
+}
+
+function parseJsonProp(raw: unknown): unknown {
+  if (typeof raw !== "string" || !raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Everything needed to show or re-run a chart that is currently on the Dashboard. */
+export interface ChartBlockSnapshot {
+  blockId: string;
+  chartId: string;
+  type: "chart" | "json-render-chart";
+  title: string;
+  presentationKind: ChartBlockSummary["presentationKind"];
+  sql: string;
+  params: Record<string, unknown> | null;
+  datasourceId: string | undefined;
+  chartSpec?: unknown;
+  jsonRenderSpec?: unknown;
+}
+
+export function findChartBlockSnapshot(
+  blocks: ReadonlyArray<BlockLike>,
+  chartId: string,
+  summaries: ReadonlyArray<ChartBlockSummary>,
+): ChartBlockSnapshot | undefined {
+  const summary = summaries.find((chart) => chart.chartId === chartId);
+  const find = (list: ReadonlyArray<BlockLike>): BlockLike | undefined => {
+    for (const block of list) {
+      if (isChartBlockType(block.type) && block.props?.chartId === chartId) return block;
+      const nested = block.children?.length ? find(block.children) : undefined;
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  const block = find(blocks);
+  if (!block || !summary) return undefined;
+  const params = parseJsonProp(block.props?.sqlParams);
+  const isJsonRender = block.type === "json-render-chart";
+  const spec = parseJsonProp(isJsonRender ? block.props?.jsonRenderSpec : block.props?.chartSpec);
+  return {
+    blockId: block.id,
+    chartId,
+    type: isJsonRender ? "json-render-chart" : "chart",
+    title: summary.title,
+    presentationKind: summary.presentationKind,
+    sql: summary.sql,
+    params: params && typeof params === "object" && !Array.isArray(params) ? (params as Record<string, unknown>) : null,
+    datasourceId: summary.datasourceIds[0],
+    ...(isJsonRender ? { jsonRenderSpec: spec } : { chartSpec: spec }),
+  };
+}
+
+/** One-line description of what a proposed chart changes compared to the current one. */
+export function summarizeChartChange(
+  before: { title: string; presentationKind: ChartBlockSummary["presentationKind"]; sql: string },
+  after: { title: string; presentationKind: ChartBlockSummary["presentationKind"]; sql: string },
+): string {
+  const parts: string[] = [];
+  if (before.presentationKind !== after.presentationKind && after.presentationKind) {
+    parts.push(`Shown as ${after.presentationKind}${before.presentationKind ? ` instead of ${before.presentationKind}` : ""}`);
+  }
+  const normalize = (sql: string) => sql.replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalize(before.sql) !== normalize(after.sql)) {
+    parts.push(after.sql.trim() ? "Updated SQL" : "No SQL");
+  } else {
+    parts.push("Same SQL");
+  }
+  const beforeTitle = before.title.trim();
+  const afterTitle = after.title.trim();
+  if (afterTitle && afterTitle !== beforeTitle) parts.push(`Title: ${beforeTitle || "Untitled"} → ${afterTitle}`);
+  return parts.join(" · ");
+}
+
+export type ChartChangeMode = "modify" | "replace";
+
+/** The subset of the BlockNote editor an Apply needs (kept narrow so it can be unit tested). */
+export interface ChartEditorLike {
+  getBlock(id: string): { type: string; props?: Record<string, unknown> } | undefined;
+  transact(fn: () => void): void;
+  updateBlock(id: string, update: { type: string; props: Record<string, string> }): void;
+}
+
+/**
+ * Swap a proposed chart into an existing Chart block as ONE editor transaction (one undo step).
+ * The block id (position) is always kept. `modify` keeps the chart id; `replace` assigns a new one
+ * inside the same transaction so undo never needs a second step. Never saves.
+ */
+export function applyChartChange(
+  editor: ChartEditorLike,
+  change: {
+    blockId: string;
+    mode: ChartChangeMode;
+    payload: ChartPayload;
+    generateId?: () => string;
+  },
+): { ok: true; chartId: string } | { ok: false } {
+  const block = editor.getBlock(change.blockId);
+  if (!block || !isChartBlockType(block.type)) return { ok: false };
+  const input = buildChartBlockInput(change.payload);
+  if (!input) return { ok: false };
+
+  const existing = block.props?.chartId;
+  const generate = change.generateId ?? generateChartId;
+  const chartId =
+    change.mode === "modify" && typeof existing === "string" && existing ? existing : generate();
+
+  editor.transact(() => {
+    editor.updateBlock(change.blockId, {
+      type: input.type,
+      props: { ...input.props, chartId },
+    });
+  });
+  return { ok: true, chartId };
+}
+
+/**
+ * The chart an Assistant turn proposes a change to: the preceding user message must have a
+ * modify/replace intent and exactly one tagged chart.
+ */
+export function findChangeTarget(
+  messages: ReadonlyArray<{
+    id: string;
+    role: string;
+    intent?: string;
+    taggedCharts?: ReadonlyArray<{ chartId: string }>;
+  }>,
+  assistantMessageId: string,
+): { chartId: string; mode: ChartChangeMode } | null {
+  const index = messages.findIndex((message) => message.id === assistantMessageId);
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const message = messages[i]!;
+    if (message.role !== "user") continue;
+    const tagged = message.taggedCharts ?? [];
+    if ((message.intent === "modify" || message.intent === "replace") && tagged.length === 1) {
+      return { chartId: tagged[0]!.chartId, mode: message.intent };
+    }
+    return null;
+  }
+  return null;
 }

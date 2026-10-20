@@ -40,6 +40,7 @@ import type {
   ToolEvent,
 } from "./ai-chart-modal/types";
 import { ChartChip, ChartTagPicker } from "./ai-chart-modal/ChartTagUi";
+import { ChartChangeCard, type ChartChangeState } from "./ai-chart-modal/ChartChangeCard";
 import {
   fetchTagIntent,
   NEEDS_SINGLE_CHART_MESSAGE,
@@ -51,13 +52,21 @@ import {
   threadTitleFromQuestion,
   type AssistantThreadSummary,
 } from "./ai-chart-modal/assistantThreads";
-import type { ChartBlockSummary } from "./dashboardEditorController";
+import {
+  buildChartBlockInput,
+  type ChartBlockSummary,
+  type ChartPayload,
+} from "./dashboardEditorController";
 import {
   buildChartRefMap,
   buildDashboardContext,
   chartLabel,
   detectMention,
+  findChangeTarget,
   nextIntent,
+  summarizeChartChange,
+  type ChartBlockSnapshot,
+  type ChartChangeMode,
   TAG_INTENT_LABELS,
   type TagIntent,
   filterChartsForPicker,
@@ -169,8 +178,6 @@ export interface AssistantPanelProps {
   focusRequest?: number;
   /** Charts on the Dashboard. When set, `@` in the prompt tags a chart. Omit to disable tagging. */
   charts?: ChartBlockSummary[];
-  /** Live spec of a chart by chart id; sent in full for tagged charts. */
-  getChartSpec?: (chartId: string) => unknown;
   /** Chip click: scroll to and highlight the chart's block (by block id). */
   onChartChipClick?: (blockId: string) => void;
   /**
@@ -184,6 +191,17 @@ export interface AssistantPanelProps {
   tagRequest?: { chartId: string; nonce: number };
   /** Tag-intent endpoint (e.g. `/api/ai/tag-intent`). When set, tagged messages get an intent (investigate/modify/replace). */
   tagIntentUrl?: string;
+  /** Snapshot of a Dashboard chart by chart id (spec, SQL, params). Replaces `getChartSpec`. */
+  getChartSnapshot?: (chartId: string) => ChartBlockSnapshot | undefined;
+  /**
+   * Apply a proposed change to a tagged chart as one editor transaction (modify keeps the chart
+   * id, replace assigns a new one). Returns false when the chart is gone. Never saves.
+   */
+  onApplyChartChange?: (change: {
+    chartId: string;
+    mode: ChartChangeMode;
+    payload: ChartPayload;
+  }) => boolean;
 }
 
 type Message = MastraChartMessage;
@@ -375,12 +393,13 @@ export function AssistantPanel({
   autoFocus = true,
   focusRequest = 0,
   charts,
-  getChartSpec,
   onChartChipClick,
   threadsUrl,
   runSqlUrl = "/api/dashboards/run-sql",
   tagRequest,
   tagIntentUrl,
+  getChartSnapshot,
+  onApplyChartChange,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
@@ -407,6 +426,7 @@ export function AssistantPanel({
   };
   const [sendError, setSendError] = useState<string | null>(null);
   const [decidingIntent, setDecidingIntent] = useState(false);
+  const [changeStates, setChangeStates] = useState<Record<string, ChartChangeState>>({});
   /** A message waiting for the user to pick its intent (both deciders failed or were unsure). */
   const [pendingIntent, setPendingIntent] = useState<{
     text: string;
@@ -759,7 +779,16 @@ export function AssistantPanel({
         : {}),
     };
     const dashboardContext = taggingEnabled
-      ? buildDashboardContext(charts ?? [], tagIds, (id) => getChartSpec?.(id), intent)
+      ? buildDashboardContext(
+          charts ?? [],
+          tagIds,
+          (id) => {
+            const snapshot = getChartSnapshot?.(id);
+            return snapshot?.jsonRenderSpec ?? snapshot?.chartSpec;
+          },
+          intent,
+          (id) => getChartSnapshot?.(id)?.params,
+        )
       : undefined;
 
     const latestResultId = shouldReuseLatestResultId(messageText)
@@ -1400,6 +1429,76 @@ export function AssistantPanel({
                             ThoughtSummaryRail={ThoughtSummaryRail}
                             onAddViz={(block) => handleAddVizBlock(block, message)}
                             onAddReport={handleAddReportToEditor}
+                            renderVizBlock={(block, preview) => {
+                              const target =
+                                taggingEnabled && onApplyChartChange
+                                  ? findChangeTarget(messages, message.id)
+                                  : null;
+                              if (!target) return null;
+                              const snapshot = getChartSnapshot?.(target.chartId);
+                              const payload: ChartPayload = {
+                                chartSpec: block.jsonRenderSpec ?? block.chartSpec,
+                                rationale: block.rationale ?? getMessageRationale(message),
+                                sql: block.sql ?? message.sql,
+                                sqlParams: block.sqlParams ?? message.sqlParams ?? null,
+                                datasourceIds: snapshot?.datasourceId
+                                  ? [snapshot.datasourceId]
+                                  : block.datasourceId
+                                    ? [block.datasourceId]
+                                    : selectedDatasourceIds,
+                                tenantFieldName: tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
+                                previewTenantId: tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
+                                resultId: block.resultId ?? block.queryResult?.resultId ?? message.resultId,
+                                question: findPrecedingUserQuestion(messages, message),
+                              };
+                              const after = {
+                                title: buildChartBlockInput(payload)?.props.title ?? "",
+                                presentationKind: block.presentationKind ?? null,
+                                sql: block.sql ?? "",
+                              };
+                              const beforeBlock = snapshot
+                                ? {
+                                    id: `before-${snapshot.chartId}`,
+                                    type: "viz" as const,
+                                    chartSpec: snapshot.chartSpec,
+                                    jsonRenderSpec: snapshot.jsonRenderSpec,
+                                    presentationKind: snapshot.presentationKind ?? undefined,
+                                    sql: snapshot.sql,
+                                    sqlParams: snapshot.params,
+                                    datasourceId: snapshot.datasourceId,
+                                  }
+                                : null;
+                              const state = changeStates[block.id] ?? "pending";
+                              return (
+                                <ChartChangeCard
+                                  mode={target.mode}
+                                  summary={
+                                    snapshot
+                                      ? summarizeChartChange(
+                                          { title: snapshot.title, presentationKind: snapshot.presentationKind, sql: snapshot.sql },
+                                          after,
+                                        )
+                                      : "The tagged chart was removed"
+                                  }
+                                  after={preview}
+                                  before={beforeBlock}
+                                  loadBeforeRows={runSqlForRestoredChart}
+                                  state={state}
+                                  targetRemoved={!snapshot && state === "pending"}
+                                  darkMode={effectiveDarkMode}
+                                  onApply={() => {
+                                    const ok = onApplyChartChange?.({ chartId: target.chartId, mode: target.mode, payload });
+                                    if (ok) {
+                                      setSendError(null);
+                                      setChangeStates((prev) => ({ ...prev, [block.id]: "applied" }));
+                                    } else {
+                                      setSendError("The chart could not be updated because it is no longer on the Dashboard.");
+                                    }
+                                  }}
+                                  onDiscard={() => setChangeStates((prev) => ({ ...prev, [block.id]: "discarded" }))}
+                                />
+                              );
+                            }}
                             resolveChartRef={
                               taggingEnabled
                                 ? (ref) => {

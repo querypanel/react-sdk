@@ -4,7 +4,12 @@ import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
 import {
   buildDashboardContext,
   chartLabel,
+  applyChartChange,
+  findChangeTarget,
   buildChartRefMap,
+  findChartBlockSnapshot,
+  summarizeChartChange,
+  type ChartEditorLike,
   chartRefKey,
   collectMissingChartIds,
   linkifyChartRefs,
@@ -223,5 +228,115 @@ describe("tag intent helpers", () => {
     const ctx = buildDashboardContext([chart({ chartId: "1" })], ["1"], () => undefined, "modify");
     expect(ctx.tagIntent).toBe("modify");
     expect(buildDashboardContext([], [], () => undefined).tagIntent).toBeUndefined();
+  });
+});
+
+describe("applyChartChange", () => {
+  const payload = { chartSpec: { kind: "chart", description: "Weekly revenue", data: [] }, sql: "select 2" };
+
+  function fakeEditor(block: { type: string; props?: Record<string, unknown> } | undefined) {
+    const calls: Array<{ op: string; args?: unknown[] }> = [];
+    const editor: ChartEditorLike = {
+      getBlock: (id) => (id === "b1" ? block : undefined),
+      transact: (fn) => {
+        calls.push({ op: "transact" });
+        fn();
+      },
+      updateBlock: (...args) => calls.push({ op: "updateBlock", args }),
+    };
+    return { editor, calls };
+  }
+
+  it("modify swaps the block in place in one transaction and keeps the chart id", () => {
+    const { editor, calls } = fakeEditor({ type: "chart", props: { chartId: "keep" } });
+    const result = applyChartChange(editor, { blockId: "b1", mode: "modify", payload, generateId: () => "new" });
+    expect(result).toEqual({ ok: true, chartId: "keep" });
+    expect(calls.map((c) => c.op)).toEqual(["transact", "updateBlock"]);
+    const [blockId, update] = calls[1]!.args as [string, { type: string; props: Record<string, string> }];
+    expect(blockId).toBe("b1");
+    expect(update.type).toBe("chart");
+    expect(update.props.chartId).toBe("keep");
+    expect(update.props.sql).toBe("select 2");
+  });
+
+  it("modify keeps the chart id even when the block type changes", () => {
+    const { editor, calls } = fakeEditor({ type: "json-render-chart", props: { chartId: "keep" } });
+    applyChartChange(editor, { blockId: "b1", mode: "modify", payload });
+    expect((calls[1]!.args as [string, { props: Record<string, string> }])[1].props.chartId).toBe("keep");
+  });
+
+  it("replace swaps in place with a new chart id, still one transaction", () => {
+    const { editor, calls } = fakeEditor({ type: "chart", props: { chartId: "old" } });
+    const result = applyChartChange(editor, { blockId: "b1", mode: "replace", payload, generateId: () => "new" });
+    expect(result).toEqual({ ok: true, chartId: "new" });
+    expect(calls.filter((c) => c.op === "transact")).toHaveLength(1);
+    expect((calls[1]!.args as [string, { props: Record<string, string> }])[1].props.chartId).toBe("new");
+  });
+
+  it("modify assigns an id when the block had none", () => {
+    const { editor } = fakeEditor({ type: "chart", props: {} });
+    expect(applyChartChange(editor, { blockId: "b1", mode: "modify", payload, generateId: () => "fresh" })).toEqual({
+      ok: true,
+      chartId: "fresh",
+    });
+  });
+
+  it("does nothing for a missing block, a non-chart block or an empty payload", () => {
+    const missing = fakeEditor(undefined);
+    expect(applyChartChange(missing.editor, { blockId: "b1", mode: "modify", payload })).toEqual({ ok: false });
+    const para = fakeEditor({ type: "paragraph" });
+    expect(applyChartChange(para.editor, { blockId: "b1", mode: "modify", payload })).toEqual({ ok: false });
+    const empty = fakeEditor({ type: "chart", props: {} });
+    expect(applyChartChange(empty.editor, { blockId: "b1", mode: "modify", payload: {} })).toEqual({ ok: false });
+    expect([missing, para, empty].flatMap((f) => f.calls)).toEqual([]);
+  });
+});
+
+describe("summarizeChartChange / findChartBlockSnapshot", () => {
+  it("describes what changed", () => {
+    const base = { title: "Revenue", presentationKind: "chart" as const, sql: "select 1" };
+    expect(summarizeChartChange(base, { ...base })).toBe("Same SQL");
+    expect(summarizeChartChange(base, { ...base, presentationKind: "table" })).toBe("Shown as table instead of chart · Same SQL");
+    expect(summarizeChartChange(base, { ...base, sql: "SELECT  2", title: "Weekly" })).toBe("Updated SQL · Title: Revenue → Weekly");
+    expect(summarizeChartChange(base, { ...base, sql: "select\n1" })).toBe("Same SQL");
+  });
+
+  it("snapshots a nested chart with parsed spec and params", () => {
+    const summaries = [chart({ chartId: "z", title: "T", sql: "select 1", datasourceIds: ["ds"] })];
+    const doc = [{ id: "cols", type: "columnList", children: [
+      { id: "b", type: "chart", props: { chartId: "z", chartSpec: '{"kind":"chart"}', sqlParams: '{"a":1}' } },
+    ] }];
+    expect(findChartBlockSnapshot(doc, "z", summaries)).toMatchObject({
+      blockId: "b", chartId: "z", sql: "select 1", params: { a: 1 }, datasourceId: "ds", chartSpec: { kind: "chart" },
+    });
+    expect(findChartBlockSnapshot(doc, "nope", summaries)).toBeUndefined();
+  });
+});
+
+describe("findChangeTarget", () => {
+  const user = (over: object) => ({ id: "u", role: "user", ...over });
+
+  it("targets the single tagged chart of a modify/replace turn", () => {
+    const messages = [user({ intent: "modify", taggedCharts: [{ chartId: "c1" }] }), { id: "a", role: "assistant" }];
+    expect(findChangeTarget(messages, "a")).toEqual({ chartId: "c1", mode: "modify" });
+    expect(findChangeTarget([user({ intent: "replace", taggedCharts: [{ chartId: "c1" }] }), { id: "a", role: "assistant" }], "a")?.mode).toBe("replace");
+  });
+
+  it("returns null for investigate, several tags, no tags or an unknown turn", () => {
+    const a = { id: "a", role: "assistant" };
+    expect(findChangeTarget([user({ intent: "investigate", taggedCharts: [{ chartId: "c1" }] }), a], "a")).toBeNull();
+    expect(findChangeTarget([user({ intent: "modify", taggedCharts: [{ chartId: "1" }, { chartId: "2" }] }), a], "a")).toBeNull();
+    expect(findChangeTarget([user({ intent: "modify" }), a], "a")).toBeNull();
+    expect(findChangeTarget([user({ intent: "modify", taggedCharts: [{ chartId: "c1" }] }), a], "missing")).toBeNull();
+  });
+
+  it("only looks at the nearest preceding user message", () => {
+    const messages = [
+      user({ id: "u1", intent: "modify", taggedCharts: [{ chartId: "c1" }] }),
+      { id: "a1", role: "assistant" },
+      user({ id: "u2" }),
+      { id: "a2", role: "assistant" },
+    ];
+    expect(findChangeTarget(messages, "a2")).toBeNull();
   });
 });
