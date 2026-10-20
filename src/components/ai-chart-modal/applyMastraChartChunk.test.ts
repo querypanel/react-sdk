@@ -97,6 +97,42 @@ describe("createMastraChartChunkHandler", () => {
 		});
 	});
 
+
+	it("starts a new paragraph for text that follows a tool result or step", () => {
+		let message: MastraChartMessage = {
+			id: "assistant-1",
+			role: "assistant",
+			kind: "turn",
+			content: "",
+			blocks: [],
+			sqlParams: null,
+			timestamp: new Date(0),
+		};
+		const handler = createMastraChartChunkHandler({
+			assistantMessageId: "assistant-1",
+			createMessageId: (prefix) => `${prefix}-1`,
+			updateAssistantMessage: (updates) => {
+				message =
+					typeof updates === "function" ? updates(message) : { ...message, ...updates };
+			},
+			setTransientStatus: () => {},
+			setToolEvents: () => {},
+			setLastSqlExecution: () => {},
+		});
+
+		handler({ type: "text-delta", textDelta: "First insight." });
+		handler({ type: "tool-result", toolName: "update_plan", result: { steps: [] } });
+		handler({ type: "text-delta", textDelta: "Second " });
+		handler({ type: "text-delta", textDelta: "insight." });
+		handler({ type: "step-finish" });
+		handler({ type: "text-delta", textDelta: "## Summary" });
+
+		expect(message.content).toBe("First insight.\n\nSecond insight.\n\n## Summary");
+		expect(message.blocks?.[0]).toMatchObject({
+			type: "text",
+			content: "First insight.\n\nSecond insight.\n\n## Summary",
+		});
+	});
 	it("materializes a data block from execute_sql", () => {
 		let message: MastraChartMessage = {
 			id: "assistant-1",
@@ -422,5 +458,80 @@ describe("markdownToSimpleEditorBlocks", () => {
 			{ type: "heading", level: 2, text: "Section" },
 			{ type: "paragraph", text: "More" },
 		]);
+	});
+
+	it("replaces the plan on each update_plan result and ignores malformed ones", () => {
+		let message: MastraChartMessage = {
+			id: "assistant-1",
+			role: "assistant",
+			kind: "turn",
+			content: "",
+			blocks: [],
+			timestamp: new Date(),
+		};
+		const toolEvents: ToolEvent[] = [
+			{ id: "t1", toolName: "update_plan", status: "running", startedAt: 0 },
+		];
+		const handler = createMastraChartChunkHandler({
+			assistantMessageId: "assistant-1",
+			createMessageId: (prefix) => `${prefix}-1`,
+			updateAssistantMessage: (updates) => {
+				message =
+					typeof updates === "function"
+						? updates(message)
+						: { ...message, ...updates };
+			},
+			setTransientStatus: () => {},
+			setToolEvents: (updater) => {
+				toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
+			},
+			setLastSqlExecution: () => {},
+		});
+
+		handler({
+			type: "tool-result",
+			toolName: "update_plan",
+			result: {
+				steps: [
+					{ id: "a", title: "Revenue", status: "in_progress" },
+					{ id: "b", title: "Churn", status: "pending" },
+				],
+			},
+		});
+		expect(message.plan).toHaveLength(2);
+		expect(toolEvents[0]?.status).toBe("succeeded");
+
+		handler({ type: "tool-result", toolName: "update_plan", result: { steps: [{ id: "a" }] } });
+		expect(message.plan).toHaveLength(2);
+
+		handler({
+			type: "tool-result",
+			toolName: "update_plan",
+			result: { steps: [{ id: "a", title: "Revenue", status: "done" }] },
+		});
+		expect(message.plan).toEqual([{ id: "a", title: "Revenue", status: "done" }]);
+	});
+});
+
+describe("collectDashboardReportBlocks with onlyVizIds", () => {
+	it("returns only the chosen viz blocks and no text", () => {
+		const message: MastraChartMessage = {
+			id: "assistant-1",
+			role: "assistant",
+			kind: "turn",
+			content: "Summary",
+			timestamp: new Date(),
+			blocks: [
+				{ id: "text-1", type: "text", content: "Summary" },
+				{ id: "viz-1", type: "viz", chartSpec: { a: 1 }, sql: "select 1" },
+				{ id: "viz-2", type: "viz", chartSpec: { b: 2 }, sql: "select 2" },
+			],
+		};
+		const all = collectDashboardReportBlocks(message);
+		expect(all.map((b) => b.type)).toEqual(["text", "viz", "viz"]);
+		const picked = collectDashboardReportBlocks(message, new Set(["viz-2"]));
+		expect(picked).toHaveLength(1);
+		expect(picked[0]).toMatchObject({ type: "viz", sql: "select 2" });
+		expect(collectDashboardReportBlocks(message, new Set())).toEqual([]);
 	});
 });

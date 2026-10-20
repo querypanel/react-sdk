@@ -25,6 +25,7 @@ export function ChartBlockFrame({
 }) {
   return (
     <div
+      data-qp-frame="outer"
       style={{
         width: "100%",
         minWidth: 0,
@@ -34,6 +35,7 @@ export function ChartBlockFrame({
       }}
     >
       <div
+        data-qp-frame="card"
         style={{
           width: "100%",
           maxWidth: "56rem",
@@ -46,6 +48,7 @@ export function ChartBlockFrame({
         }}
       >
         <div
+          data-qp-frame="header"
           style={{
             display: "flex",
             alignItems: "center",
@@ -70,6 +73,7 @@ export function ChartBlockFrame({
         ) : null}
         <div style={{ position: "relative" }}>
         <div
+          data-qp-frame="plot"
           style={{
             width: "100%",
             minWidth: 0,

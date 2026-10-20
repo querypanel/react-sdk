@@ -185,7 +185,7 @@ export function VizSpecMetric({ spec, data, colors }: VizSpecMetricProps) {
   };
 
   return (
-    <div style={styles.container}>
+    <div data-qp-frame="panel" style={styles.container}>
       {spec.title && <div style={styles.title}>{spec.title}</div>}
       <div style={styles.value}>
         {formatValue(mainValue, valueField.format)}

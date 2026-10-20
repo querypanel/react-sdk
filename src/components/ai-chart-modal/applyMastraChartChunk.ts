@@ -9,6 +9,7 @@ import {
 import { hydrateJsonRenderSpecFromRows } from "../generative-ui/specData";
 import type {
 	MastraChartMessage,
+	PlanStep,
 	ReportBlock,
 	ReportDataBlock,
 	ReportTextBlock,
@@ -58,6 +59,36 @@ function normalizeSqlParams(params: unknown): Record<string, unknown> | null {
 	}
 
 	return null;
+}
+
+const PLAN_STATUSES = ["pending", "in_progress", "done"];
+
+/** Validates an `update_plan` result; returns null when malformed so the old plan stays. */
+export function parsePlanSteps(result: Record<string, unknown>): PlanStep[] | null {
+	if (!Array.isArray(result.steps)) return null;
+	const steps: PlanStep[] = [];
+	for (const raw of result.steps) {
+		if (!raw || typeof raw !== "object") return null;
+		const step = raw as Record<string, unknown>;
+		if (
+			typeof step.id !== "string" ||
+			typeof step.title !== "string" ||
+			!step.title.trim() ||
+			typeof step.status !== "string" ||
+			!PLAN_STATUSES.includes(step.status)
+		) {
+			return null;
+		}
+		steps.push({ id: step.id, title: step.title.trim(), status: step.status as PlanStep["status"] });
+	}
+	return steps.length > 0 ? steps : null;
+}
+
+/** Blank line between text from different agent steps; nothing before the first text or after a newline. */
+export function separatorBeforeNextStep(existing: string): string {
+	if (!existing.trim()) return "";
+	if (existing.endsWith("\n\n")) return "";
+	return existing.endsWith("\n") ? "\n" : "\n\n";
 }
 
 function upsertTextBlock(
@@ -155,9 +186,14 @@ export function createMastraChartChunkHandler(
 	ctx: MastraChartChunkHandlerContext,
 ): (chunk: MastraStreamChunk) => void {
 	const { createMessageId } = ctx;
+	// Text from separate agent steps (e.g. one insight per chart) must not run together.
+	let paragraphBreakPending = false;
 
 	return (rawChunk: MastraStreamChunk) => {
 		const chunk = rawChunk;
+		if (chunk.type === "tool-result" || chunk.type === "step-finish") {
+			paragraphBreakPending = true;
+		}
 
 		if (
 			isMastraToolStartChunk(chunk) &&
@@ -212,6 +248,15 @@ export function createMastraChartChunkHandler(
 		}
 
 		const applyToolResult = (toolName: string, result: Record<string, unknown>) => {
+			if (toolName === "update_plan") {
+				finishTool("update_plan", { status: "succeeded" });
+				const plan = parsePlanSteps(result);
+				if (plan) {
+					ctx.updateAssistantMessage((current) => ({ ...current, kind: "turn", plan }));
+				}
+				return true;
+			}
+
 			if (toolName === "generate_sql") {
 				finishTool("generate_sql", { status: "succeeded" });
 				ctx.updateAssistantMessage((current) => ({
@@ -366,16 +411,19 @@ export function createMastraChartChunkHandler(
 
 		if (chunk.type === "text-delta" && chunk.textDelta) {
 			ctx.setTransientStatus(null);
-			ctx.updateAssistantMessage((current) => ({
-				...current,
-				kind: "turn",
-				content: `${current.content}${chunk.textDelta}`,
-				blocks: upsertTextBlock(
-					current.blocks ?? [],
-					createMessageId,
-					chunk.textDelta ?? "",
-				),
-			}));
+			const startsNewStep = paragraphBreakPending;
+			paragraphBreakPending = false;
+			ctx.updateAssistantMessage((current) => {
+				const delta = startsNewStep
+					? `${separatorBeforeNextStep(current.content)}${chunk.textDelta}`
+					: (chunk.textDelta as string);
+				return {
+					...current,
+					kind: "turn",
+					content: `${current.content}${delta}`,
+					blocks: upsertTextBlock(current.blocks ?? [], createMessageId, delta),
+				};
+			});
 			return;
 		}
 

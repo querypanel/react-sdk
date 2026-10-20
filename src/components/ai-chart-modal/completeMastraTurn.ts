@@ -123,11 +123,14 @@ export function completeMastraAssistantTurn(
 /** Collect insertable report sections from a completed turn. */
 export function collectDashboardReportBlocks(
 	message: MastraChartMessage,
+	/** When set, return only these viz blocks (no text), in turn order. */
+	onlyVizIds?: ReadonlySet<string>,
 ): DashboardReportInsertBlock[] {
 	const out: DashboardReportInsertBlock[] = [];
 	const blocks = message.blocks ?? [];
 
 	for (const block of blocks) {
+		if (onlyVizIds && !(block.type === "viz" && onlyVizIds.has(block.id))) continue;
 		if (block.type === "text" && block.content.trim().length > 0) {
 			out.push({ type: "text", markdown: block.content.trim() });
 		}
@@ -144,6 +147,8 @@ export function collectDashboardReportBlocks(
 			});
 		}
 	}
+
+	if (onlyVizIds) return out;
 
 	// Legacy single-viz on the message itself.
 	const hasVizBlock = out.some((b) => b.type === "viz");

@@ -82,6 +82,13 @@ export type DashboardReportInsertBlock =
 			previewTenantId?: string;
 	  };
 
+/** One step of the agent's live plan checklist (`update_plan` tool). */
+export type PlanStep = {
+	id: string;
+	title: string;
+	status: "pending" | "in_progress" | "done";
+};
+
 export type MastraChartMessage = {
 	id: string;
 	role: "user" | "assistant";
@@ -107,4 +114,6 @@ export type MastraChartMessage = {
 	toolEvents?: ToolEvent[];
 	/** Progressive report blocks for Mastra stream turns. */
 	blocks?: ReportBlock[];
+	/** Latest plan checklist for this turn (live only, not persisted in Threads). */
+	plan?: PlanStep[];
 };

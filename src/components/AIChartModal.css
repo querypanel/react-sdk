@@ -258,19 +258,6 @@
   isolation: isolate;
 }
 
-/* Blur behind the sheet can trigger scroll/layout nudges on mobile; solid scrim stays calmer. */
-@container qp-ai-panel (max-width: 52rem) {
-  [data-qp-ai-modal] .qp-ai-modal-mobile-sheet-root {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: rgba(0, 0, 0, 0.55);
-  }
-}
-
-[data-qp-ai-modal][data-qp-ai-mobile-sheet-open="true"] .qp-ai-modal-messages {
-  overflow-anchor: none;
-}
-
 @keyframes qp-ai-modal-mobile-attention {
   0%,
   100% {
@@ -278,305 +265,6 @@
   }
   50% {
     box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.12);
-  }
-}
-
-@keyframes qp-ai-modal-mobile-sheet-root-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes qp-ai-modal-mobile-sheet-in {
-  from {
-    transform: translateY(100%);
-    opacity: 0.9;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-strip {
-  flex-shrink: 0;
-  padding: 0 1rem 0.375rem;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
-  border-width: 1px;
-  border-style: solid;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  transition:
-    transform 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger:active {
-  transform: scale(0.99);
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-settings-trigger {
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(250, 245, 255, 0.75));
-  border-color: rgb(191 219 254);
-  color: #1e293b;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-settings-trigger:hover {
-  border-color: rgb(147 197 253);
-  background: linear-gradient(135deg, rgba(219, 234, 254, 1), rgba(243, 232, 255, 0.95));
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-settings-trigger {
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.22), rgba(88, 28, 135, 0.18));
-  border-color: rgba(99, 102, 241, 0.35);
-  color: #e2e8f0;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-settings-trigger:hover {
-  border-color: rgba(129, 140, 248, 0.55);
-  background: linear-gradient(135deg, rgba(30, 58, 138, 0.35), rgba(88, 28, 135, 0.28));
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-attention {
-  animation: qp-ai-modal-mobile-attention 2.4s ease-in-out infinite;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-icon {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(to bottom right, #2563eb, #9333ea);
-  color: #fff;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-kicker {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.85;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-line {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-settings-trigger-line {
-  color: #334155;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-settings-trigger-line {
-  color: #cbd5e1;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-tenant-pill {
-  flex-shrink: 0;
-  max-width: 5.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-settings-tenant-pill {
-  border-color: rgb(199 210 254);
-  background: rgba(255, 255, 255, 0.75);
-  color: #4338ca;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-settings-tenant-pill {
-  border-color: rgba(129, 140, 248, 0.45);
-  background: rgba(17, 24, 39, 0.6);
-  color: #c7d2fe;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-settings-open-hint {
-  flex-shrink: 0;
-  opacity: 0.55;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-settings-open-hint {
-  color: #64748b;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-settings-open-hint {
-  color: #94a3b8;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-root {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: flex-end;
-  justify-content: stretch;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  animation: qp-ai-modal-mobile-sheet-root-in 0.22s ease-out both;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet {
-  width: 100%;
-  max-height: min(78vh, 34rem);
-  border-radius: 1.125rem 1.125rem 0 0;
-  padding: 0 1rem 1.25rem;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-width: 1px 1px 0;
-  border-style: solid;
-  animation: qp-ai-modal-mobile-sheet-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
-  box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.4);
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-sheet {
-  background: #fafafa;
-  border-color: rgb(226 232 240);
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-sheet {
-  background: #0a0f1a;
-  border-color: rgb(39 49 69);
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-handle-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 0.625rem 0 0.25rem;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-handle {
-  width: 2.5rem;
-  height: 0.25rem;
-  border-radius: 999px;
-  opacity: 0.45;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-sheet-handle {
-  background: #94a3b8;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-sheet-handle {
-  background: #64748b;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.25rem 0 0.5rem;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-title {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-sheet-title {
-  color: #0f172a;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-sheet-title {
-  color: #f1f5f9;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-done {
-  flex-shrink: 0;
-  height: 2.25rem;
-  padding: 0 1rem;
-  border-radius: 999px;
-  border: none;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  background: linear-gradient(to right, #2563eb, #9333ea);
-  color: #fff;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-done:hover {
-  background: linear-gradient(to right, #1d4ed8, #7e22ce);
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-done:focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.65);
-  outline-offset: 2px;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-subtitle {
-  margin: 0 0 0.5rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  opacity: 0.82;
-}
-
-[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-mobile-sheet-subtitle {
-  color: #475569;
-}
-
-[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-mobile-sheet-subtitle {
-  color: #94a3b8;
-}
-
-[data-qp-ai-modal] .qp-ai-modal-mobile-sheet-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding-top: 0.125rem;
-  -webkit-overflow-scrolling: touch;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-qp-ai-modal] .qp-ai-modal-mobile-settings-trigger-attention {
-    animation: none;
-  }
-
-  [data-qp-ai-modal] .qp-ai-modal-mobile-sheet-root,
-  [data-qp-ai-modal] .qp-ai-modal-mobile-sheet {
-    animation: none;
   }
 }
 
@@ -2168,3 +1856,397 @@
   font-size: 0.75rem;
   opacity: 0.85;
 }
+
+/* Report canvas: plan checklist + selectable chart cards (Workspace rail, ~24rem wide). */
+[data-qp-ai-modal] .qp-ai-modal-plan {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+}
+[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-plan { border-color: rgb(229 231 235); background: rgb(249 250 251); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-plan { border-color: rgb(31 41 55); background: rgb(17 24 39); }
+
+[data-qp-ai-modal] .qp-ai-modal-plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  opacity: 0.65;
+}
+[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="in_progress"] { opacity: 1; font-weight: 500; }
+[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="done"] { opacity: 0.85; }
+[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="stopped"] { opacity: 0.55; }
+[data-qp-ai-modal] .qp-ai-modal-plan-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 0.875rem;
+  height: 1rem;
+}
+[data-qp-ai-modal] .qp-ai-modal-plan-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  opacity: 0.6;
+}
+[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="done"] .qp-ai-modal-plan-icon { color: rgb(22 163 74); }
+[data-qp-ai-modal] .qp-ai-modal-plan-title { min-width: 0; overflow-wrap: anywhere; }
+
+[data-qp-ai-modal] .qp-ai-modal-report-card {
+  padding: 0.625rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-report-card { border-color: rgb(229 231 235); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-report-card { border-color: rgb(31 41 55); }
+
+[data-qp-ai-modal] .qp-ai-modal-report-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+[data-qp-ai-modal] .qp-ai-modal-report-card-pick {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  cursor: pointer;
+}
+[data-qp-ai-modal] .qp-ai-modal-report-card-pick input { flex: none; margin: 0; }
+[data-qp-ai-modal] .qp-ai-modal-report-card-title {
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-qp-ai-modal] .qp-ai-modal-report-card-caption {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-qp-ai-modal] .qp-ai-modal-report-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid transparent;
+}
+/* Opaque so the narrative scrolling underneath never shows through the buttons. */
+[data-qp-ai-modal][data-theme="light"] .qp-ai-modal-report-actions-sticky { background: #fff; border-top-color: rgb(229 231 235); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-modal-report-actions-sticky { background: #030712; border-top-color: rgb(31 41 55); }
+[data-qp-ai-modal] .qp-ai-modal-report-actions-sticky .qp-ai-modal-add-chart-btn {
+  height: 2rem;
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+[data-qp-ai-modal] .qp-ai-modal-report-actions-sticky button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---------- Compact (narrow panel) layout: composer, popups, pinned plan, flat chart cards ---------- */
+
+/* Composer: one slim input row + a thin icon toolbar. */
+[data-qp-ai-modal] .qp-ai-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+[data-qp-ai-modal] .qp-ai-composer-box {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.1875rem 0.1875rem 0.75rem;
+  border: 1px solid;
+  border-radius: 0.75rem;
+  box-sizing: border-box;
+}
+[data-qp-ai-modal][data-theme="light"] .qp-ai-composer-box { background: rgb(243 244 246); border-color: rgb(229 231 235); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-composer-box { background: rgb(39 39 42); border-color: rgb(63 63 70); }
+[data-qp-ai-modal] .qp-ai-composer-box:focus-within { border-color: #6366f1; }
+[data-qp-ai-modal] .qp-ai-composer-input {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+[data-qp-ai-modal][data-theme="light"] .qp-ai-composer-input { color: #18181b; }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-composer-input { color: #fafafa; }
+[data-qp-ai-modal][data-theme="light"] .qp-ai-composer-input::placeholder { color: rgb(113 113 122); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-composer-input::placeholder { color: rgb(161 161 170); }
+[data-qp-ai-modal] .qp-ai-composer-send {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  background: linear-gradient(to right, #2563eb, #9333ea);
+}
+[data-qp-ai-modal] .qp-ai-composer-send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+[data-qp-ai-modal] .qp-ai-composer-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+[data-qp-ai-modal] .qp-ai-composer-chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.625rem;
+  min-width: 1.625rem;
+  padding: 0 0.375rem;
+  box-sizing: border-box;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+  opacity: 0.8;
+}
+[data-qp-ai-modal] .qp-ai-composer-chip:hover,
+[data-qp-ai-modal] .qp-ai-composer-chip[aria-expanded="true"] { opacity: 1; background: rgba(127, 127, 127, 0.16); }
+[data-qp-ai-modal] .qp-ai-composer-chip:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+[data-qp-ai-modal] .qp-ai-composer-chip-attention {
+  opacity: 1;
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #6366f1;
+  animation: qp-ai-modal-mobile-attention 2.4s ease-in-out infinite;
+}
+[data-qp-ai-modal] .qp-ai-composer-badge {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  min-width: 0.4375rem;
+  height: 0.4375rem;
+  padding: 0;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 0.5625rem;
+  line-height: 0.4375rem;
+  text-align: center;
+}
+[data-qp-ai-modal] .qp-ai-composer-badge:not(:empty) { min-width: 0.8125rem; height: 0.8125rem; line-height: 0.8125rem; top: 0; right: 0; }
+[data-qp-ai-modal] .qp-ai-composer-model { cursor: default; max-width: 8rem; margin-left: auto; }
+[data-qp-ai-modal] .qp-ai-composer-model-select {
+  min-width: 0;
+  max-width: 5.5rem;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: inherit;
+}
+[data-qp-ai-modal] .qp-ai-composer-model-select option { color: #111827; }
+
+/* Popups share the Datasource dropdown look: panel surface, hairline border, uppercase title. */
+[data-qp-ai-modal] .qp-ai-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.25rem);
+  z-index: 20;
+  box-sizing: border-box;
+  max-height: min(22rem, 55vh);
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+}
+[data-qp-ai-modal] .qp-ai-popup[hidden] { display: none; }
+[data-qp-ai-modal][data-theme="light"] .qp-ai-popup { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-popup { background: #111827; border-color: #334155; box-shadow: 0 10px 20px -6px rgba(0, 0, 0, 0.45); }
+[data-qp-ai-modal] .qp-ai-popup-title {
+  padding: 0.25rem 0.75rem 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+[data-qp-ai-modal] .qp-ai-popup-divider { border-top: 1px solid rgba(127, 127, 127, 0.25); margin: 0.25rem 0; }
+[data-qp-ai-modal] .qp-ai-popup-list { display: flex; flex-direction: column; gap: 0.125rem; }
+[data-qp-ai-modal] .qp-ai-popup-empty { padding: 0.375rem 0.75rem; font-size: 0.8125rem; opacity: 0.6; }
+[data-qp-ai-modal] .qp-ai-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4375rem 0.75rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+[data-qp-ai-modal] .qp-ai-popup-item:hover:not(:disabled) { background: rgba(127, 127, 127, 0.14); }
+[data-qp-ai-modal] .qp-ai-popup-item:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
+[data-qp-ai-modal] .qp-ai-popup-item:disabled { opacity: 0.5; cursor: default; }
+[data-qp-ai-modal] .qp-ai-popup-item[aria-current="true"] { background: rgba(99, 102, 241, 0.16); font-weight: 600; }
+[data-qp-ai-modal] .qp-ai-popup-item-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-qp-ai-modal] .qp-ai-popup-new { font-weight: 500; }
+[data-qp-ai-modal] .qp-ai-popup-body { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.25rem 0.5rem 0.5rem; }
+/* The selector's own dropdown expands inline inside the popup instead of floating past its edge. */
+[data-qp-ai-modal] .qp-ai-popup-body [style*="position: absolute"] {
+  position: static !important;
+  margin-top: 0.25rem !important;
+  box-shadow: none !important;
+}
+
+/* Pinned plan corridor above the composer. */
+[data-qp-ai-modal] .qp-ai-plan-corridor {
+  margin-bottom: 0.375rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+[data-qp-ai-modal][data-theme="light"] .qp-ai-plan-corridor { border-color: rgb(191 219 254); background: rgba(239, 246, 255, 0.7); }
+[data-qp-ai-modal][data-theme="dark"] .qp-ai-plan-corridor { border-color: rgba(99, 102, 241, 0.35); background: rgba(30, 58, 138, 0.18); }
+[data-qp-ai-modal] .qp-ai-plan-corridor-body { max-height: 10rem; overflow-y: auto; padding: 0.375rem 0.5rem 0; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-body .qp-ai-modal-plan { border: none; background: transparent; padding: 0 0 0.25rem; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.3125rem 0.625rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+[data-qp-ai-modal] .qp-ai-plan-corridor-bar:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-kicker { flex: none; font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-count { flex: none; opacity: 0.75; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+[data-qp-ai-modal] .qp-ai-plan-corridor-chevron { flex: none; margin-left: auto; opacity: 0.55; transition: transform 0.15s ease; }
+[data-qp-ai-modal] .qp-ai-plan-corridor[data-open="true"] .qp-ai-plan-corridor-chevron { transform: rotate(180deg); }
+
+/* Chart card header: pick + title on the left, small add button on the right. */
+[data-qp-ai-modal] .qp-ai-modal-report-card-add {
+  flex: none;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+[data-qp-ai-modal] .qp-ai-modal-report-card-add:hover:not(:disabled) { background: rgba(99, 102, 241, 0.14); }
+[data-qp-ai-modal] .qp-ai-modal-report-card-add:disabled { border-color: transparent; color: rgb(22 163 74); cursor: default; }
+[data-qp-ai-modal] .qp-ai-modal-report-card { display: flex; flex-direction: column; gap: 0.375rem; }
+
+@container qp-ai-panel (max-width: 52rem) {
+  /* Tighter vertical rhythm so more of the chat is visible. */
+  [data-qp-ai-modal] .qp-ai-modal-messages { padding: 0.5rem 0.75rem 1rem; gap: 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-msg-row { gap: 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-msg-bubble { padding: 0.25rem 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-msg-bubble.assistant { padding-left: 0; padding-right: 0; gap: 0.375rem; }
+  [data-qp-ai-modal] .qp-ai-modal-msg-bubble.user { padding: 0.375rem 0.75rem; }
+  [data-qp-ai-modal] .qp-ai-modal-report-turn { gap: 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-footer { padding: 0.375rem 0.75rem 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-empty-icon-wrap { width: 2.5rem; height: 2.5rem; margin-bottom: 0.5rem; border-radius: 0.75rem; }
+  [data-qp-ai-modal] .qp-ai-modal-empty-icon { width: 1.25rem; height: 1.25rem; }
+  [data-qp-ai-modal] .qp-ai-modal-empty-title { font-size: 0.9375rem; margin-bottom: 0.25rem; }
+  [data-qp-ai-modal] .qp-ai-modal-empty-text { font-size: 0.75rem; }
+  [data-qp-ai-modal] .qp-ai-modal-suggestions { gap: 0.375rem; margin-top: 0.625rem; }
+  [data-qp-ai-modal] .qp-ai-modal-suggestion { height: 1.625rem; padding: 0 0.625rem; }
+
+  /* One container per chart: the card. Everything the chart brings along is flattened. */
+  [data-qp-ai-modal] .qp-ai-modal-report-card { padding: 0.5rem; }
+  [data-qp-ai-modal] .qp-ai-modal-report-card .qp-ai-modal-chart-stack-preview {
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+  [data-qp-ai-modal] .qp-ai-modal-report-card .qp-ai-modal-chart-preview { height: auto; }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="outer"] { padding: 0 !important; }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="card"] {
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="plot"] {
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="plot"] { height: 15rem !important; }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="plot"]:has([data-qp-frame="panel"]) { height: auto !important; }
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="panel"] {
+    height: auto !important;
+    padding: 0.25rem 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  /* The card header already carries the title; the chart's own title row is redundant. */
+  [data-qp-ai-modal] .qp-ai-modal-report-card [data-qp-frame="header"] { display: none !important; }
+  [data-qp-ai-modal] .qp-ai-modal-report-actions-sticky { margin-top: 0.25rem; }
+}
+
+/* Assistant turn text (reports and answers): host resets zero paragraph/list margins, so space them here. */
+[data-qp-ai-modal] .qp-ai-modal-md { font-size: 0.8125rem; line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+[data-qp-ai-modal] .qp-ai-modal-md > * { margin: 0; }
+[data-qp-ai-modal] .qp-ai-modal-md > * + * { margin-top: 0.5rem; }
+[data-qp-ai-modal] .qp-ai-modal-md ul,
+[data-qp-ai-modal] .qp-ai-modal-md ol { padding-left: 1.25rem; list-style: revert; }
+[data-qp-ai-modal] .qp-ai-modal-md h1,
+[data-qp-ai-modal] .qp-ai-modal-md h2,
+[data-qp-ai-modal] .qp-ai-modal-md h3,
+[data-qp-ai-modal] .qp-ai-modal-md h4 { font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }

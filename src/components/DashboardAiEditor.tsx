@@ -744,6 +744,7 @@ export function DashboardAiEditor({
               <AssistantPanel
                 onAddChart={handleAddChart}
                 onAddReport={handleAddReport}
+                reportMode={isWorkspace}
                 organizationId={organizationId}
                 dashboardId={dashboardId}
                 dashboardType={dashboardType}

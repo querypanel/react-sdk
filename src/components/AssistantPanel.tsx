@@ -16,8 +16,11 @@ import remarkGfm from "remark-gfm";
 import {
   SparklesIcon,
   SendIcon,
-  SlidersHorizontalIcon,
   ChevronUpIcon,
+  DatabaseIcon,
+  HistoryIcon,
+  PlusIcon,
+  CpuIcon,
 } from "lucide-react";
 import { DatasourceSelector } from "./DatasourceSelector";
 import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
@@ -32,6 +35,8 @@ import {
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
+import { PlanChecklist } from "./ai-chart-modal/PlanChecklist";
+import { withDerivedPlanProgress } from "./ai-chart-modal/planProgress";
 import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import { VizSpecPreview } from "./ai-chart-modal/VizSpecPreview";
 import type {
@@ -140,6 +145,8 @@ export interface AssistantPanelProps {
   ) => void;
   /** Insert a multi-block report (text + viz) into the dashboard editor. */
   onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
+  /** Report canvas: ask the agent to plan and build several charts, and let the user add any subset. */
+  reportMode?: boolean;
   organizationId: string;
   dashboardId: string;
   initialPrompt?: string;
@@ -374,6 +381,7 @@ function JsonRenderPreview({
 export function AssistantPanel({
   onAddChart,
   onAddReport,
+  reportMode = false,
   organizationId,
   dashboardId,
   initialPrompt,
@@ -430,6 +438,11 @@ export function AssistantPanel({
   const [sendError, setSendError] = useState<string | null>(null);
   const [decidingIntent, setDecidingIntent] = useState(false);
   const [changeStates, setChangeStates] = useState<Record<string, ChartChangeState>>({});
+  /** Report cards: explicit checkbox overrides (default checked) and charts already added, by viz block id. */
+  const [vizSelected, setVizSelected] = useState<Record<string, boolean>>({});
+  const [vizAdded, setVizAdded] = useState<Record<string, boolean>>({});
+  const markVizAdded = (ids: string[]) =>
+    setVizAdded((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, true])) }));
   /** A message waiting for the user to pick its intent (both deciders failed or were unsure). */
   const [pendingIntent, setPendingIntent] = useState<{
     text: string;
@@ -580,15 +593,19 @@ export function AssistantPanel({
   const tenantFieldId = useId();
   const previewTenantIdFieldId = useId();
   const chartModelId = useId();
-  const mobileSettingsSheetTitleId = useId();
-  const mobileSettingsDoneRef = useRef<HTMLButtonElement>(null);
-  const mobileSettingsTriggerRef = useRef<HTMLButtonElement>(null);
-  const mobileSheetWasOpenRef = useRef(false);
+  const planPanelId = useId();
+  const historyPopupId = useId();
+  const dataPopupId = useId();
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const historyTriggerRef = useRef<HTMLButtonElement>(null);
+  const dataTriggerRef = useRef<HTMLButtonElement>(null);
   /** Prevents duplicate error rows when catch runs more than once (e.g. React Strict Mode). */
   const streamFailureHandledRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const isNarrowLayout = useAiPanelNarrowLayout(panelRef);
-  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  /** Compact layout: which composer toolbar popup is open. */
+  const [openPopup, setOpenPopup] = useState<"history" | "data" | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const effectiveDarkMode = darkMode;
 
@@ -628,37 +645,43 @@ export function AssistantPanel({
   }, [onStatusChange, isLoading, transientStatus, querypanelSessionId]);
 
   useEffect(() => {
-    if (!isNarrowLayout) setMobileSettingsOpen(false);
+    if (!isNarrowLayout) setOpenPopup(null);
   }, [isNarrowLayout]);
 
+  // Escape or a click outside the toolbar closes the open popup.
   useEffect(() => {
-    if (!isNarrowLayout || !mobileSettingsOpen) return;
+    if (!openPopup) return;
+    const trigger = openPopup === "history" ? historyTriggerRef : dataTriggerRef;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        setMobileSettingsOpen(false);
-      }
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpenPopup(null);
+      trigger.current?.focus({ preventScroll: true });
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (!toolbarRef.current?.contains(e.target as Node)) setOpenPopup(null);
     };
     document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [isNarrowLayout, mobileSettingsOpen]);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [openPopup]);
 
-  useLayoutEffect(() => {
-    if (!isNarrowLayout) {
-      mobileSheetWasOpenRef.current = false;
-      return;
+  // The newest turn's plan is pinned above the composer: open while it runs, collapsed once finished.
+  const pinnedPlanMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]!.role === "assistant") return messages[i]!.plan?.length ? messages[i]! : null;
     }
-    if (mobileSettingsOpen) {
-      mobileSheetWasOpenRef.current = true;
-      mobileSettingsDoneRef.current?.focus({ preventScroll: true });
-      return;
-    }
-    if (mobileSheetWasOpenRef.current) {
-      mobileSheetWasOpenRef.current = false;
-      mobileSettingsTriggerRef.current?.focus({ preventScroll: true });
-    }
-  }, [isNarrowLayout, mobileSettingsOpen]);
+    return null;
+  }, [messages]);
+  const pinnedPlanId = pinnedPlanMessage?.id ?? null;
+  const pinnedPlanRunning = pinnedPlanId !== null && isLoading && pinnedPlanId === activeAssistantMessageId;
+  useEffect(() => {
+    setPlanOpen(pinnedPlanRunning);
+  }, [pinnedPlanId, pinnedPlanRunning]);
 
   useEffect(() => {
     setTenantFieldName(
@@ -881,6 +904,7 @@ export function AssistantPanel({
               datasourceId: requestDatasourceId,
               dashboardId,
               dashboardType,
+              ...(reportMode ? { reportMode: true } : {}),
               ...(dashboardContext ? { dashboardContext } : {}),
               ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(!tenantInputsEnabled
@@ -1108,6 +1132,7 @@ export function AssistantPanel({
   };
 
   const handleAddVizBlock = (block: ReportVizBlock, turn?: Message) => {
+    markVizAdded([block.id]);
     onAddChart(
       block.jsonRenderSpec ?? block.chartSpec,
       block.rationale ?? (turn ? getMessageRationale(turn) : undefined),
@@ -1121,9 +1146,13 @@ export function AssistantPanel({
     );
   };
 
-  const handleAddReportToEditor = (message: Message) => {
+  /** Whole report (text + charts), or only `onlyVizIds` charts without text. */
+  const handleAddReportToEditor = (message: Message, onlyVizIds?: string[]) => {
     const question = findPrecedingUserQuestion(messages, message);
-    const blocks = collectDashboardReportBlocks(message).map((block) => {
+    const blocks = collectDashboardReportBlocks(
+      message,
+      onlyVizIds ? new Set(onlyVizIds) : undefined
+    ).map((block) => {
       if (block.type !== "viz") return block;
       return {
         ...block,
@@ -1138,6 +1167,10 @@ export function AssistantPanel({
       };
     });
     if (blocks.length === 0) return;
+    markVizAdded(
+      onlyVizIds ??
+        (message.blocks ?? []).filter((b) => b.type === "viz").map((b) => b.id)
+    );
     if (onAddReport) {
       onAddReport(blocks);
       return;
@@ -1197,19 +1230,26 @@ export function AssistantPanel({
       e.preventDefault();
       handleSendMessage();
     } else if (e.key === "Escape") {
-      if (isNarrowLayout && mobileSettingsOpen) {
-        e.preventDefault();
-        setMobileSettingsOpen(false);
-        return;
-      }
       onRequestClose?.();
     }
   };
 
   const tenantSettingsVisible = tenantInputsEnabled;
+  const pinnedPlanSteps = isNarrowLayout
+    ? withDerivedPlanProgress(
+        pinnedPlanMessage?.plan ?? [],
+        (pinnedPlanMessage?.blocks ?? []).filter((block) => block.type === "viz").length,
+        pinnedPlanRunning,
+      )
+    : [];
+  const pinnedPlanDone = pinnedPlanSteps.filter((step) => step.status === "done").length;
+  const pinnedPlanCurrent = pinnedPlanRunning
+    ? pinnedPlanSteps.find((step) => step.status === "in_progress")
+    : undefined;
+
   const datasourceSummaryShort =
     selectedDatasourceIds.length === 0
-      ? "Tap to choose a datasource"
+      ? "Choose a datasource"
       : selectedDatasourceIds.length === 1
         ? "1 datasource selected"
         : `${selectedDatasourceIds.length} datasources selected`;
@@ -1271,16 +1311,12 @@ export function AssistantPanel({
       className="qp-ai-assistant-panel"
       data-qp-ai-modal
       data-theme={effectiveDarkMode ? "dark" : "light"}
-      data-qp-ai-mobile-sheet-open={isNarrowLayout && mobileSettingsOpen ? "true" : undefined}
     >
           <div
             className={`qp-ai-modal-body qp-ai-modal-body-split${isNarrowLayout ? " qp-ai-modal-body-narrow" : ""}`}
           >
-            <div
-              className="qp-ai-modal-chat-pane"
-              inert={isNarrowLayout && mobileSettingsOpen ? true : undefined}
-            >
-              {threadsClient && (
+            <div className="qp-ai-modal-chat-pane">
+              {threadsClient && !isNarrowLayout && (
                 <div className="qp-ai-thread-bar">
                   <select
                     className="qp-ai-thread-select"
@@ -1440,8 +1476,25 @@ export function AssistantPanel({
                             darkMode={effectiveDarkMode}
                             datasourceCount={selectedDatasourceIds.length}
                             ThoughtSummaryRail={ThoughtSummaryRail}
+                            hidePlan={isNarrowLayout && message.id === pinnedPlanId}
                             onAddViz={(block) => handleAddVizBlock(block, message)}
-                            onAddReport={handleAddReportToEditor}
+                            onAddReport={(turn) => handleAddReportToEditor(turn)}
+                            selection={
+                              reportMode &&
+                              (message.blocks ?? []).filter((b) => b.type === "viz").length >= 2
+                                ? {
+                                    isSelected: (id) => vizSelected[id] ?? true,
+                                    isAdded: (id) => Boolean(vizAdded[id]),
+                                    onToggle: (id) =>
+                                      setVizSelected((prev) => ({ ...prev, [id]: !(prev[id] ?? true) })),
+                                    onAddSelected: (ids) => handleAddReportToEditor(message, ids),
+                                    getTitle: (block) =>
+                                      buildChartBlockInput({
+                                        chartSpec: block.jsonRenderSpec ?? block.chartSpec,
+                                      })?.props.title || undefined,
+                                  }
+                                : undefined
+                            }
                             renderVizBlock={(block, preview) => {
                               const target =
                                 taggingEnabled && onApplyChartChange
@@ -1584,35 +1637,6 @@ export function AssistantPanel({
                 <div ref={messagesEndRef} />
               </div>
 
-              {isNarrowLayout && (
-                <div className="qp-ai-modal-mobile-settings-strip">
-                  <button
-                    ref={mobileSettingsTriggerRef}
-                    type="button"
-                    className={`qp-ai-modal-mobile-settings-trigger${
-                      selectedDatasourceIds.length === 0 ? " qp-ai-modal-mobile-settings-trigger-attention" : ""
-                    }`}
-                    onClick={() => setMobileSettingsOpen(true)}
-                    aria-expanded={mobileSettingsOpen}
-                    aria-controls="qp-ai-chart-mobile-settings-sheet"
-                  >
-                    <span className="qp-ai-modal-mobile-settings-trigger-icon" aria-hidden>
-                      <SlidersHorizontalIcon className="w-4 h-4" />
-                    </span>
-                    <span className="qp-ai-modal-mobile-settings-trigger-copy">
-                      <span className="qp-ai-modal-mobile-settings-trigger-kicker">Data & preview</span>
-                      <span className="qp-ai-modal-mobile-settings-trigger-line">{datasourceSummaryShort}</span>
-                    </span>
-                    {tenantSettingsVisible && previewTenantId.trim() ? (
-                      <span className="qp-ai-modal-mobile-settings-tenant-pill" title="Preview tenant">
-                        {previewTenantId.trim()}
-                      </span>
-                    ) : null}
-                    <ChevronUpIcon className="qp-ai-modal-mobile-settings-open-hint w-4 h-4" aria-hidden />
-                  </button>
-                </div>
-              )}
-
               <div className="qp-ai-modal-footer">
                 {mention && (
                   <ChartTagPicker
@@ -1663,49 +1687,208 @@ export function AssistantPanel({
                     ))}
                   </div>
                 )}
-                <div className="qp-ai-modal-pill-compose">
-                  <input
-                    ref={promptInputRef}
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => {
-                      setInputValue(e.target.value);
-                      setPickerIndex(0);
-                      setPendingIntent(null);
-                    }}
-                    onKeyDown={handlePromptKeyDown}
-                    placeholder="Ask a question or request a chart or table"
-                    className="qp-ai-modal-pill-input"
-                    aria-label="Chart prompt"
-                    autoComplete="off"
-                  />
-                  {chartModelOptions.length > 0 && (
-                    <select
-                      id={chartModelId}
-                      className="qp-ai-modal-pill-model"
-                      value=""
-                      onChange={undefined}
-                      disabled
-                      title="Model (server default)"
-                      aria-label="Model (server default)"
+                {isNarrowLayout && pinnedPlanSteps.length > 0 && (
+                  <div className="qp-ai-plan-corridor" data-open={planOpen ? "true" : "false"}>
+                    {planOpen && (
+                      <div id={planPanelId} className="qp-ai-plan-corridor-body">
+                        <PlanChecklist steps={pinnedPlanSteps} stopped={!pinnedPlanRunning} />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="qp-ai-plan-corridor-bar"
+                      aria-expanded={planOpen}
+                      aria-controls={planPanelId}
+                      onClick={() => setPlanOpen((open) => !open)}
                     >
-                      {chartModelOptions.map((opt, i) => (
-                        <option key={`${i}-${opt.label}`} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleSendMessage()}
-                    disabled={!inputValue.trim() || isLoading}
-                    className="qp-ai-modal-pill-send"
-                    aria-label="Send message"
-                  >
-                    <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
-                  </button>
-                </div>
+                      <span className="qp-ai-plan-corridor-kicker">Plan</span>
+                      <span className="qp-ai-plan-corridor-count">
+                        {pinnedPlanDone}/{pinnedPlanSteps.length} done
+                      </span>
+                      {pinnedPlanCurrent && !planOpen ? (
+                        <span className="qp-ai-plan-corridor-current">{pinnedPlanCurrent.title}</span>
+                      ) : null}
+                      <ChevronUpIcon className="qp-ai-plan-corridor-chevron w-4 h-4" aria-hidden />
+                    </button>
+                  </div>
+                )}
+                {isNarrowLayout ? (
+                  <div className="qp-ai-composer">
+                    <div className="qp-ai-composer-box">
+                      <input
+                        ref={promptInputRef}
+                        type="text"
+                        value={inputValue}
+                        onChange={(e) => {
+                          setInputValue(e.target.value);
+                          setPickerIndex(0);
+                          setPendingIntent(null);
+                        }}
+                        onKeyDown={handlePromptKeyDown}
+                        placeholder="Ask a question or request a chart"
+                        className="qp-ai-composer-input"
+                        aria-label="Chart prompt"
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSendMessage()}
+                        disabled={!inputValue.trim() || isLoading}
+                        className="qp-ai-composer-send"
+                        aria-label="Send message"
+                      >
+                        <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
+                      </button>
+                    </div>
+                    <div className="qp-ai-composer-toolbar" ref={toolbarRef}>
+                      {threadsClient && (
+                        <button
+                          ref={historyTriggerRef}
+                          type="button"
+                          className="qp-ai-composer-chip"
+                          aria-label="Chat history"
+                          title="Chat history"
+                          aria-haspopup="dialog"
+                          aria-expanded={openPopup === "history"}
+                          aria-controls={historyPopupId}
+                          onClick={() => setOpenPopup((cur) => (cur === "history" ? null : "history"))}
+                        >
+                          <HistoryIcon className="w-4 h-4" aria-hidden />
+                        </button>
+                      )}
+                      <button
+                        ref={dataTriggerRef}
+                        type="button"
+                        className={`qp-ai-composer-chip${selectedDatasourceIds.length === 0 ? " qp-ai-composer-chip-attention" : ""}`}
+                        aria-label={`Data and preview settings, ${datasourceSummaryShort}`}
+                        title={datasourceSummaryShort}
+                        aria-haspopup="dialog"
+                        aria-expanded={openPopup === "data"}
+                        aria-controls={dataPopupId}
+                        onClick={() => setOpenPopup((cur) => (cur === "data" ? null : "data"))}
+                      >
+                        <DatabaseIcon className="w-4 h-4" aria-hidden />
+                        {selectedDatasourceIds.length > 0 && (
+                          <span className="qp-ai-composer-badge" aria-hidden>
+                            {selectedDatasourceIds.length > 1 ? selectedDatasourceIds.length : ""}
+                          </span>
+                        )}
+                      </button>
+                      {chartModelOptions.length > 0 && (
+                        <label className="qp-ai-composer-chip qp-ai-composer-model" title="Model (server default)">
+                          <CpuIcon className="w-4 h-4" aria-hidden />
+                          <select
+                            className="qp-ai-composer-model-select"
+                            value={enableModelOverride ? chartModel : ""}
+                            onChange={enableModelOverride ? (e) => setChartModel(e.target.value) : undefined}
+                            disabled={!enableModelOverride}
+                            aria-label="Model (server default)"
+                          >
+                            {chartModelOptions.map((opt, i) => (
+                              <option key={`${i}-${opt.label}`} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {threadsClient && openPopup === "history" && (
+                        <div id={historyPopupId} className="qp-ai-popup" role="dialog" aria-label="Chat history">
+                          <div className="qp-ai-popup-title">Conversations</div>
+                          <button
+                            type="button"
+                            className="qp-ai-popup-item qp-ai-popup-new"
+                            disabled={isLoading || threadsLoading || (!activeThread && messages.length === 0)}
+                            onClick={() => {
+                              startNewConversation();
+                              setOpenPopup(null);
+                            }}
+                          >
+                            <PlusIcon className="w-4 h-4" aria-hidden />
+                            New conversation
+                          </button>
+                          <div className="qp-ai-popup-divider" />
+                          <div className="qp-ai-popup-list">
+                            {threads.length === 0 && <div className="qp-ai-popup-empty">No conversations yet</div>}
+                            {threads.map((thread) => (
+                              <button
+                                key={thread.id}
+                                type="button"
+                                className="qp-ai-popup-item"
+                                aria-current={thread.id === activeThread?.id ? "true" : undefined}
+                                disabled={isLoading || threadsLoading}
+                                onClick={() => {
+                                  setOpenPopup(null);
+                                  if (thread.id !== activeThread?.id) void openThread(thread);
+                                }}
+                              >
+                                <span className="qp-ai-popup-item-label">{thread.title}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Always mounted (only hidden while closed): the selector auto-selects a lone
+                          datasource on mount, which must happen even if the popup is never opened. */}
+                      <div
+                        id={dataPopupId}
+                        className="qp-ai-popup qp-ai-popup-data"
+                        role="dialog"
+                        aria-label="Data and preview settings"
+                        hidden={openPopup !== "data"}
+                      >
+                        <div className="qp-ai-popup-title">Data &amp; preview</div>
+                        <div className="qp-ai-popup-body">{settingsPaneInner}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="qp-ai-modal-pill-compose">
+                    <input
+                      ref={promptInputRef}
+                      type="text"
+                      value={inputValue}
+                      onChange={(e) => {
+                        setInputValue(e.target.value);
+                        setPickerIndex(0);
+                        setPendingIntent(null);
+                      }}
+                      onKeyDown={handlePromptKeyDown}
+                      placeholder="Ask a question or request a chart or table"
+                      className="qp-ai-modal-pill-input"
+                      aria-label="Chart prompt"
+                      autoComplete="off"
+                    />
+                    {chartModelOptions.length > 0 && (
+                      <select
+                        id={chartModelId}
+                        className="qp-ai-modal-pill-model"
+                        value=""
+                        onChange={undefined}
+                        disabled
+                        title="Model (server default)"
+                        aria-label="Model (server default)"
+                      >
+                        {chartModelOptions.map((opt, i) => (
+                          <option key={`${i}-${opt.label}`} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage()}
+                      disabled={!inputValue.trim() || isLoading}
+                      className="qp-ai-modal-pill-send"
+                      aria-label="Send message"
+                    >
+                      <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1715,52 +1898,6 @@ export function AssistantPanel({
               </aside>
             )}
 
-            {/* Keep the settings mounted while the sheet is closed so the datasource selector still
-                loads and auto-selects a lone datasource (it only does so on mount). */}
-            {isNarrowLayout && !mobileSettingsOpen ? (
-              <div hidden aria-hidden="true">
-                {settingsPaneInner}
-              </div>
-            ) : null}
-
-            {isNarrowLayout && mobileSettingsOpen ? (
-              <div
-                className="qp-ai-modal-mobile-sheet-root"
-                role="presentation"
-                onClick={() => setMobileSettingsOpen(false)}
-              >
-                <div
-                  id="qp-ai-chart-mobile-settings-sheet"
-                  className="qp-ai-modal-mobile-sheet"
-                  role="region"
-                  aria-labelledby={mobileSettingsSheetTitleId}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="qp-ai-modal-mobile-sheet-handle-wrap" aria-hidden>
-                    <span className="qp-ai-modal-mobile-sheet-handle" />
-                  </div>
-                  <div className="qp-ai-modal-mobile-sheet-toolbar">
-                    <h3 className="qp-ai-modal-mobile-sheet-title" id={mobileSettingsSheetTitleId}>
-                      Data & preview
-                    </h3>
-                    <button
-                      ref={mobileSettingsDoneRef}
-                      type="button"
-                      className="qp-ai-modal-mobile-sheet-done"
-                      onClick={() => setMobileSettingsOpen(false)}
-                    >
-                      Done
-                    </button>
-                  </div>
-                  <p className="qp-ai-modal-mobile-sheet-subtitle">
-                    {tenantSettingsVisible
-                      ? "Pick where the chart runs and how tenant preview is applied."
-                      : "Pick the datasource used to answer your question."}
-                  </p>
-                  <div className="qp-ai-modal-mobile-sheet-body">{settingsPaneInner}</div>
-                </div>
-              </div>
-            ) : null}
           </div>
     </div>
     </NarrowLayoutContext.Provider>

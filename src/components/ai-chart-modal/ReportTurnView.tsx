@@ -10,6 +10,8 @@ import {
 	hydrateJsonRenderSpecFromRows,
 } from "../generative-ui/specData";
 import { formatToolStatus } from "./mastraChartStream";
+import { PlanChecklist } from "./PlanChecklist";
+import { withDerivedPlanProgress } from "./planProgress";
 import { VizSpecPreview } from "./VizSpecPreview";
 import { ChartChip } from "./ChartTagUi";
 import { CHART_REF_HREF_PREFIX, linkifyChartRefs } from "../workspaceState";
@@ -179,6 +181,17 @@ export function VizPreview({
 	);
 }
 
+/** Per-chart checkbox + "Added" state for report turns with several charts. */
+export type VizSelection = {
+	isSelected: (vizId: string) => boolean;
+	isAdded: (vizId: string) => boolean;
+	onToggle: (vizId: string) => void;
+	/** Insert only these charts (no text). */
+	onAddSelected: (vizIds: string[]) => void;
+	/** Card heading for a chart. */
+	getTitle: (block: ReportVizBlock) => string | undefined;
+};
+
 export function ReportTurnView({
 	message,
 	isActive,
@@ -195,6 +208,8 @@ export function ReportTurnView({
 	onAddReport,
 	resolveChartRef,
 	renderVizBlock,
+	selection,
+	hidePlan = false,
 }: {
 	message: MastraChartMessage;
 	isActive: boolean;
@@ -216,6 +231,10 @@ export function ReportTurnView({
 	 * keep the default.
 	 */
 	renderVizBlock?: (block: ReportVizBlock, preview: ReactNode) => ReactNode | null;
+	/** When set, each chart renders as a selectable card with an "Add selected" footer. */
+	selection?: VizSelection;
+	/** The host pins this turn's plan above the composer, so do not repeat it inline. */
+	hidePlan?: boolean;
 }) {
 	const liveTools = isActive && isLoading ? toolEvents : [];
 	const finishedTools = message.toolEvents ?? [];
@@ -226,6 +245,12 @@ export function ReportTurnView({
 		hasViz ||
 		blocks.some((b) => b.type === "text" && b.content.trim().length > 0) ||
 		Boolean(message.jsonRenderSpec || message.chartSpec);
+
+	const pendingSelectedIds = selection
+		? vizBlocks
+				.filter((b) => selection.isSelected(b.id) && !selection.isAdded(b.id))
+				.map((b) => b.id)
+		: [];
 
 	const fallbackRows =
 		Array.isArray(message.queryResult?.rows) && message.queryResult.rows.length > 0
@@ -262,8 +287,21 @@ export function ReportTurnView({
 				<ThoughtSummaryRail events={finishedTools} />
 			)}
 
+			{!hidePlan && message.plan && message.plan.length > 0 && (
+				<PlanChecklist
+					steps={withDerivedPlanProgress(
+						message.plan,
+						blocks.filter((block) => block.type === "viz").length,
+						isActive && isLoading,
+					)}
+					stopped={!(isActive && isLoading)}
+				/>
+			)}
+
 			{blocks.map((block) => {
 				if (block.type === "text") {
+					// An empty text block (e.g. before the first token) would only add a gap.
+					if (!block.content.trim() && !(block.streaming && isActive && isLoading)) return null;
 					return (
 						<div key={block.id} className="qp-ai-modal-report-text">
 							<AssistantMessageMarkdown content={block.content} resolveChartRef={resolveChartRef} />
@@ -307,6 +345,37 @@ export function ReportTurnView({
 							</div>
 						);
 					}
+					if (selection) {
+						const added = selection.isAdded(block.id);
+						const title = selection.getTitle(block);
+						return (
+							<div key={block.id} className="qp-ai-modal-report-viz qp-ai-modal-report-card">
+								<div className="qp-ai-modal-report-card-head">
+									<label className="qp-ai-modal-report-card-pick">
+										<input
+											type="checkbox"
+											checked={added || selection.isSelected(block.id)}
+											disabled={added}
+											onChange={() => selection.onToggle(block.id)}
+										/>
+										<span className="qp-ai-modal-report-card-title">{title || "Chart"}</span>
+									</label>
+									<button
+										type="button"
+										disabled={added}
+										onClick={() => onAddViz(block)}
+										className="qp-ai-modal-report-card-add"
+									>
+										{added ? "Added \u2713" : "Add to dashboard"}
+									</button>
+								</div>
+								{block.rationale ? (
+									<p className="qp-ai-modal-report-card-caption">{block.rationale}</p>
+								) : null}
+								{preview}
+							</div>
+						);
+					}
 					return (
 						<div key={block.id} className="qp-ai-modal-report-viz">
 							{preview}
@@ -346,7 +415,28 @@ export function ReportTurnView({
 				</div>
 			)}
 
-			{!isLoading && canAddReport && (
+			{selection && canAddReport && (
+				<div className="qp-ai-modal-report-actions qp-ai-modal-report-actions-sticky">
+					<button
+						type="button"
+						disabled={isLoading || pendingSelectedIds.length === 0}
+						onClick={() => selection.onAddSelected(pendingSelectedIds)}
+						className="qp-ai-modal-add-chart-btn"
+					>
+						Add selected ({pendingSelectedIds.length})
+					</button>
+					<button
+						type="button"
+						disabled={isLoading}
+						onClick={() => onAddReport(message)}
+						className="qp-ai-modal-add-report-btn"
+					>
+						Add report to dashboard
+					</button>
+				</div>
+			)}
+
+			{!selection && !isLoading && canAddReport && (
 				<div className="qp-ai-modal-report-actions">
 					<button
 						type="button"

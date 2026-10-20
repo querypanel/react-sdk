@@ -228,6 +228,8 @@ export function formatToolStatus(toolName: string) {
 			return "Running SQL";
 		case "generate_visualization":
 			return "Building visualization";
+		case "update_plan":
+			return "Planning";
 		default:
 			return toolName
 				.split("_")

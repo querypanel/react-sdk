@@ -191,6 +191,7 @@ function ChartShell({
 
   return (
     <div
+      data-qp-frame="card"
       style={{
         border: `1px solid ${colors.border}`,
         borderRadius: "0.75rem",
@@ -200,6 +201,7 @@ function ChartShell({
     >
       {showHeader ? (
         <div
+          data-qp-frame="header"
           style={{
             display: "flex",
             alignItems: "center",
@@ -266,6 +268,7 @@ export function MetricCard({
 
   return (
     <div
+      data-qp-frame="card"
       style={{
         border: `1px solid ${colors.border}`,
         borderRadius: "0.75rem",
