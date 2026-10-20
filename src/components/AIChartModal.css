@@ -259,7 +259,7 @@
 }
 
 /* Blur behind the sheet can trigger scroll/layout nudges on mobile; solid scrim stays calmer. */
-@media (max-width: 52rem) {
+@container qp-ai-panel (max-width: 52rem) {
   [data-qp-ai-modal] .qp-ai-modal-mobile-sheet-root {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -655,7 +655,7 @@
   color: #f9fafb;
 }
 
-@media (max-width: 52rem) {
+@container qp-ai-panel (max-width: 52rem) {
   [data-qp-ai-modal] .qp-ai-modal-body-split {
     flex-direction: column;
   }
@@ -1137,7 +1137,7 @@
   height: 280px;
 }
 
-@media (max-width: 52rem) {
+@container qp-ai-panel (max-width: 52rem) {
   [data-qp-ai-modal] .qp-ai-modal-msg-bubble.assistant {
     max-width: 100%;
   }
@@ -1932,6 +1932,8 @@
 
 /* Inline AssistantPanel root: fills whatever container hosts it (modal dialog or workspace pane). */
 [data-qp-ai-modal].qp-ai-assistant-panel {
+  /* Narrow-layout rules key off the panel's own width (modal, Workspace rail or drawer), not the viewport. */
+  container: qp-ai-panel / inline-size;
   flex: 1;
   display: flex;
   flex-direction: column;

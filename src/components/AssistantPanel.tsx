@@ -6,8 +6,10 @@ import {
   useEffect,
   useLayoutEffect,
   useId,
-  useSyncExternalStore,
   useMemo,
+  createContext,
+  useContext,
+  type RefObject,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -217,26 +219,27 @@ function isMastraAgentStreamUrl(url: string) {
   return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
 }
 
-const AI_CHART_MODAL_NARROW_QUERY = "(max-width: 52rem)";
+/** 52rem at the default 16px root; keep in sync with the `@container qp-ai-panel` rules in AIChartModal.css. */
+const AI_PANEL_NARROW_MAX_WIDTH_PX = 832;
 
-function subscribeAiChartModalNarrow(onChange: () => void) {
-  if (typeof window === "undefined") return () => {};
-  const mq = window.matchMedia(AI_CHART_MODAL_NARROW_QUERY);
-  mq.addEventListener("change", onChange);
-  return () => mq.removeEventListener("change", onChange);
-}
+/** True when the Assistant panel itself (not the viewport) is narrow, e.g. the Workspace rail or drawer. */
+const NarrowLayoutContext = createContext(false);
 
-function getAiChartModalNarrowSnapshot() {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia(AI_CHART_MODAL_NARROW_QUERY).matches;
-}
-
-function useAiChartModalNarrowLayout() {
-  return useSyncExternalStore(
-    subscribeAiChartModalNarrow,
-    getAiChartModalNarrowSnapshot,
-    () => false
-  );
+function useAiPanelNarrowLayout(ref: RefObject<HTMLElement | null>) {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = (width: number) => setNarrow(width <= AI_PANEL_NARROW_MAX_WIDTH_PX);
+    update(el.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return narrow;
 }
 
 /**
@@ -354,7 +357,7 @@ function JsonRenderPreview({
   queryResultBaseUrl: string;
   requestHeaders?: Record<string, string>;
 }) {
-  const isNarrowChart = useAiChartModalNarrowLayout();
+  const isNarrowChart = useContext(NarrowLayoutContext);
 
   return (
     <div
@@ -576,7 +579,8 @@ export function AssistantPanel({
   const mobileSheetWasOpenRef = useRef(false);
   /** Prevents duplicate error rows when catch runs more than once (e.g. React Strict Mode). */
   const streamFailureHandledRef = useRef(false);
-  const isNarrowLayout = useAiChartModalNarrowLayout();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const isNarrowLayout = useAiPanelNarrowLayout(panelRef);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   const effectiveDarkMode = darkMode;
@@ -1254,7 +1258,9 @@ export function AssistantPanel({
   );
 
   return (
+    <NarrowLayoutContext.Provider value={isNarrowLayout}>
     <div
+      ref={panelRef}
       className="qp-ai-assistant-panel"
       data-qp-ai-modal
       data-theme={effectiveDarkMode ? "dark" : "light"}
@@ -1742,5 +1748,6 @@ export function AssistantPanel({
             ) : null}
           </div>
     </div>
+    </NarrowLayoutContext.Provider>
   );
 }

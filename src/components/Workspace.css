@@ -114,13 +114,14 @@
 }
 
 /* Drawer mode: Assistant overlays the Dashboard */
+/* Fixed to the viewport so the drawer and its button stay reachable on a long, scrolled Dashboard. */
 .qp-workspace[data-mode="drawer"] .qp-workspace-assistant {
-  position: absolute;
-  top: 0;
-  right: 0;
+  position: fixed;
+  top: 4.5rem;
+  right: 1rem;
   z-index: 30;
-  width: min(26rem, 100%);
-  height: min(100%, calc(100vh - 6rem));
+  width: min(26rem, calc(100vw - 2rem));
+  height: calc(100vh - 6rem);
   margin-left: 0;
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
 }
@@ -130,7 +131,7 @@
 }
 
 .qp-workspace-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 29;
   border: 0;
@@ -139,9 +140,9 @@
 }
 
 .qp-workspace-fab {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
   z-index: 20;
   display: inline-flex;
   align-items: center;
