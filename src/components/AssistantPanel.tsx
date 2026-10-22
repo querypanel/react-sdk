@@ -65,6 +65,7 @@ import {
   fetchTagIntent,
   NEEDS_SINGLE_CHART_MESSAGE,
 } from "./ai-chart-modal/tagIntent";
+import { settleRunningTools, withStreamFailure } from "./ai-chart-modal/streamFailure";
 import { threadTitleFromQuestion } from "./ai-chart-modal/assistantThreads";
 import { useAssistantThreads } from "./ai-chart-modal/useAssistantThreads";
 import {
@@ -789,11 +790,7 @@ export function AssistantPanel({
         // (Strict Mode double-invokes updaters and would duplicate ask blocks).
         let finalizedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {
-          finalizedToolEvents = current.map((event) =>
-            event.status === "running"
-              ? { ...event, status: "succeeded" as const, endedAt: Date.now() }
-              : event,
-          );
+          finalizedToolEvents = settleRunningTools(current, { status: "succeeded" });
           return [];
         });
         updateAssistantMessage((msg) =>
@@ -862,81 +859,12 @@ export function AssistantPanel({
             : "Sorry, I couldn't finish that request. Please try again or rephrase.";
         let finalisedToolEvents: ToolEvent[] = [];
         setToolEvents((current) => {
-          finalisedToolEvents = current.map((event) =>
-            event.status === "running"
-              ? { ...event, status: "failed" as const, endedAt: Date.now(), error: "Failed" }
-              : event
-          );
+          finalisedToolEvents = settleRunningTools(current, { status: "failed", error: "Failed" });
           return [];
         });
-        setMessages((prev) => {
-          // Keep the in-progress turn (text/data/viz) and attach a visible error ask.
-          if (assistantMessageId) {
-            const hasTurn = prev.some((m) => m.id === assistantMessageId);
-            if (hasTurn) {
-              return prev.map((message) => {
-                if (message.id !== assistantMessageId) return message;
-                const withTools: Message = {
-                  ...message,
-                  kind: "turn",
-                  toolEvents:
-                    finalisedToolEvents.length > 0
-                      ? finalisedToolEvents
-                      : message.toolEvents,
-                };
-                const completed = completeMastraAssistantTurn(
-                  withTools,
-                  createMessageId,
-                );
-                const askAlready =
-                  completed.blocks?.some(
-                    (b) =>
-                      b.type === "ask" &&
-                      b.content.toLowerCase().includes(errorContent.toLowerCase().slice(0, 24)),
-                  ) ?? false;
-                if (askAlready) return completed;
-                return {
-                  ...completed,
-                  blocks: [
-                    ...(completed.blocks ?? []),
-                    {
-                      id: createMessageId("ask-error"),
-                      type: "ask" as const,
-                      content: errorContent,
-                    },
-                  ],
-                  content:
-                    completed.content.trim().length > 0
-                      ? completed.content
-                      : errorContent,
-                };
-              });
-            }
-          }
-
-          const errorMessageId = createMessageId("error");
-          if (prev.some((m) => m.id === errorMessageId)) return prev;
-          return [
-            ...prev,
-            {
-              id: errorMessageId,
-              role: "assistant" as const,
-              kind: "turn" as const,
-              content: errorContent,
-              blocks: [
-                {
-                  id: createMessageId("ask-error"),
-                  type: "ask" as const,
-                  content: errorContent,
-                },
-              ],
-              timestamp: new Date(),
-              ...(finalisedToolEvents.length > 0
-                ? { toolEvents: finalisedToolEvents }
-                : {}),
-            },
-          ];
-        });
+        setMessages((prev) =>
+          withStreamFailure(prev, assistantMessageId, errorContent, finalisedToolEvents, createMessageId),
+        );
       }
     } finally {
       setIsLoading(false);
