@@ -1,4 +1,5 @@
 import type { MastraChartMessage, ReportBlock, ReportVizBlock, SqlExecutionArtifact } from "./types";
+import { hydrateJsonRenderSpecFromRows } from "../generative-ui/specData";
 
 /** Shapes returned by the Assistant Threads endpoints (`/assistant-threads`). */
 export interface AssistantThreadSummary {
@@ -18,6 +19,8 @@ export interface StoredChartRef {
   presentationKind?: "chart" | "table" | "metric";
   rationale: string | null;
   spec: unknown;
+  /** json-render presentation without row data; what dashboard charts are inserted as. */
+  jsonRenderSpec?: unknown;
 }
 
 export interface StoredThreadMessage {
@@ -81,6 +84,7 @@ export function threadMessagesToChatMessages(
         id: `${message.id}-viz-${chart.resultId}`,
         type: "viz",
         chartSpec: chart.spec,
+        jsonRenderSpec: chart.jsonRenderSpec,
         resultId: chart.resultId,
         presentationKind: chart.presentationKind,
         sql: chart.sql,
@@ -120,7 +124,16 @@ export async function hydrateThreadCharts(
             if (block.type !== "viz") return block;
             try {
               const queryResult = await runSql(block);
-              return queryResult ? { ...block, queryResult } : null;
+              if (!queryResult) return null;
+              return {
+                ...block,
+                queryResult,
+                jsonRenderSpec: hydrateJsonRenderSpecFromRows(
+                  block.jsonRenderSpec,
+                  queryResult.rows,
+                  queryResult.fields,
+                ),
+              };
             } catch {
               return null;
             }

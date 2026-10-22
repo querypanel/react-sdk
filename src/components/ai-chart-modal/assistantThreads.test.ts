@@ -70,6 +70,15 @@ describe("chart previews in history", () => {
     ]);
   });
 
+  it("carries the json-render spec so restored charts insert like live ones", () => {
+    const jsonRenderSpec = { root: "p", elements: {} };
+    const [message] = threadMessagesToChatMessages(
+      [stored({ role: "assistant", text: "", charts: [{ ...chart, jsonRenderSpec }] })],
+      () => null,
+    );
+    expect(message!.blocks?.[0]).toMatchObject({ type: "viz", jsonRenderSpec });
+  });
+
   it("puts the summary after the charts for 2+ charts, before for one", () => {
     const [many] = threadMessagesToChatMessages(
       [stored({ role: "assistant", text: "Summary", charts: [chart, { ...chart, resultId: "r2" }] })],

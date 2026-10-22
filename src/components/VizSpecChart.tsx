@@ -246,7 +246,7 @@ function renderColumnChart(
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
           labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
-        <Legend />
+        {normalized.yFields.length > 1 && <Legend />}
         {normalized.yFields.map((yField, idx) => (
           <Bar
             key={yField.field}
@@ -281,6 +281,7 @@ function renderBarChart(
         <YAxis
           dataKey={normalized.xField}
           type="category"
+          width={110}
           stroke={colors.text}
           tick={{ fill: colors.text }}
           tickFormatter={formatTimestampForDisplay}
@@ -294,13 +295,13 @@ function renderBarChart(
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
           labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
-        <Legend />
+        {normalized.yFields.length > 1 && <Legend />}
         {normalized.yFields.map((xField, idx) => (
           <Bar
             key={xField.field}
             dataKey={xField.field}
             name={xField.label || xField.field}
-            fill={colors.range[idx % colors.range.length]}
+            fill={idx === 0 ? colors.secondary : colors.range[idx % colors.range.length]}
             stackId={stacking === "stacked" || stacking === "percent" ? "stack" : undefined}
           />
         ))}

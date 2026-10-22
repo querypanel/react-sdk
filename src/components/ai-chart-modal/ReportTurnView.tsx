@@ -149,10 +149,10 @@ export function VizPreview({
 				? Object.keys(rows[0])
 				: [];
 
-	// One renderer for live and restored charts: the VizSpec preview whenever the block has a
-	// VizSpec (live blocks carry both). The json-render spec is only a fallback for blocks without one.
+	// Same renderer as the dashboard's charts (json-render) for live and restored turns, so a
+	// preview looks like the chart that gets inserted. The VizSpec preview is the fallback when the
+	// block has no json-render spec.
 	const hydratedJsonRenderSpec =
-		!block.chartSpec &&
 		block.jsonRenderSpec &&
 		rows &&
 		rows.length > 0 &&
@@ -163,7 +163,7 @@ export function VizPreview({
 	return (
 		<div className="qp-ai-modal-chart-stack">
 			<div className="qp-ai-modal-chart-stack-preview">
-				{!block.chartSpec && hydratedJsonRenderSpec ? (
+				{hydratedJsonRenderSpec && hasInlineJsonRenderData(hydratedJsonRenderSpec) ? (
 					<div className="qp-ai-modal-chart-preview">
 						<PersistedSpecRenderer
 							spec={hydratedJsonRenderSpec}
