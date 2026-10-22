@@ -244,6 +244,7 @@ function renderColumnChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend />
         {normalized.yFields.map((yField, idx) => (
@@ -291,6 +292,7 @@ function renderBarChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend />
         {normalized.yFields.map((xField, idx) => (
@@ -336,6 +338,7 @@ function renderLineChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend />
         {yFields.map((yField, idx) => (
@@ -383,6 +386,7 @@ function renderAreaChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend />
         {yFields.map((yField, idx) => (
@@ -436,6 +440,7 @@ function renderScatterChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend />
         <Scatter
@@ -486,6 +491,7 @@ function renderPieChart(
             borderRadius: "4px",
           }}
           formatter={(value, name) => [formatTimestampForDisplay(value), name]}
+          labelFormatter={(label) => formatTimestampForDisplay(label)}
         />
         <Legend formatter={(value) => formatTimestampForDisplay(value)} />
       </PieChart>

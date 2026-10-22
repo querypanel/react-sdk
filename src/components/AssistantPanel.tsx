@@ -1729,6 +1729,9 @@ export function AssistantPanel({
                       <span className="qp-ai-plan-corridor-kicker">Plan</span>
                       <span className="qp-ai-plan-corridor-count">
                         {pinnedPlanDone}/{pinnedPlanSteps.length} done
+                        {!pinnedPlanRunning && pinnedPlanDone < pinnedPlanSteps.length
+                          ? ` \u00b7 ${pinnedPlanSteps.length - pinnedPlanDone} skipped`
+                          : ""}
                       </span>
                       {pinnedPlanCurrent && !planOpen ? (
                         <span className="qp-ai-plan-corridor-current">{pinnedPlanCurrent.title}</span>

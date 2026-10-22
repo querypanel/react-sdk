@@ -1881,7 +1881,8 @@
 }
 [data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="in_progress"] { opacity: 1; font-weight: 500; }
 [data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="done"] { opacity: 0.85; }
-[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="stopped"] { opacity: 0.55; }
+[data-qp-ai-modal] .qp-ai-modal-plan-step[data-status="skipped"] { opacity: 0.6; }
+[data-qp-ai-modal] .qp-ai-modal-plan-skipped { margin-left: auto; padding-left: 0.5rem; font-size: 0.6875rem; opacity: 0.8; flex-shrink: 0; }
 [data-qp-ai-modal] .qp-ai-modal-plan-icon {
   display: inline-flex;
   align-items: center;
