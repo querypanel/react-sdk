@@ -265,6 +265,7 @@ export function MetricCard({
 }) {
   const { darkMode } = useThemeContext();
   const colors = getSurfaceColors(darkMode);
+  const { headerActions } = useGenerativeUIConfig();
 
   return (
     <div
@@ -276,7 +277,17 @@ export function MetricCard({
         padding: "1rem",
       }}
     >
-      <div style={{ color: colors.muted, fontSize: "0.875rem" }}>{props.label}</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
+      >
+        <div style={{ color: colors.muted, fontSize: "0.875rem", minWidth: 0 }}>{props.label}</div>
+        {headerActions ? <div style={{ flexShrink: 0 }}>{headerActions}</div> : null}
+      </div>
       <div
         style={{
           color: colors.text,
