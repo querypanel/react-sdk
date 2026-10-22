@@ -58,37 +58,64 @@ describe("completeMastraAssistantTurn", () => {
 	});
 });
 
+type SetupOptions = {
+	timestamp?: Date;
+	sqlParams?: null;
+	createMessageId?: (prefix: string) => string;
+	toolEvents?: ToolEvent[];
+};
+
+function setup(opts: SetupOptions = {}) {
+	let message: MastraChartMessage = {
+		id: "assistant-1",
+		role: "assistant",
+		kind: "turn",
+		content: "",
+		blocks: [],
+		...(opts.sqlParams !== undefined ? { sqlParams: opts.sqlParams } : {}),
+		timestamp: opts.timestamp ?? new Date(),
+	};
+	const toolEvents: ToolEvent[] = opts.toolEvents ?? [];
+	const statuses: Array<string | null> = [];
+	const lastSql: { current: unknown } = { current: null };
+
+	const handler = createMastraChartChunkHandler({
+		assistantMessageId: "assistant-1",
+		createMessageId: opts.createMessageId ?? ((prefix) => `${prefix}-1`),
+		updateAssistantMessage: (updates) => {
+			message =
+				typeof updates === "function"
+					? updates(message)
+					: { ...message, ...updates };
+		},
+		setTransientStatus: (status) => {
+			statuses.push(status);
+		},
+		setToolEvents: (updater) => {
+			toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
+		},
+		setLastSqlExecution: (artifact) => {
+			lastSql.current = artifact;
+		},
+	});
+
+	return {
+		handler,
+		toolEvents,
+		statuses,
+		lastSql,
+		getMessage: () => message,
+	};
+}
+
 describe("createMastraChartChunkHandler", () => {
 	it("streams text-delta into a visible text block", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-		const toolEvents: ToolEvent[] = [];
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: (updater) => {
-				toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
-			},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, getMessage } = setup();
 
 		handler({ type: "text-delta", textDelta: "Revenue grew " });
 		handler({ type: "text-delta", textDelta: "12%." });
 
+		const message = getMessage();
 		expect(message.content).toBe("Revenue grew 12%.");
 		expect(message.blocks?.[0]).toMatchObject({
 			type: "text",
@@ -97,28 +124,12 @@ describe("createMastraChartChunkHandler", () => {
 		});
 	});
 
-
 	it("keeps parallel report charts independent and puts a late summary after them", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
+		let n = 0;
+		const { handler, getMessage } = setup({
 			sqlParams: null,
 			timestamp: new Date(0),
-		};
-		let n = 0;
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
 			createMessageId: (prefix) => `${prefix}-${++n}`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function" ? updates(message) : { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: () => {},
 		});
 		const exec = (resultId: string, v: number) =>
 			handler({
@@ -150,6 +161,7 @@ describe("createMastraChartChunkHandler", () => {
 		viz("r1");
 		handler({ type: "text-delta", textDelta: "Summary." });
 
+		const message = getMessage();
 		expect(message.plan?.map((step) => step.status)).toEqual(["done", "in_progress", "pending"]);
 		const blocks = message.blocks ?? [];
 		expect(blocks.map((b) => b.type)).toEqual(["data", "viz", "viz", "text"]);
@@ -163,26 +175,7 @@ describe("createMastraChartChunkHandler", () => {
 	});
 
 	it("starts a new paragraph for text that follows a tool result or step", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			sqlParams: null,
-			timestamp: new Date(0),
-		};
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function" ? updates(message) : { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, getMessage } = setup({ sqlParams: null, timestamp: new Date(0) });
 
 		handler({ type: "text-delta", textDelta: "First insight." });
 		handler({ type: "tool-result", toolName: "update_plan", result: { steps: [] } });
@@ -191,38 +184,16 @@ describe("createMastraChartChunkHandler", () => {
 		handler({ type: "step-finish" });
 		handler({ type: "text-delta", textDelta: "## Summary" });
 
+		const message = getMessage();
 		expect(message.content).toBe("First insight.\n\nSecond insight.\n\n## Summary");
 		expect(message.blocks?.[0]).toMatchObject({
 			type: "text",
 			content: "First insight.\n\nSecond insight.\n\n## Summary",
 		});
 	});
-	it("materializes a data block from execute_sql", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-		const lastSql: { current: unknown } = { current: null };
 
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: (artifact) => {
-				lastSql.current = artifact;
-			},
-		});
+	it("materializes a data block from execute_sql", () => {
+		const { handler, getMessage, lastSql } = setup();
 
 		handler({
 			type: "tool-result",
@@ -235,46 +206,22 @@ describe("createMastraChartChunkHandler", () => {
 			},
 		});
 
+		const message = getMessage();
 		expect(message.blocks?.some((b) => b.type === "data")).toBe(true);
 		expect(message.queryResult?.rowCount).toBe(2);
 		expect(lastSql.current).toMatchObject({ rowCount: 2 });
 	});
 
 	it("does not treat Mastra output validation errors as empty SQL results", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-		const toolEvents: ToolEvent[] = [
-			{
-				id: "tool-1",
-				toolName: "execute_sql",
-				status: "running",
-				startedAt: Date.now(),
-			},
-		];
-		const statuses: Array<string | null> = [];
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: (status) => {
-				statuses.push(status);
-			},
-			setToolEvents: (updater) => {
-				toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
-			},
-			setLastSqlExecution: () => {},
+		const { handler, getMessage, toolEvents, statuses } = setup({
+			toolEvents: [
+				{
+					id: "tool-1",
+					toolName: "execute_sql",
+					status: "running",
+					startedAt: Date.now(),
+				},
+			],
 		});
 
 		handler({
@@ -286,34 +233,14 @@ describe("createMastraChartChunkHandler", () => {
 			},
 		});
 
+		const message = getMessage();
 		expect(message.blocks?.some((b) => b.type === "data")).toBe(false);
 		expect(toolEvents[0]?.status).toBe("failed");
 		expect(statuses.at(-1)).toBe(null);
 	});
 
 	it("keeps prior rows when a later empty execute_sql payload arrives", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, getMessage } = setup();
 
 		handler({
 			type: "tool-result",
@@ -334,6 +261,7 @@ describe("createMastraChartChunkHandler", () => {
 			},
 		});
 
+		const message = getMessage();
 		expect(message.queryResult?.rowCount).toBe(1);
 		expect(message.blocks?.find((b) => b.type === "data")).toMatchObject({
 			type: "data",
@@ -342,21 +270,7 @@ describe("createMastraChartChunkHandler", () => {
 	});
 
 	it("marks execute_sql running only on tool-call, not tool-result", () => {
-		const toolEvents: ToolEvent[] = [];
-		const statuses: Array<string | null> = [];
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: () => {},
-			setTransientStatus: (status) => {
-				statuses.push(status);
-			},
-			setToolEvents: (updater) => {
-				toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
-			},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, toolEvents, statuses } = setup();
 
 		handler({ type: "tool-call", toolName: "execute_sql" });
 		expect(toolEvents).toHaveLength(1);
@@ -372,28 +286,7 @@ describe("createMastraChartChunkHandler", () => {
 	});
 
 	it("appends a viz block from generate_visualization", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, getMessage } = setup();
 
 		handler({
 			type: "tool-result",
@@ -406,33 +299,13 @@ describe("createMastraChartChunkHandler", () => {
 			},
 		});
 
+		const message = getMessage();
 		expect(message.blocks?.filter((b) => b.type === "viz")).toHaveLength(1);
 		expect(message.jsonRenderSpec).toBeTruthy();
 	});
 
 	it("hydrates empty LineChart data from previewRows", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: () => {},
-			setLastSqlExecution: () => {},
-		});
+		const { handler, getMessage } = setup();
 
 		handler({
 			type: "tool-result",
@@ -476,6 +349,7 @@ describe("createMastraChartChunkHandler", () => {
 			},
 		});
 
+		const message = getMessage();
 		const viz = message.blocks?.find((b) => b.type === "viz");
 		expect(viz).toBeTruthy();
 		const spec = viz && viz.type === "viz" ? viz.jsonRenderSpec : null;
@@ -485,6 +359,35 @@ describe("createMastraChartChunkHandler", () => {
 			{ label: "2026-05-11T00:00:00.000Z", value: 3 },
 			{ label: "2026-05-18T00:00:00.000Z", value: 10 },
 		]);
+	});
+
+	it("replaces the plan on each update_plan result and ignores malformed ones", () => {
+		const { handler, getMessage, toolEvents } = setup({
+			toolEvents: [{ id: "t1", toolName: "update_plan", status: "running", startedAt: 0 }],
+		});
+
+		handler({
+			type: "tool-result",
+			toolName: "update_plan",
+			result: {
+				steps: [
+					{ id: "a", title: "Revenue", status: "in_progress" },
+					{ id: "b", title: "Churn", status: "pending" },
+				],
+			},
+		});
+		expect(getMessage().plan).toHaveLength(2);
+		expect(toolEvents[0]?.status).toBe("succeeded");
+
+		handler({ type: "tool-result", toolName: "update_plan", result: { steps: [{ id: "a" }] } });
+		expect(getMessage().plan).toHaveLength(2);
+
+		handler({
+			type: "tool-result",
+			toolName: "update_plan",
+			result: { steps: [{ id: "a", title: "Revenue", status: "done" }] },
+		});
+		expect(getMessage().plan).toEqual([{ id: "a", title: "Revenue", status: "done" }]);
 	});
 });
 
@@ -511,73 +414,7 @@ describe("collectDashboardReportBlocks", () => {
 		expect(blocks[0]).toMatchObject({ type: "text" });
 		expect(blocks[1]).toMatchObject({ type: "viz", sql: "SELECT 1" });
 	});
-});
 
-describe("markdownToSimpleEditorBlocks", () => {
-	it("splits headings and paragraphs", () => {
-		const blocks = markdownToSimpleEditorBlocks("# Title\n\nBody line\n\n## Section\nMore");
-		expect(blocks).toEqual([
-			{ type: "heading", level: 1, text: "Title" },
-			{ type: "paragraph", text: "Body line" },
-			{ type: "heading", level: 2, text: "Section" },
-			{ type: "paragraph", text: "More" },
-		]);
-	});
-
-	it("replaces the plan on each update_plan result and ignores malformed ones", () => {
-		let message: MastraChartMessage = {
-			id: "assistant-1",
-			role: "assistant",
-			kind: "turn",
-			content: "",
-			blocks: [],
-			timestamp: new Date(),
-		};
-		const toolEvents: ToolEvent[] = [
-			{ id: "t1", toolName: "update_plan", status: "running", startedAt: 0 },
-		];
-		const handler = createMastraChartChunkHandler({
-			assistantMessageId: "assistant-1",
-			createMessageId: (prefix) => `${prefix}-1`,
-			updateAssistantMessage: (updates) => {
-				message =
-					typeof updates === "function"
-						? updates(message)
-						: { ...message, ...updates };
-			},
-			setTransientStatus: () => {},
-			setToolEvents: (updater) => {
-				toolEvents.splice(0, toolEvents.length, ...updater(toolEvents));
-			},
-			setLastSqlExecution: () => {},
-		});
-
-		handler({
-			type: "tool-result",
-			toolName: "update_plan",
-			result: {
-				steps: [
-					{ id: "a", title: "Revenue", status: "in_progress" },
-					{ id: "b", title: "Churn", status: "pending" },
-				],
-			},
-		});
-		expect(message.plan).toHaveLength(2);
-		expect(toolEvents[0]?.status).toBe("succeeded");
-
-		handler({ type: "tool-result", toolName: "update_plan", result: { steps: [{ id: "a" }] } });
-		expect(message.plan).toHaveLength(2);
-
-		handler({
-			type: "tool-result",
-			toolName: "update_plan",
-			result: { steps: [{ id: "a", title: "Revenue", status: "done" }] },
-		});
-		expect(message.plan).toEqual([{ id: "a", title: "Revenue", status: "done" }]);
-	});
-});
-
-describe("collectDashboardReportBlocks with onlyVizIds", () => {
 	it("returns only the chosen viz blocks and no text", () => {
 		const message: MastraChartMessage = {
 			id: "assistant-1",
@@ -597,5 +434,17 @@ describe("collectDashboardReportBlocks with onlyVizIds", () => {
 		expect(picked).toHaveLength(1);
 		expect(picked[0]).toMatchObject({ type: "viz", sql: "select 2" });
 		expect(collectDashboardReportBlocks(message, new Set())).toEqual([]);
+	});
+});
+
+describe("markdownToSimpleEditorBlocks", () => {
+	it("splits headings and paragraphs", () => {
+		const blocks = markdownToSimpleEditorBlocks("# Title\n\nBody line\n\n## Section\nMore");
+		expect(blocks).toEqual([
+			{ type: "heading", level: 1, text: "Title" },
+			{ type: "paragraph", text: "Body line" },
+			{ type: "heading", level: 2, text: "Section" },
+			{ type: "paragraph", text: "More" },
+		]);
 	});
 });
