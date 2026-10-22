@@ -16,6 +16,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  type TooltipProps,
 } from "recharts";
 import type { ThemeColors } from "../types";
 import { formatTimestampForDisplay } from "../utils/formatters";
@@ -115,6 +116,17 @@ export function VizSpecChart({ spec, data, colors, height = 400 }: VizSpecChartP
     }
   }
 }
+
+/** Recharts needs `<Tooltip>` as a direct child, so share its props instead of a wrapper component. */
+const tooltipProps = (colors: ThemeColors): TooltipProps<number | string, string> => ({
+  contentStyle: {
+    backgroundColor: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderRadius: "4px",
+  },
+  formatter: (value, name) => [formatTimestampForDisplay(value), name],
+  labelFormatter: (label) => formatTimestampForDisplay(label),
+});
 
 function isNumericValue(value: unknown): boolean {
   if (typeof value === "number" && Number.isFinite(value)) return true;
@@ -237,15 +249,7 @@ function renderColumnChart(
           tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         {normalized.yFields.length > 1 && <Legend />}
         {normalized.yFields.map((yField, idx) => (
           <Bar
@@ -286,15 +290,7 @@ function renderBarChart(
           tick={{ fill: colors.text }}
           tickFormatter={formatTimestampForDisplay}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         {normalized.yFields.length > 1 && <Legend />}
         {normalized.yFields.map((xField, idx) => (
           <Bar
@@ -332,15 +328,7 @@ function renderLineChart(
           tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         <Legend />
         {yFields.map((yField, idx) => (
           <Line
@@ -380,15 +368,7 @@ function renderAreaChart(
           tickFormatter={formatTimestampForDisplay}
         />
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         <Legend />
         {yFields.map((yField, idx) => (
           <Area
@@ -434,15 +414,7 @@ function renderScatterChart(
           tick={{ fill: colors.text }}
           tickFormatter={formatTimestampForDisplay}
         />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         <Legend />
         <Scatter
           name={yField?.label || yField?.field || "value"}
@@ -485,15 +457,7 @@ function renderPieChart(
             <Cell key={`cell-${nameField}-${String(data[index]?.[nameField] ?? index)}`} fill={colors.range[index % colors.range.length]} />
           ))}
         </Pie>
-        <Tooltip
-          contentStyle={{
-            backgroundColor: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "4px",
-          }}
-          formatter={(value, name) => [formatTimestampForDisplay(value), name]}
-          labelFormatter={(label) => formatTimestampForDisplay(label)}
-        />
+        <Tooltip {...tooltipProps(colors)} />
         <Legend formatter={(value) => formatTimestampForDisplay(value)} />
       </PieChart>
     </ResponsiveContainer>
