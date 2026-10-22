@@ -326,13 +326,14 @@ export function AssistantPanel({
     setPickerIndex(0);
     promptInputRef.current?.focus();
   };
+  const authHeaders = { "x-organization-id": organizationId, ...headers };
   const threadsClient = useMemo(
     () =>
       threadsUrl
         ? createThreadsClient({
             baseUrl: threadsUrl,
             dashboardId,
-            headers: { "x-organization-id": organizationId, ...headers },
+            headers: authHeaders,
           })
         : null,
     // headers is a fresh object per render for most hosts; the endpoint and Dashboard identify the client.
@@ -363,7 +364,7 @@ export function AssistantPanel({
     const tenantField = tenantInputsEnabled ? tenantFieldName.trim() : "";
     const response = await fetch(runSqlUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-organization-id": organizationId, ...headers },
+      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({
         sql: chart.sql,
         datasourceIds: [datasourceId],
@@ -450,6 +451,9 @@ export function AssistantPanel({
     resolveAiChartTenantFieldName([], tenantFieldByDatasource, defaultTenantFieldName, dashboardType)
   );
   const [previewTenantId, setPreviewTenantId] = useState("");
+  /** Tenant inputs as sent to the API: only for customer Dashboards, empty means unset. */
+  const scopedTenantField = tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined;
+  const scopedPreviewTenant = tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined;
   const [querypanelSessionId, setQuerypanelSessionId] = useState<string | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [activeAssistantMessageId, setActiveAssistantMessageId] = useState<string | null>(null);
@@ -632,7 +636,7 @@ export function AssistantPanel({
       setDecidingIntent(true);
       const decision = await fetchTagIntent(
         tagIntentUrl,
-        { "x-organization-id": organizationId, ...headers },
+        authHeaders,
         {
           question: messageText,
           tagged: taggedCharts.map((chart) => ({
@@ -778,11 +782,7 @@ export function AssistantPanel({
 
         const response = await fetch(generateChartWithSqlUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-organization-id": organizationId,
-            ...headers,
-          },
+          headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({
             messages: messageText,
             dashboardId,
@@ -870,11 +870,7 @@ export function AssistantPanel({
       } else {
         const response = await fetch(generateChartWithSqlUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-organization-id": organizationId,
-            ...headers,
-          },
+          headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify({
             prompt: messageText,
             dashboardId,
@@ -1011,8 +1007,8 @@ export function AssistantPanel({
       message.sql,
       selectedDatasourceIds,
       message.sqlParams,
-      tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
-      tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
+      scopedTenantField,
+      scopedPreviewTenant,
       message.resultId ?? message.queryResult?.resultId,
       findPrecedingUserQuestion(messages, message)
     );
@@ -1026,8 +1022,8 @@ export function AssistantPanel({
       block.sql ?? turn?.sql,
       block.datasourceId ? [block.datasourceId] : selectedDatasourceIds,
       block.sqlParams ?? turn?.sqlParams ?? null,
-      tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
-      tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
+      scopedTenantField,
+      scopedPreviewTenant,
       block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
       turn ? findPrecedingUserQuestion(messages, turn) : undefined
     );
@@ -1045,12 +1041,8 @@ export function AssistantPanel({
         ...block,
         question,
         datasourceIds: selectedDatasourceIds,
-        tenantFieldName: tenantInputsEnabled
-          ? tenantFieldName.trim() || undefined
-          : undefined,
-        previewTenantId: tenantInputsEnabled
-          ? previewTenantId.trim() || undefined
-          : undefined,
+        tenantFieldName: scopedTenantField,
+        previewTenantId: scopedPreviewTenant,
       };
     });
     if (blocks.length === 0) return;
@@ -1400,8 +1392,8 @@ export function AssistantPanel({
                                   : block.datasourceId
                                     ? [block.datasourceId]
                                     : selectedDatasourceIds,
-                                tenantFieldName: tenantInputsEnabled ? tenantFieldName.trim() || undefined : undefined,
-                                previewTenantId: tenantInputsEnabled ? previewTenantId.trim() || undefined : undefined,
+                                tenantFieldName: scopedTenantField,
+                                previewTenantId: scopedPreviewTenant,
                                 resultId: block.resultId ?? block.queryResult?.resultId ?? message.resultId,
                                 question: findPrecedingUserQuestion(messages, message),
                               };
