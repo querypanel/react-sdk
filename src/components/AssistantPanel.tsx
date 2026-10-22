@@ -257,18 +257,6 @@ function useAiPanelNarrowLayout(ref: RefObject<HTMLElement | null>) {
   return narrow;
 }
 
-/**
- * Mastra stream expects AI Gateway–style `provider/model` (e.g. `openai/gpt-5.6-luna`, `google/gemini-3.6-flash`).
- * Bare Gemini ids are prefixed with `google/` so the agent uses GOOGLE_GENERATIVE_AI_API_KEY when that provider is active.
- */
-function normalizeModelForMastraStreamBody(model: string): string {
-  const t = model.trim();
-  if (!t) return "";
-  if (t.includes("/")) return t;
-  if (/^gemini/i.test(t)) return `google/${t}`;
-  return `openai/${t}`;
-}
-
 function getLatestResultId(messages: Message[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -407,7 +395,6 @@ export function AssistantPanel({
   hideTenantInputs = false,
   createTitle: createTitleProp,
   chartModelOptions = DEFAULT_AI_CHART_MODEL_OPTIONS,
-  defaultChartModel = "gpt-6-luna",
   onChartGeneration,
   onRequestClose,
   onStatusChange,
@@ -424,15 +411,8 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
-  const enableModelOverride = false;
   const tenantInputsEnabled =
     !hideTenantInputs && dashboardType === "customer";
-
-  const getResolvedTenantField = (
-    selectedIds: string[],
-    byDs: Record<string, string> | null | undefined,
-    defaultName: string | null | undefined
-  ) => resolveAiChartTenantFieldName(selectedIds, byDs, defaultName, dashboardType);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -587,17 +567,13 @@ export function AssistantPanel({
   const [transientStatus, setTransientStatus] = useState<string | null>(null);
   const [selectedDatasourceIds, setSelectedDatasourceIds] = useState<string[]>([]);
   const [tenantFieldName, setTenantFieldName] = useState(() =>
-    getResolvedTenantField([], tenantFieldByDatasource, defaultTenantFieldName)
+    resolveAiChartTenantFieldName([], tenantFieldByDatasource, defaultTenantFieldName, dashboardType)
   );
   const [previewTenantId, setPreviewTenantId] = useState("");
   const [querypanelSessionId, setQuerypanelSessionId] = useState<string | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [activeAssistantMessageId, setActiveAssistantMessageId] = useState<string | null>(null);
   const [lastSqlExecution, setLastSqlExecution] = useState<SqlExecutionArtifact | null>(null);
-  const [chartModel, setChartModel] = useState(() => {
-    const allowed = new Set(chartModelOptions.map((o) => o.value));
-    return allowed.has(defaultChartModel) ? defaultChartModel : (chartModelOptions[0]?.value ?? "");
-  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const promptInputRef = useRef<HTMLInputElement>(null);
   const tenantFieldId = useId();
@@ -639,7 +615,6 @@ export function AssistantPanel({
     [],
   );
 
-  const effectiveDarkMode = darkMode;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -663,14 +638,6 @@ export function AssistantPanel({
       setInputValue(initialPrompt);
     }
   }, [initialPrompt, messages.length]);
-
-  useEffect(() => {
-    const allowed = new Set(chartModelOptions.map((o) => o.value));
-    const next = allowed.has(defaultChartModel)
-      ? defaultChartModel
-      : (chartModelOptions[0]?.value ?? "");
-    setChartModel(next);
-  }, [defaultChartModel, chartModelOptions]);
 
   useEffect(() => {
     onStatusChange?.({ isLoading, transientStatus, sessionId: querypanelSessionId });
@@ -959,9 +926,6 @@ export function AssistantPanel({
                 : {}),
             },
             savePerStep: true,
-            ...(enableModelOverride && chartModel.trim()
-              ? { model: normalizeModelForMastraStreamBody(chartModel) }
-              : {}),
           }),
         });
 
@@ -1041,7 +1005,6 @@ export function AssistantPanel({
               : { previewTenantId: previewTenant || undefined }),
             conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
             ...(querypanelSessionId ? { querypanelSessionId } : {}),
-            ...(enableModelOverride && chartModel.trim() ? { model: chartModel.trim() } : {}),
           }),
         });
 
@@ -1278,7 +1241,6 @@ export function AssistantPanel({
     }
   };
 
-  const tenantSettingsVisible = tenantInputsEnabled;
   const pinnedPlanSteps = isNarrowLayout
     ? withDerivedPlanProgress(
         pinnedPlanMessage?.plan ?? [],
@@ -1286,10 +1248,6 @@ export function AssistantPanel({
         pinnedPlanRunning,
       )
     : [];
-  const pinnedPlanDone = pinnedPlanSteps.filter((step) => step.status === "done").length;
-  const pinnedPlanCurrent = pinnedPlanRunning
-    ? pinnedPlanSteps.find((step) => step.status === "in_progress")
-    : undefined;
 
   const datasourceSummaryShort =
     selectedDatasourceIds.length === 0
@@ -1316,14 +1274,14 @@ export function AssistantPanel({
           selectionMode={useMastraStream ? "single" : "multiple"}
           datasourcesUrl={datasourcesUrl}
           headers={headers}
-          darkMode={effectiveDarkMode}
+          darkMode={darkMode}
           allowedIds={availableDatasourceIds}
           onDatasourcesLoaded={handleDatasourcesLoaded}
           fullWidth
         />
       </div>
 
-      {tenantSettingsVisible && (
+      {tenantInputsEnabled && (
         <div className="qp-ai-modal-settings-block qp-ai-modal-settings-tenant">
           <div>
             <label htmlFor={tenantFieldId} className="qp-ai-modal-label">
@@ -1362,7 +1320,7 @@ export function AssistantPanel({
       ref={panelRef}
       className="qp-ai-assistant-panel"
       data-qp-ai-modal
-      data-theme={effectiveDarkMode ? "dark" : "light"}
+      data-theme={darkMode ? "dark" : "light"}
     >
           <div
             className={`qp-ai-modal-body qp-ai-modal-body-split${isNarrowLayout ? " qp-ai-modal-body-narrow" : ""}`}
@@ -1525,7 +1483,7 @@ export function AssistantPanel({
                             lastSqlExecution={lastSqlExecution}
                             queryResultBaseUrl={queryResultBaseUrl}
                             requestHeaders={headers}
-                            darkMode={effectiveDarkMode}
+                            darkMode={darkMode}
                             datasourceCount={selectedDatasourceIds.length}
                             ThoughtSummaryRail={ThoughtSummaryRail}
                             hidePlan={isNarrowLayout && message.id === pinnedPlanId}
@@ -1602,7 +1560,7 @@ export function AssistantPanel({
                                   loadBeforeRows={runSqlForRestoredChart}
                                   state={state}
                                   targetRemoved={!snapshot && state === "pending"}
-                                  darkMode={effectiveDarkMode}
+                                  darkMode={darkMode}
                                   onApply={() => {
                                     const ok = onApplyChartChange?.({ chartId: target.chartId, mode: target.mode, payload });
                                     if (ok) {
@@ -1654,7 +1612,7 @@ export function AssistantPanel({
                                         ? (lastSqlExecution?.rows ?? null)
                                         : null
                                   }
-                                  darkMode={effectiveDarkMode}
+                                  darkMode={darkMode}
                                   datasourceCount={selectedDatasourceIds.length}
                                 />
                               )}
@@ -1857,9 +1815,8 @@ export function AssistantPanel({
                           <CpuIcon className="w-4 h-4" aria-hidden />
                           <select
                             className="qp-ai-composer-model-select"
-                            value={enableModelOverride ? chartModel : ""}
-                            onChange={enableModelOverride ? (e) => setChartModel(e.target.value) : undefined}
-                            disabled={!enableModelOverride}
+                            value=""
+                            disabled
                             aria-label="Model (server default)"
                           >
                             {chartModelOptions.map((opt, i) => (
@@ -1945,7 +1902,6 @@ export function AssistantPanel({
                         id={chartModelId}
                         className="qp-ai-modal-pill-model"
                         value=""
-                        onChange={undefined}
                         disabled
                         title="Model (server default)"
                         aria-label="Model (server default)"
