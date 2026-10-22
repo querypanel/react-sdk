@@ -14,7 +14,7 @@ import {
   withJsonRenderResultId,
 } from "../generative-ui/specData";
 import { runDedupedRequest } from "../../utils/requestDedup";
-import { parseBlockHeight } from "./chartBlockHeight";
+import { DEFAULT_CHART_HEIGHT, parseBlockHeight } from "./chartBlockHeight";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromJsonRenderSpec } from "./pinnedChartModify";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
@@ -190,7 +190,10 @@ export function createJsonRenderChartBlockSpec({
           }
         }, [props.block.props.datasourceIds]);
 
-        const chartHeight = parseBlockHeight(props.block.props.height) ?? 400;
+        // The card sizes itself to its content; only a height the user set in chart settings is a minimum.
+        const savedHeight = parseBlockHeight(props.block.props.height);
+        const customMinHeight =
+          savedHeight != null && savedHeight !== DEFAULT_CHART_HEIGHT ? savedHeight : undefined;
         const editor = getBlockNoteEditor(props);
 
         const modify = usePinnedChartBlockModify({
@@ -401,7 +404,7 @@ export function createJsonRenderChartBlockSpec({
               style={{
                 width: "100%",
                 maxWidth: "56rem",
-                minHeight: `${chartHeight}px`,
+                minHeight: customMinHeight ? `${customMinHeight}px` : undefined,
                 boxSizing: "border-box",
                 position: "relative",
               }}
