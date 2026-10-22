@@ -45,6 +45,7 @@ import {
   type ChartEditorLike,
 } from "./workspaceState";
 import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
+import { isDocumentDark } from "../utils/documentTheme";
 
 const EMPTY_HEADERS: Record<string, string> = {};
 
@@ -230,25 +231,16 @@ export function DashboardAiEditor({
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    const html = document.documentElement;
-    const detect = () => {
-      const isDark =
-        html.classList.contains("dark") ||
-        html.getAttribute("data-theme") === "dark" ||
-        html.style.colorScheme === "dark";
-      return isDark;
-    };
-
     // Sync initial value
-    setDetectedDarkMode(detect());
+    setDetectedDarkMode(isDocumentDark());
 
     const observer = new MutationObserver(() => {
-      const isDark = detect();
+      const isDark = isDocumentDark();
       // Use queueMicrotask so the state update runs outside React's current render
       queueMicrotask(() => setDetectedDarkMode(isDark));
     });
 
-    observer.observe(html, {
+    observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class", "data-theme", "style"],
     });

@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useState } from "react";
 import { CheckCircle2, Rocket } from "lucide-react";
+import { isDocumentDark } from "../utils/documentTheme";
 import "./DeploySuccessModal.css";
 
 export interface DeploySuccessModalProps {
@@ -9,16 +10,6 @@ export interface DeploySuccessModalProps {
   onOpenChange: (open: boolean) => void;
   /** Dark mode. When undefined, auto-detects from DOM (html class/data-theme). */
   darkMode?: boolean;
-}
-
-function detectDocumentDarkMode(): boolean {
-  if (typeof document === "undefined") return false;
-  const html = document.documentElement;
-  return (
-    html.classList.contains("dark") ||
-    html.getAttribute("data-theme") === "dark" ||
-    html.style.colorScheme === "dark"
-  );
 }
 
 export function DeploySuccessModal({
@@ -31,7 +22,7 @@ export function DeploySuccessModal({
   useLayoutEffect(() => {
     if (!open || typeof document === "undefined") return;
 
-    const sync = () => setDocDarkMode(detectDocumentDarkMode());
+    const sync = () => setDocDarkMode(isDocumentDark());
     sync();
 
     const observer = new MutationObserver(sync);
@@ -44,7 +35,7 @@ export function DeploySuccessModal({
 
   if (!open) return null;
 
-  const docDarkLive = open ? detectDocumentDarkMode() : false;
+  const docDarkLive = open ? isDocumentDark() : false;
   const effectiveDarkMode =
     darkMode !== undefined ? darkMode : docDarkLive || docDarkMode;
 

@@ -9,6 +9,7 @@ import {
   type AssistantPanelProps,
   type AssistantPanelStatus,
 } from "./AssistantPanel";
+import { isDocumentDark } from "../utils/documentTheme";
 import "./AIChartModal.css";
 
 export { DEFAULT_AI_CHART_MODEL_OPTIONS };
@@ -37,18 +38,13 @@ export function AIChartModal({
   const modalTitle = titleProp ?? "AI Analytics Assistant";
   const [status, setStatus] = useState<AssistantPanelStatus>(IDLE_STATUS);
 
-  // Sync with document theme when modal is open so switching theme (e.g. next-themes) updates the header immediately.
-  const [docDarkMode, setDocDarkMode] = useState(false);
+  // Re-render when the document theme changes (e.g. next-themes) so the header follows it immediately.
+  const [, setDocDarkMode] = useState(false);
   useLayoutEffect(() => {
     if (!isOpen || typeof document === "undefined") return;
-    const html = document.documentElement;
-    const detect = () =>
-      html.classList.contains("dark") ||
-      html.getAttribute("data-theme") === "dark" ||
-      html.style.colorScheme === "dark";
-    setDocDarkMode(detect());
-    const observer = new MutationObserver(() => setDocDarkMode(detect()));
-    observer.observe(html, {
+    setDocDarkMode(isDocumentDark());
+    const observer = new MutationObserver(() => setDocDarkMode(isDocumentDark()));
+    observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class", "data-theme", "style"],
     });
@@ -64,12 +60,7 @@ export function AIChartModal({
 
   // When open, use document theme so toggling theme updates the modal; otherwise use prop.
   // Read from document on render when open so first paint has correct theme (no flash).
-  const docDarkLive =
-    typeof document !== "undefined" &&
-    (document.documentElement.classList.contains("dark") ||
-      document.documentElement.getAttribute("data-theme") === "dark" ||
-      document.documentElement.style.colorScheme === "dark");
-  const effectiveDarkMode = docDarkLive ?? docDarkMode;
+  const effectiveDarkMode = isDocumentDark();
 
   const modalContent = (
     <div data-qp-ai-modal data-theme={effectiveDarkMode ? "dark" : "light"}>
