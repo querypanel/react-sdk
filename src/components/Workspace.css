@@ -113,16 +113,24 @@
   background: rgba(99, 102, 241, 0.35);
 }
 
-/* Drawer mode: Assistant overlays the Dashboard */
+/* Drawer mode: Assistant is a full-height column docked to the right edge, over the Dashboard */
 /* Fixed to the viewport so the drawer and its button stay reachable on a long, scrolled Dashboard. */
 .qp-workspace[data-mode="drawer"] .qp-workspace-assistant {
   position: fixed;
-  top: 4.5rem;
-  right: 1rem;
+  top: 0;
+  right: 0;
+  bottom: 0;
   z-index: 30;
-  width: min(26rem, calc(100vw - 2rem));
-  height: calc(100vh - 6rem);
+  width: min(26rem, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   margin-left: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 0;
+  border-width: 0 0 0 1px;
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
 }
 
