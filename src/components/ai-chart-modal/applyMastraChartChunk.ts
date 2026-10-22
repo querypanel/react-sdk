@@ -148,18 +148,7 @@ function appendOrReplaceVizBlock(
 ): ReportBlock[] {
 	const next = [...blocks];
 	const id = viz.id ?? createBlockId("viz");
-	const vizBlock: ReportVizBlock = {
-		id,
-		type: "viz",
-		chartSpec: viz.chartSpec,
-		jsonRenderSpec: viz.jsonRenderSpec,
-		resultId: viz.resultId,
-		presentationKind: viz.presentationKind,
-		sql: viz.sql,
-		sqlParams: viz.sqlParams,
-		queryResult: viz.queryResult,
-		rationale: viz.rationale,
-	};
+	const vizBlock: ReportVizBlock = { ...viz, id, type: "viz" };
 	const existingIndex = next.findIndex(
 		(block) => block.type === "viz" && block.id === id,
 	);
@@ -189,8 +178,7 @@ export function createMastraChartChunkHandler(
 	// Text from separate agent steps (e.g. one insight per chart) must not run together.
 	let paragraphBreakPending = false;
 
-	return (rawChunk: MastraStreamChunk) => {
-		const chunk = rawChunk;
+	return (chunk: MastraStreamChunk) => {
 		if (chunk.type === "tool-result" || chunk.type === "step-finish") {
 			paragraphBreakPending = true;
 		}
@@ -290,42 +278,21 @@ export function createMastraChartChunkHandler(
 				finishTool("execute_sql", { status: "succeeded" });
 				ctx.setTransientStatus("Working");
 
-				// Don't clobber a good preview with an empty/partial follow-up payload.
 				const hasRows = queryResult.rows.length > 0 || queryResult.rowCount > 0;
-				if (!hasRows) {
-					ctx.updateAssistantMessage((current) => {
-						const existingCount = current.queryResult?.rowCount ?? 0;
-						const existingRows = current.queryResult?.rows?.length ?? 0;
-						if (existingCount > 0 || existingRows > 0) {
-							return current;
-						}
-						return {
-							...current,
-							kind: "turn",
-							resultId: queryResult.resultId ?? current.resultId,
-							queryResult,
-							blocks: upsertDataBlock(
-								current.blocks ?? [],
-								createMessageId,
-								queryResult,
-							),
-						};
-					});
-					return true;
-				}
-
-				ctx.setLastSqlExecution(queryResult);
-				ctx.updateAssistantMessage((current) => ({
-					...current,
-					kind: "turn",
-					resultId: queryResult.resultId ?? current.resultId,
-					queryResult,
-					blocks: upsertDataBlock(
-						current.blocks ?? [],
-						createMessageId,
+				if (hasRows) ctx.setLastSqlExecution(queryResult);
+				ctx.updateAssistantMessage((current) => {
+					// Don't clobber a good preview with an empty/partial follow-up payload.
+					const hasExistingRows =
+						(current.queryResult?.rowCount ?? 0) > 0 || (current.queryResult?.rows?.length ?? 0) > 0;
+					if (!hasRows && hasExistingRows) return current;
+					return {
+						...current,
+						kind: "turn",
+						resultId: queryResult.resultId ?? current.resultId,
 						queryResult,
-					),
-				}));
+						blocks: upsertDataBlock(current.blocks ?? [], createMessageId, queryResult),
+					};
+				});
 				return true;
 			}
 
@@ -476,37 +443,17 @@ export function createMastraChartChunkHandler(
 			}
 			const assistantText = extractAssistantTextFromChunk(chunk);
 			if (assistantText && assistantText.trim().length > 0) {
-				ctx.updateAssistantMessage((current) => {
-					const hasText = (current.blocks ?? []).some(
-						(block) => block.type === "text" && block.content.trim().length > 0,
-					);
-					if (hasText || current.content.trim().length > 0) {
-						// Prefer streamed deltas; only fill if empty.
-						if (current.content.trim().length === 0) {
-							return {
+				ctx.updateAssistantMessage((current) =>
+					// Prefer streamed deltas; only fill if empty.
+					current.content.trim().length > 0
+						? current
+						: {
 								...current,
 								kind: "turn",
 								content: assistantText,
-								blocks: upsertTextBlock(
-									current.blocks ?? [],
-									createMessageId,
-									assistantText,
-								),
-							};
-						}
-						return current;
-					}
-					return {
-						...current,
-						kind: "turn",
-						content: assistantText,
-						blocks: upsertTextBlock(
-							current.blocks ?? [],
-							createMessageId,
-							assistantText,
-						),
-					};
-				});
+								blocks: upsertTextBlock(current.blocks ?? [], createMessageId, assistantText),
+							},
+				);
 			}
 		}
 	};
