@@ -30,6 +30,8 @@ export interface DatasourceSelectorProps {
   allowedIds?: string[] | null;
   /** Stretch trigger and dropdown to 100% of the parent (e.g. modal settings column). */
   fullWidth?: boolean;
+  /** Called with the (unfiltered) fetched datasources, e.g. so a host can show the selected name. */
+  onDatasourcesLoaded?: (datasources: Array<{ id: string; name: string }>) => void;
 }
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -50,11 +52,14 @@ export function DatasourceSelector({
   darkMode = false,
   allowedIds,
   fullWidth = false,
+  onDatasourcesLoaded,
 }: DatasourceSelectorProps) {
   const [datasources, setDatasources] = useState<Datasource[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const onLoadedRef = useRef(onDatasourcesLoaded);
+  onLoadedRef.current = onDatasourcesLoaded;
   const extraHeaders = headers ?? EMPTY_HEADERS;
   const headersSignature = getHeadersSignature(extraHeaders);
 
@@ -79,7 +84,9 @@ export function DatasourceSelector({
     const requestKey = `datasources:${datasourcesUrl}:${organizationId}:${headersSignature}`;
     runDedupedRequest(requestKey, fetchDatasources)
       .then((list) => {
-        if (!cancelled) setDatasources(list);
+        if (cancelled) return;
+        setDatasources(list);
+        onLoadedRef.current?.(list);
       })
       .catch((error) => {
         console.error("Failed to fetch datasources:", error);

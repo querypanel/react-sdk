@@ -7,6 +7,7 @@ import {
   useLayoutEffect,
   useId,
   useMemo,
+  useCallback,
   createContext,
   useContext,
   type RefObject,
@@ -16,7 +17,8 @@ import remarkGfm from "remark-gfm";
 import {
   SparklesIcon,
   SendIcon,
-  ChevronUpIcon,
+  ArrowUpIcon,
+  LoaderCircleIcon,
   DatabaseIcon,
   HistoryIcon,
   PlusIcon,
@@ -36,8 +38,13 @@ import {
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
 import { ReportTurnView } from "./ai-chart-modal/ReportTurnView";
 import { pendingSelectedVizIds, selectableTurn } from "./ai-chart-modal/selectionBar";
-import { PlanChecklist } from "./ai-chart-modal/PlanChecklist";
+import { ModeSegment, PlanTrack, SelectionTray } from "./ai-chart-modal/CommandDeck";
 import { withDerivedPlanProgress } from "./ai-chart-modal/planProgress";
+import {
+  decideReportMode,
+  parseStoredPreference,
+  type ReportPreference,
+} from "./ai-chart-modal/reportRouting";
 import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import { VizSpecPreview } from "./ai-chart-modal/VizSpecPreview";
 import type {
@@ -146,7 +153,7 @@ export interface AssistantPanelProps {
   ) => void;
   /** Insert a multi-block report (text + viz) into the dashboard editor. */
   onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
-  /** Report canvas: ask the agent to plan and build several charts, and let the user add any subset. */
+  /** Report mode is available (Workspace): shows the Report toggle and the add-to-dashboard bar. */
   reportMode?: boolean;
   organizationId: string;
   dashboardId: string;
@@ -379,6 +386,8 @@ function JsonRenderPreview({
     </div>
   );
 }
+const REPORT_MODE_STORAGE_KEY = "qp-ai-report-mode";
+
 export function AssistantPanel({
   onAddChart,
   onAddReport,
@@ -607,6 +616,28 @@ export function AssistantPanel({
   /** Compact layout: which composer toolbar popup is open. */
   const [openPopup, setOpenPopup] = useState<"history" | "data" | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  const [reportPreference, setReportPreference] = useState<ReportPreference>("auto");
+  useEffect(() => {
+    try {
+      setReportPreference(parseStoredPreference(window.localStorage.getItem(REPORT_MODE_STORAGE_KEY)));
+    } catch {
+      // private mode / blocked storage: keep the default
+    }
+  }, []);
+  const selectReportPreference = (next: ReportPreference) => {
+    setReportPreference(next);
+    try {
+      window.localStorage.setItem(REPORT_MODE_STORAGE_KEY, next);
+    } catch {
+      // not persisted
+    }
+  };
+  const [datasourceNames, setDatasourceNames] = useState<Record<string, string>>({});
+  const handleDatasourcesLoaded = useCallback(
+    (list: Array<{ id: string; name: string }>) =>
+      setDatasourceNames(Object.fromEntries(list.map((ds) => [ds.id, ds.name]))),
+    [],
+  );
 
   const effectiveDarkMode = darkMode;
 
@@ -725,6 +756,14 @@ export function AssistantPanel({
     setSendError(null);
     streamFailureHandledRef.current = false;
     const { resolved: taggedCharts } = resolveTags(tagIds, charts ?? []);
+    const runAsReport =
+      reportMode &&
+      decideReportMode({
+        text: messageText,
+        preference: reportPreference,
+        hasTaggedCharts: taggedCharts.length > 0,
+        hasPriorTurns: messages.some((m) => m.role === "assistant"),
+      });
     const requestDatasourceId = resolveDatasourceId(taggedCharts, selectedDatasourceIds[0]);
     const taggedHasDatasource = taggedCharts.some((chart) => chart.datasourceIds.length > 0);
     if (useMastraStream && !taggedHasDatasource && selectedDatasourceIds.length !== 1) {
@@ -909,7 +948,7 @@ export function AssistantPanel({
               datasourceId: requestDatasourceId,
               dashboardId,
               dashboardType,
-              ...(reportMode ? { reportMode: true } : {}),
+              ...(runAsReport ? { reportMode: true } : {}),
               ...(dashboardContext ? { dashboardContext } : {}),
               ...(latestResultId ? { resultId: latestResultId } : {}),
               ...(!tenantInputsEnabled
@@ -1259,6 +1298,13 @@ export function AssistantPanel({
         ? "1 datasource selected"
         : `${selectedDatasourceIds.length} datasources selected`;
 
+  const datasourceChipLabel =
+    selectedDatasourceIds.length === 0
+      ? "Choose data"
+      : selectedDatasourceIds.length === 1
+        ? (datasourceNames[selectedDatasourceIds[0]!] ?? "1 source")
+        : `${selectedDatasourceIds.length} sources`;
+
   const settingsPaneInner = (
     <>
       <div className="qp-ai-modal-settings-block">
@@ -1272,6 +1318,7 @@ export function AssistantPanel({
           headers={headers}
           darkMode={effectiveDarkMode}
           allowedIds={availableDatasourceIds}
+          onDatasourcesLoaded={handleDatasourcesLoaded}
           fullWidth
         />
       </div>
@@ -1641,7 +1688,7 @@ export function AssistantPanel({
                 <div ref={messagesEndRef} />
               </div>
 
-              {selectionTurn && (
+              {selectionTurn && !isNarrowLayout && (
                 <div className="qp-ai-selection-bar">
                   <button
                     type="button"
@@ -1662,7 +1709,7 @@ export function AssistantPanel({
                 </div>
               )}
 
-              <div className="qp-ai-modal-footer">
+              <div className={`qp-ai-modal-footer${isNarrowLayout ? " qp-ai-modal-footer-deck" : ""}`}>
                 {mention && (
                   <ChartTagPicker
                     options={pickerOptions.map(({ chart, label }) => ({ chartId: chart.chartId, label }))}
@@ -1712,36 +1759,31 @@ export function AssistantPanel({
                     ))}
                   </div>
                 )}
-                {isNarrowLayout && pinnedPlanSteps.length > 0 && (
-                  <div className="qp-ai-plan-corridor" data-open={planOpen ? "true" : "false"}>
-                    {planOpen && (
-                      <div id={planPanelId} className="qp-ai-plan-corridor-body">
-                        <PlanChecklist steps={pinnedPlanSteps} stopped={!pinnedPlanRunning} />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      className="qp-ai-plan-corridor-bar"
-                      aria-expanded={planOpen}
-                      aria-controls={planPanelId}
-                      onClick={() => setPlanOpen((open) => !open)}
-                    >
-                      <span className="qp-ai-plan-corridor-kicker">Plan</span>
-                      <span className="qp-ai-plan-corridor-count">
-                        {pinnedPlanDone}/{pinnedPlanSteps.length} done
-                        {!pinnedPlanRunning && pinnedPlanDone < pinnedPlanSteps.length
-                          ? ` \u00b7 ${pinnedPlanSteps.length - pinnedPlanDone} skipped`
-                          : ""}
-                      </span>
-                      {pinnedPlanCurrent && !planOpen ? (
-                        <span className="qp-ai-plan-corridor-current">{pinnedPlanCurrent.title}</span>
-                      ) : null}
-                      <ChevronUpIcon className="qp-ai-plan-corridor-chevron w-4 h-4" aria-hidden />
-                    </button>
-                  </div>
-                )}
                 {isNarrowLayout ? (
-                  <div className="qp-ai-composer">
+                  <div className="qp-ai-deck" data-busy={isLoading ? "true" : "false"}>
+                    {selectionTurn && (
+                      <SelectionTray
+                        blocks={(selectionTurn.blocks ?? []).filter(
+                          (block): block is ReportVizBlock => block.type === "viz",
+                        )}
+                        isSelected={(id) => vizSelected[id] ?? true}
+                        isAdded={(id) => Boolean(vizAdded[id])}
+                        pendingCount={selectionPendingIds.length}
+                        disabled={isLoading}
+                        onAddSelected={() => handleAddReportToEditor(selectionTurn, selectionPendingIds)}
+                        onAddReport={() => handleAddReportToEditor(selectionTurn)}
+                      />
+                    )}
+                    {pinnedPlanSteps.length > 0 && (
+                      <PlanTrack
+                        steps={pinnedPlanSteps}
+                        running={pinnedPlanRunning}
+                        open={planOpen}
+                        onToggle={() => setPlanOpen((open) => !open)}
+                        panelId={planPanelId}
+                      />
+                    )}
+                    <div className="qp-ai-composer">
                     <div className="qp-ai-composer-box">
                       <input
                         ref={promptInputRef}
@@ -1753,7 +1795,7 @@ export function AssistantPanel({
                           setPendingIntent(null);
                         }}
                         onKeyDown={handlePromptKeyDown}
-                        placeholder="Ask a question or request a chart"
+                        placeholder="Ask anything, or describe a chart"
                         className="qp-ai-composer-input"
                         aria-label="Chart prompt"
                         autoComplete="off"
@@ -1763,9 +1805,14 @@ export function AssistantPanel({
                         onClick={() => handleSendMessage()}
                         disabled={!inputValue.trim() || isLoading}
                         className="qp-ai-composer-send"
-                        aria-label="Send message"
+                        data-busy={isLoading ? "true" : "false"}
+                        aria-label={isLoading ? "Assistant is working" : "Send message"}
                       >
-                        <SendIcon className="w-4 h-4" style={{ color: "#fff" }} />
+                        {isLoading ? (
+                          <LoaderCircleIcon className="qp-ai-modal-spin" aria-hidden />
+                        ) : (
+                          <ArrowUpIcon aria-hidden />
+                        )}
                       </button>
                     </div>
                     <div className="qp-ai-composer-toolbar" ref={toolbarRef}>
@@ -1782,12 +1829,17 @@ export function AssistantPanel({
                           onClick={() => setOpenPopup((cur) => (cur === "history" ? null : "history"))}
                         >
                           <HistoryIcon className="w-4 h-4" aria-hidden />
+                          {threads.length > 0 && (
+                            <span className="qp-ai-composer-count" aria-hidden>
+                              {threads.length > 99 ? "99+" : threads.length}
+                            </span>
+                          )}
                         </button>
                       )}
                       <button
                         ref={dataTriggerRef}
                         type="button"
-                        className={`qp-ai-composer-chip${selectedDatasourceIds.length === 0 ? " qp-ai-composer-chip-attention" : ""}`}
+                        className={`qp-ai-composer-chip qp-ai-composer-ds${selectedDatasourceIds.length === 0 ? " qp-ai-composer-chip-attention" : ""}`}
                         aria-label={`Data and preview settings, ${datasourceSummaryShort}`}
                         title={datasourceSummaryShort}
                         aria-haspopup="dialog"
@@ -1795,13 +1847,11 @@ export function AssistantPanel({
                         aria-controls={dataPopupId}
                         onClick={() => setOpenPopup((cur) => (cur === "data" ? null : "data"))}
                       >
+                        <span className="qp-ai-composer-dot" data-on={selectedDatasourceIds.length > 0 ? "true" : "false"} aria-hidden />
                         <DatabaseIcon className="w-4 h-4" aria-hidden />
-                        {selectedDatasourceIds.length > 0 && (
-                          <span className="qp-ai-composer-badge" aria-hidden>
-                            {selectedDatasourceIds.length > 1 ? selectedDatasourceIds.length : ""}
-                          </span>
-                        )}
+                        <span className="qp-ai-composer-ds-name">{datasourceChipLabel}</span>
                       </button>
+                      {reportMode && <ModeSegment value={reportPreference} onSelect={selectReportPreference} />}
                       {chartModelOptions.length > 0 && (
                         <label className="qp-ai-composer-chip qp-ai-composer-model" title="Model (server default)">
                           <CpuIcon className="w-4 h-4" aria-hidden />
@@ -1870,6 +1920,7 @@ export function AssistantPanel({
                         <div className="qp-ai-popup-title">Data &amp; preview</div>
                         <div className="qp-ai-popup-body">{settingsPaneInner}</div>
                       </div>
+                    </div>
                     </div>
                   </div>
                 ) : (
