@@ -5,7 +5,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -13,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronsLeftIcon, ChevronsRightIcon, SparklesIcon, XIcon } from "lucide-react";
+import { useElementWidth } from "./useElementWidth";
 import {
   clampAssistantWidth,
   COLLAPSED_RAIL_WIDTH,
@@ -62,7 +62,7 @@ export const Workspace = forwardRef<WorkspaceHandle, WorkspaceProps>(function Wo
   ref
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const containerWidth = useElementWidth(rootRef) ?? 0;
   const [layout, setLayout] = useState<WorkspacePersistedState>(DEFAULT_WORKSPACE_STATE);
   const [restored, setRestored] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -87,17 +87,6 @@ export const Workspace = forwardRef<WorkspaceHandle, WorkspaceProps>(function Wo
     saveWorkspaceState(getBrowserStorage(), layout, storageKey);
   }, [restored, layout, storageKey]);
 
-  useLayoutEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    setContainerWidth(el.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setContainerWidth(entry.contentRect.width);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const setWidth = useCallback(
     (next: number) =>

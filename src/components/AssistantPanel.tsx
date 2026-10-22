@@ -4,11 +4,9 @@ import {
   useState,
   useRef,
   useEffect,
-  useLayoutEffect,
   useId,
   useMemo,
   useCallback,
-  type RefObject,
 } from "react";
 import {
   SparklesIcon,
@@ -21,6 +19,7 @@ import {
   CpuIcon,
 } from "lucide-react";
 import { DatasourceSelector } from "./DatasourceSelector";
+import { useElementWidth } from "./useElementWidth";
 import { NarrowLayoutContext } from "./ai-chart-modal/narrowLayoutContext";
 import {
   ChatMarkdown,
@@ -233,23 +232,6 @@ function isMastraAgentStreamUrl(url: string) {
 /** 52rem at the default 16px root; keep in sync with the `@container qp-ai-panel` rules in AIChartModal.css. */
 const AI_PANEL_NARROW_MAX_WIDTH_PX = 832;
 
-function useAiPanelNarrowLayout(ref: RefObject<HTMLElement | null>) {
-  const [narrow, setNarrow] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = (width: number) => setNarrow(width <= AI_PANEL_NARROW_MAX_WIDTH_PX);
-    update(el.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) update(entry.contentRect.width);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return narrow;
-}
-
 const REPORT_MODE_STORAGE_KEY = "qp-ai-report-mode";
 
 export function AssistantPanel({
@@ -416,7 +398,8 @@ export function AssistantPanel({
   /** Prevents duplicate error rows when catch runs more than once (e.g. React Strict Mode). */
   const streamFailureHandledRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const isNarrowLayout = useAiPanelNarrowLayout(panelRef);
+  const panelWidth = useElementWidth(panelRef);
+  const isNarrowLayout = panelWidth !== null && panelWidth <= AI_PANEL_NARROW_MAX_WIDTH_PX;
   /** Compact layout: which composer toolbar popup is open. */
   const [openPopup, setOpenPopup] = useState<"history" | "data" | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
