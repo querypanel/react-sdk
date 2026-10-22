@@ -98,6 +98,70 @@ describe("createMastraChartChunkHandler", () => {
 	});
 
 
+	it("keeps parallel report charts independent and puts a late summary after them", () => {
+		let message: MastraChartMessage = {
+			id: "assistant-1",
+			role: "assistant",
+			kind: "turn",
+			content: "",
+			blocks: [],
+			sqlParams: null,
+			timestamp: new Date(0),
+		};
+		let n = 0;
+		const handler = createMastraChartChunkHandler({
+			assistantMessageId: "assistant-1",
+			createMessageId: (prefix) => `${prefix}-${++n}`,
+			updateAssistantMessage: (updates) => {
+				message =
+					typeof updates === "function" ? updates(message) : { ...message, ...updates };
+			},
+			setTransientStatus: () => {},
+			setToolEvents: () => {},
+			setLastSqlExecution: () => {},
+		});
+		const exec = (resultId: string, v: number) =>
+			handler({
+				type: "tool-result",
+				toolName: "execute_sql",
+				result: { resultId, rows: [{ v }], fields: ["v"], rowCount: 1 },
+			});
+		const viz = (resultId: string) =>
+			handler({
+				type: "tool-result",
+				toolName: "generate_visualization",
+				result: { resultId, spec: { kind: resultId }, sql: `select ${resultId}` },
+			});
+
+		handler({
+			type: "tool-result",
+			toolName: "update_plan",
+			result: {
+				steps: [
+					{ id: "a", title: "A", status: "done" },
+					{ id: "b", title: "B", status: "in_progress" },
+					{ id: "c", title: "C", status: "pending" },
+				],
+			},
+		});
+		exec("r1", 1);
+		exec("r2", 2);
+		viz("r2");
+		viz("r1");
+		handler({ type: "text-delta", textDelta: "Summary." });
+
+		expect(message.plan?.map((step) => step.status)).toEqual(["done", "in_progress", "pending"]);
+		const blocks = message.blocks ?? [];
+		expect(blocks.map((b) => b.type)).toEqual(["data", "viz", "viz", "text"]);
+		const vizBlocks = blocks.filter((b) => b.type === "viz") as Array<{
+			resultId?: string;
+			queryResult?: { resultId?: string };
+		}>;
+		expect(vizBlocks.map((b) => b.resultId)).toEqual(["r2", "r1"]);
+		// Each chart keeps only rows from its own execute_sql, never another chart's.
+		expect(vizBlocks[1]!.queryResult).toBeUndefined();
+	});
+
 	it("starts a new paragraph for text that follows a tool result or step", () => {
 		let message: MastraChartMessage = {
 			id: "assistant-1",

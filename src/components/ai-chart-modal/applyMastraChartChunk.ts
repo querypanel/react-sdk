@@ -369,7 +369,13 @@ export function createMastraChartChunkHandler(
 
 				const vizId = createMessageId("viz");
 				ctx.updateAssistantMessage((current) => {
-					const hydrateFrom = [queryResult, current.queryResult].find(
+					// Parallel report charts interleave their execute_sql results: only fall back to the
+					// last one when it belongs to this chart.
+					const lastResult =
+						resultId && current.queryResult?.resultId && current.queryResult.resultId !== resultId
+							? undefined
+							: current.queryResult;
+					const hydrateFrom = [queryResult, lastResult].find(
 						(candidate) => candidate && candidate.rows.length > 0,
 					);
 					const hydratedJsonRenderSpec = hydrateJsonRenderSpecFromRows(
@@ -397,7 +403,7 @@ export function createMastraChartChunkHandler(
 							presentationKind,
 							sql: sql ?? current.sql,
 							sqlParams: sqlParams ?? current.sqlParams ?? null,
-							queryResult: queryResult ?? current.queryResult,
+							queryResult: queryResult ?? lastResult,
 							rationale,
 						}),
 					};

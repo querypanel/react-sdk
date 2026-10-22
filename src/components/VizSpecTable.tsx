@@ -51,6 +51,19 @@ export interface VizSpecTableProps {
   colors: ThemeColors;
 }
 
+/**
+ * DataTable looks cells up by the displayed column name, so re-key each row by the column label.
+ * Without this, any column whose label differs from its field (e.g. "Status" vs `status`) shows "—".
+ */
+export function toDisplayRows(
+  rows: Array<Record<string, unknown>>,
+  columns: Array<{ field: string; label?: string | null }>,
+): Array<Record<string, unknown>> {
+  return rows.map((row) =>
+    Object.fromEntries(columns.map((c) => [c.label || c.field, row[c.field]])),
+  );
+}
+
 export function VizSpecTable({ spec, data, colors }: VizSpecTableProps) {
   const { columns, sort, limit } = spec.encoding;
 
@@ -89,7 +102,7 @@ export function VizSpecTable({ spec, data, colors }: VizSpecTableProps) {
 
   return (
     <DataTable
-      rows={limitedData}
+      rows={toDisplayRows(limitedData, visibleColumns)}
       fields={visibleColumns.map((c) => c.label || c.field)}
       maxRows={limitedData.length}
       colors={colors}

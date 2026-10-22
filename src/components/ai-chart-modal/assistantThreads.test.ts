@@ -70,6 +70,19 @@ describe("chart previews in history", () => {
     ]);
   });
 
+  it("puts the summary after the charts for 2+ charts, before for one", () => {
+    const [many] = threadMessagesToChatMessages(
+      [stored({ role: "assistant", text: "Summary", charts: [chart, { ...chart, resultId: "r2" }] })],
+      () => null,
+    );
+    expect(many!.blocks!.map((b) => b.type)).toEqual(["viz", "viz", "text"]);
+    const [one] = threadMessagesToChatMessages(
+      [stored({ role: "assistant", text: "Summary", charts: [chart] })],
+      () => null,
+    );
+    expect(one!.blocks!.map((b) => b.type)).toEqual(["text", "viz"]);
+  });
+
   it("hydrates rows by re-running SQL and drops charts that fail", async () => {
     const messages = threadMessagesToChatMessages(
       [

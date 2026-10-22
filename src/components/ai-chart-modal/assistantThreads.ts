@@ -72,9 +72,10 @@ export function threadMessagesToChatMessages(
       continue;
     }
     if (!message.text.trim() && !(message.charts?.length)) continue;
-    const blocks: ReportBlock[] = message.text.trim()
+    const textBlocks: ReportBlock[] = message.text.trim()
       ? [{ id: `${message.id}-text`, type: "text", content: message.text }]
       : [];
+    const blocks: ReportBlock[] = [];
     for (const chart of message.charts ?? []) {
       blocks.push({
         id: `${message.id}-viz-${chart.resultId}`,
@@ -88,12 +89,14 @@ export function threadMessagesToChatMessages(
         datasourceId: chart.datasourceId,
       });
     }
+    // Report turns (2+ charts) stream their summary after the charts; single-chart turns lead with text.
+    const summaryLast = (message.charts?.length ?? 0) >= 2;
     out.push({
       id: message.id,
       role: "assistant",
       kind: "turn",
       content: message.text,
-      blocks,
+      blocks: summaryLast ? [...blocks, ...textBlocks] : [...textBlocks, ...blocks],
       timestamp,
     });
   }

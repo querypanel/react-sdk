@@ -69,7 +69,8 @@ function chartBlockTypeForSpec(spec: unknown): ChartBlockType {
 
 function specTitle(type: ChartBlockType, spec: unknown): string {
   if (type === "json-render-chart") return getJsonRenderTitle(spec) || "Visualization";
-  return (spec as { description?: string } | null | undefined)?.description || "Chart";
+  const { title, description } = (spec ?? {}) as { title?: string; description?: string };
+  return title?.trim() || description || "Chart";
 }
 
 function metadataProps(type: ChartBlockType, payload: ChartPayload): Record<string, string> {
