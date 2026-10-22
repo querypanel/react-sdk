@@ -8,12 +8,8 @@ import {
   useId,
   useMemo,
   useCallback,
-  createContext,
-  useContext,
   type RefObject,
 } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   SparklesIcon,
   SendIcon,
@@ -25,7 +21,16 @@ import {
   CpuIcon,
 } from "lucide-react";
 import { DatasourceSelector } from "./DatasourceSelector";
-import { PersistedSpecRenderer } from "./generative-ui/PersistedSpecRenderer";
+import { NarrowLayoutContext } from "./ai-chart-modal/narrowLayoutContext";
+import {
+  ChatMarkdown,
+  JsonRenderPreview,
+} from "./ai-chart-modal/ChatPrimitives";
+import {
+  getLatestResultId,
+  getMessageRationale,
+  shouldReuseLatestResultId,
+} from "./ai-chart-modal/chatMessageHelpers";
 import { createMastraChartChunkHandler } from "./ai-chart-modal/applyMastraChartChunk";
 import {
   collectDashboardReportBlocks,
@@ -224,11 +229,6 @@ export interface AssistantPanelProps {
 type Message = MastraChartMessage;
 
 const EMPTY_HEADERS: Record<string, string> = {};
-const GENERIC_ASSISTANT_SUMMARIES = new Set([
-  "I've prepared a visualization for you.",
-  "I've prepared a table for you.",
-  "I processed your request.",
-]);
 
 function isMastraAgentStreamUrl(url: string) {
   return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
@@ -236,9 +236,6 @@ function isMastraAgentStreamUrl(url: string) {
 
 /** 52rem at the default 16px root; keep in sync with the `@container qp-ai-panel` rules in AIChartModal.css. */
 const AI_PANEL_NARROW_MAX_WIDTH_PX = 832;
-
-/** True when the Assistant panel itself (not the viewport) is narrow, e.g. the Workspace rail or drawer. */
-const NarrowLayoutContext = createContext(false);
 
 function useAiPanelNarrowLayout(ref: RefObject<HTMLElement | null>) {
   const [narrow, setNarrow] = useState(false);
@@ -257,123 +254,6 @@ function useAiPanelNarrowLayout(ref: RefObject<HTMLElement | null>) {
   return narrow;
 }
 
-function getLatestResultId(messages: Message[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== "assistant") continue;
-    const resultId = message.resultId ?? message.queryResult?.resultId;
-    if (typeof resultId === "string" && resultId.trim().length > 0) {
-      return resultId.trim();
-    }
-  }
-
-  return undefined;
-}
-
-const FOLLOW_UP_RESULT_REFERENCE =
-  "(?:that|this|it|the above|the previous result|the previous results|the result|the results|same data)";
-
-const FOLLOW_UP_VISUALIZATION_PATTERNS = [
-  new RegExp(
-    `^(?:can you\\s+|please\\s+)?(?:turn|convert|make|render)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\s+(?:into|as)\\s+(?:a\\s+|an\\s+)?(?:bar|line|pie|column|area)?\\s*(?:chart|graph|table|visuali[sz]ation)\\b`,
-    "i"
-  ),
-  new RegExp(
-    `^(?:can you\\s+|please\\s+)?(?:plot|chart|graph|visuali[sz]e|tabulate)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\b`,
-    "i"
-  ),
-  new RegExp(
-    `^(?:can you\\s+|please\\s+)?(?:show|display)\\s+${FOLLOW_UP_RESULT_REFERENCE}\\s+(?:as|in)\\s+(?:a\\s+|an\\s+)?(?:bar|line|pie|column|area)?\\s*(?:chart|graph|table|visuali[sz]ation)\\b`,
-    "i"
-  ),
-  /^(?:a\s+|an\s+)?(?:bar|line|pie|column|area)\s+chart$/i,
-  /^(?:show\s+as|make\s+it\s+a)\s+(?:bar|line|pie|column|area)\s+chart$/i,
-  /^(?:show\s+as|make\s+it)\s+(?:a\s+)?table$/i,
-];
-
-function shouldReuseLatestResultId(prompt: string) {
-  const normalizedPrompt = prompt.trim();
-  if (!normalizedPrompt) return false;
-  return FOLLOW_UP_VISUALIZATION_PATTERNS.some((pattern) =>
-    pattern.test(normalizedPrompt)
-  );
-}
-function getMessageRationale(message: Message) {
-  const rationale = message.rationale?.trim();
-  if (rationale) return rationale;
-
-  const content = message.content.trim();
-  if (!content || GENERIC_ASSISTANT_SUMMARIES.has(content)) {
-    return undefined;
-  }
-
-  return content;
-}
-
-function ThoughtSummaryRail({ events }: { events: ToolEvent[] }) {
-  const startMs = Math.min(...events.map((e) => e.startedAt));
-  const endMs = Math.max(...events.map((e) => e.endedAt ?? e.startedAt));
-  const secs = ((endMs - startMs) / 1000).toFixed(1);
-
-  return (
-    <div className="qp-ai-modal-toolrail">
-      <span className="qp-ai-modal-thought-label">Thought for {secs}s</span>
-    </div>
-  );
-}
-
-function AssistantMessageMarkdown({ content }: { content: string }) {
-  return (
-    <div className="qp-ai-modal-markdown">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ node: _node, href, children, ...props }) => (
-            <a
-              {...props}
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {children}
-            </a>
-          ),
-          table: ({ node: _node, children, ...props }) => (
-            <div className="qp-ai-modal-markdown-table-wrap">
-              <table {...props}>{children}</table>
-            </div>
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
-function JsonRenderPreview({
-  spec,
-  queryResultBaseUrl,
-  requestHeaders,
-}: {
-  spec: unknown;
-  queryResultBaseUrl: string;
-  requestHeaders?: Record<string, string>;
-}) {
-  const isNarrowChart = useContext(NarrowLayoutContext);
-
-  return (
-    <div
-      className={`qp-ai-modal-chart-preview${isNarrowChart ? " qp-ai-modal-chart-preview--narrow" : ""}`}
-    >
-      <PersistedSpecRenderer
-        spec={spec}
-        queryResultBaseUrl={queryResultBaseUrl}
-        requestHeaders={requestHeaders}
-      />
-    </div>
-  );
-}
 const REPORT_MODE_STORAGE_KEY = "qp-ai-report-mode";
 
 export function AssistantPanel({
@@ -1485,7 +1365,6 @@ export function AssistantPanel({
                             requestHeaders={headers}
                             darkMode={darkMode}
                             datasourceCount={selectedDatasourceIds.length}
-                            ThoughtSummaryRail={ThoughtSummaryRail}
                             hidePlan={isNarrowLayout && message.id === pinnedPlanId}
                             onAddViz={(block) => handleAddVizBlock(block, message)}
                             onAddReport={(turn) => handleAddReportToEditor(turn)}
@@ -1635,7 +1514,7 @@ export function AssistantPanel({
                         )}
 
                         {showAssistantMarkdown && (
-                          <AssistantMessageMarkdown content={message.content} />
+                          <ChatMarkdown content={message.content} />
                         )}
 
                       </div>

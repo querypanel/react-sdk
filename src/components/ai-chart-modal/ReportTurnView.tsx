@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LoaderCircleIcon } from "lucide-react";
@@ -14,6 +14,7 @@ import { PlanChecklist } from "./PlanChecklist";
 import { withDerivedPlanProgress } from "./planProgress";
 import { VizSpecPreview } from "./VizSpecPreview";
 import { ChartChip } from "./ChartTagUi";
+import { ThoughtSummaryRail } from "./ChatPrimitives";
 import { CHART_REF_HREF_PREFIX, linkifyChartRefs } from "../workspaceState";
 import type {
 	MastraChartMessage,
@@ -206,7 +207,6 @@ export function ReportTurnView({
 	requestHeaders,
 	darkMode,
 	datasourceCount,
-	ThoughtSummaryRail,
 	onAddViz,
 	onAddReport,
 	resolveChartRef,
@@ -224,7 +224,6 @@ export function ReportTurnView({
 	requestHeaders?: Record<string, string>;
 	darkMode?: boolean;
 	datasourceCount?: number;
-	ThoughtSummaryRail: ComponentType<{ events: ToolEvent[] }>;
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
 	/** When set, `[↗ cN]` citations in answer text render as chart chips. */
