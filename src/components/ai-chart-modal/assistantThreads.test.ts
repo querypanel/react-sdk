@@ -26,8 +26,6 @@ describe("threadTitleFromQuestion", () => {
 });
 
 describe("threadMessagesToChatMessages", () => {
-  const labelFor = (id: string) => (id === "c1" ? "Revenue" : null);
-
   it("rebuilds user and assistant turns and skips other roles and empty text", () => {
     const messages = threadMessagesToChatMessages(
       [
@@ -36,20 +34,18 @@ describe("threadMessagesToChatMessages", () => {
         stored({ id: "t", role: "tool", text: "x" }),
         stored({ id: "e", role: "assistant", text: "  " }),
       ],
-      labelFor,
     );
     expect(messages.map((m) => m.id)).toEqual(["u", "a"]);
     expect(messages[1]).toMatchObject({ kind: "turn", blocks: [{ type: "text", content: "Because of **churn**." }] });
   });
 
-  it("restores tags (dead ones flagged by label) and intent on user messages", () => {
+  it("restores tags (labelled Removed chart) and intent on user messages", () => {
     const [message] = threadMessagesToChatMessages(
       [stored({ references: { tags: ["c1", "gone"], intent: "investigate" } })],
-      labelFor,
     );
     expect(message).toMatchObject({
       taggedCharts: [
-        { chartId: "c1", label: "Revenue" },
+        { chartId: "c1", label: "Removed chart" },
         { chartId: "gone", label: "Removed chart" },
       ],
       intent: "investigate",
@@ -63,7 +59,6 @@ describe("chart previews in history", () => {
   it("turns stored chart refs into viz blocks, even without text", () => {
     const [message] = threadMessagesToChatMessages(
       [stored({ role: "assistant", text: "", charts: [chart] })],
-      () => null,
     );
     expect(message!.blocks).toEqual([
       expect.objectContaining({ type: "viz", chartSpec: { kind: "chart" }, sql: "select 1", datasourceId: "ds", resultId: "r1" }),
@@ -74,7 +69,6 @@ describe("chart previews in history", () => {
     const jsonRenderSpec = { root: "p", elements: {} };
     const [message] = threadMessagesToChatMessages(
       [stored({ role: "assistant", text: "", charts: [{ ...chart, jsonRenderSpec }] })],
-      () => null,
     );
     expect(message!.blocks?.[0]).toMatchObject({ type: "viz", jsonRenderSpec });
   });
@@ -82,12 +76,10 @@ describe("chart previews in history", () => {
   it("puts the summary after the charts for 2+ charts, before for one", () => {
     const [many] = threadMessagesToChatMessages(
       [stored({ role: "assistant", text: "Summary", charts: [chart, { ...chart, resultId: "r2" }] })],
-      () => null,
     );
     expect(many!.blocks!.map((b) => b.type)).toEqual(["viz", "viz", "text"]);
     const [one] = threadMessagesToChatMessages(
       [stored({ role: "assistant", text: "Summary", charts: [chart] })],
-      () => null,
     );
     expect(one!.blocks!.map((b) => b.type)).toEqual(["text", "viz"]);
   });
@@ -98,7 +90,6 @@ describe("chart previews in history", () => {
         stored({ id: "ok", role: "assistant", text: "a", charts: [chart] }),
         stored({ id: "bad", role: "assistant", text: "b", charts: [{ ...chart, resultId: "r2" }] }),
       ],
-      () => null,
     );
     const hydrated = await hydrateThreadCharts(messages, async (block) => {
       if (block.resultId === "r2") throw new Error("expired");

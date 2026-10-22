@@ -49,11 +49,10 @@ export function threadTitleFromQuestion(question: string): string {
 
 /**
  * Rebuild chat messages from stored text + references. Only user/assistant turns are kept.
- * `labelFor` resolves a tagged chart id to its current label (null when the chart is gone).
+ * Tag labels are not stored, so restored tags read "Removed chart" until resolved against the Dashboard.
  */
 export function threadMessagesToChatMessages(
   stored: ReadonlyArray<StoredThreadMessage>,
-  labelFor: (chartId: string) => string | null,
 ): MastraChartMessage[] {
   const out: MastraChartMessage[] = [];
   for (const message of stored) {
@@ -68,7 +67,7 @@ export function threadMessagesToChatMessages(
         content: message.text,
         timestamp,
         ...(tags.length > 0
-          ? { taggedCharts: tags.map((chartId) => ({ chartId, label: labelFor(chartId) ?? "Removed chart" })) }
+          ? { taggedCharts: tags.map((chartId) => ({ chartId, label: "Removed chart" })) }
           : {}),
         ...(message.references.intent ? { intent: message.references.intent } : {}),
       });

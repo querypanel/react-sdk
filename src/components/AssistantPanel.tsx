@@ -393,7 +393,7 @@ export function AssistantPanel({
     try {
       const stored = await threadsClient.messages(thread.id);
       const hydrated = await hydrateThreadCharts(
-        threadMessagesToChatMessages(stored, () => null),
+        threadMessagesToChatMessages(stored),
         runSqlForRestoredChart,
       );
       if (seq !== threadLoadSeqRef.current) return;
