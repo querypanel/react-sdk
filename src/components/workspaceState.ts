@@ -191,24 +191,6 @@ export function buildDashboardContext(
   };
 }
 
-/** Parsed spec of the chart block with this chart id, or undefined. */
-export function findChartSpec(blocks: ReadonlyArray<BlockLike>, chartId: string): unknown {
-  for (const block of blocks) {
-    if (isChartBlockType(block.type) && block.props?.chartId === chartId) {
-      const raw = block.type === "json-render-chart" ? block.props.jsonRenderSpec : block.props.chartSpec;
-      if (typeof raw !== "string" || !raw) return undefined;
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return undefined;
-      }
-    }
-    const nested = block.children?.length ? findChartSpec(block.children, chartId) : undefined;
-    if (nested !== undefined) return nested;
-  }
-  return undefined;
-}
-
 /** An unfinished `@query` at the end of the composer text, or null. */
 export function detectMention(text: string): { query: string; start: number } | null {
   const match = /(^|\s)@([^\s@]*)$/.exec(text);

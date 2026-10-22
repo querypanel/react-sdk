@@ -1,34 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  resolveVizSpecPreview,
-  withVizSpecDataFallback,
-} from "./chartPreviewSpec";
+import { resolveVizSpecPreview } from "./chartPreviewSpec";
 
 const rows = [{ month: "Jan", revenue: 10 }];
-
-describe("withVizSpecDataFallback", () => {
-  it("returns the spec untouched when there are no rows", () => {
-    const spec = { kind: "chart", data: [] };
-    expect(withVizSpecDataFallback(spec, null)).toBe(spec);
-    expect(withVizSpecDataFallback(spec, [])).toBe(spec);
-  });
-
-  it("fills empty VizSpec data and keeps existing data", () => {
-    expect(withVizSpecDataFallback({ kind: "chart", data: [] }, rows)).toEqual({
-      kind: "chart",
-      data: rows,
-    });
-    const filled = { kind: "chart", data: [{ a: 1 }] };
-    expect(withVizSpecDataFallback(filled, rows)).toBe(filled);
-  });
-
-  it("fills legacy data.values specs", () => {
-    expect(withVizSpecDataFallback({ mark: "bar", data: { values: [] } }, rows)).toEqual({
-      mark: "bar",
-      data: { values: rows },
-    });
-  });
-});
 
 describe("resolveVizSpecPreview", () => {
   it("prefers embedded data over fallback rows", () => {

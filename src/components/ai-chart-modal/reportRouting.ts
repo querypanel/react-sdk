@@ -14,11 +14,6 @@ export function parseStoredPreference(raw: string | null | undefined): ReportPre
   return "auto";
 }
 
-export function nextPreference(current: ReportPreference): ReportPreference {
-  const index = REPORT_PREFERENCES.indexOf(current);
-  return REPORT_PREFERENCES[(index + 1) % REPORT_PREFERENCES.length] as ReportPreference;
-}
-
 const EXPLICIT_REPORT =
   /\b(report|overview|summary of|summari[sz]e|insights?|analy[sz]e|analysis|deep dive|full picture|big picture|state of|key metrics|kpis?|how (?:are|is) (?:we|it|things|the business)|health of|performance)\b/;
 

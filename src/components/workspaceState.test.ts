@@ -20,7 +20,6 @@ import {
   detectMention,
   removeMention,
   filterChartsForPicker,
-  findChartSpec,
   MAX_COMPACT_SQL_LENGTH,
   resolveDatasourceId,
   resolveTags,
@@ -142,18 +141,6 @@ describe("buildDashboardContext", () => {
     expect(ctx.tagged).toEqual([
       { ref: "c1", id: "1", title: "A", kind: "chart", datasourceId: "ds", sql: longSql, spec: { spec: "1" } },
     ]);
-  });
-});
-
-describe("findChartSpec", () => {
-  it("reads the spec of a nested chart by chart id", () => {
-    const doc = [
-      { id: "cols", type: "columnList", children: [
-        { id: "j", type: "json-render-chart", props: { chartId: "z", jsonRenderSpec: '{"root":"m"}' } },
-      ] },
-    ];
-    expect(findChartSpec(doc, "z")).toEqual({ root: "m" });
-    expect(findChartSpec(doc, "nope")).toBeUndefined();
   });
 });
 

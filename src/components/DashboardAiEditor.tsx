@@ -220,7 +220,6 @@ export function DashboardAiEditor({
   const [mounted, setMounted] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [showDeploySuccess, setShowDeploySuccess] = useState(false);
-  const lastLoadedSignatureRef = useRef<string | null>(null);
   const workspaceRef = useRef<WorkspaceHandle>(null);
   const isWorkspace = assistantLayout === "workspace";
 
@@ -364,11 +363,6 @@ export function DashboardAiEditor({
     dropCursor: multiColumnDropCursor,
     dictionary: dashboardBlockNoteDictionary,
   }, [schema, contentSignature]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    lastLoadedSignatureRef.current = contentSignature;
-  }, [mounted, contentSignature]);
 
   const insertAIChartItem = useCallback(
     (): DefaultReactSuggestionItem => ({

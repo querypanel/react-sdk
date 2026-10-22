@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideReportMode, looksLikeReportRequest, nextPreference, parseStoredPreference } from "./reportRouting";
+import { decideReportMode, looksLikeReportRequest, parseStoredPreference } from "./reportRouting";
 
 const auto = (text: string, hasPriorTurns = false, hasTaggedCharts = false) =>
   decideReportMode({ text, preference: "auto", hasTaggedCharts, hasPriorTurns });
@@ -75,11 +75,5 @@ describe("stored preference", () => {
     expect(parseStoredPreference(null)).toBe("auto");
     expect(parseStoredPreference("report")).toBe("report");
     expect(parseStoredPreference("garbage")).toBe("auto");
-  });
-
-  it("cycles auto, report, quick", () => {
-    expect(nextPreference("auto")).toBe("report");
-    expect(nextPreference("report")).toBe("quick");
-    expect(nextPreference("quick")).toBe("auto");
   });
 });
