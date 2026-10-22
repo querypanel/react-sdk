@@ -1,17 +1,12 @@
 /** Pure Workspace state: lazy chart ids, @-tag resolution, and the context sent to the Assistant. */
 import {
   buildChartBlockInput,
+  parseJson,
+  type BlockLike,
   isChartBlockType,
   type ChartBlockSummary,
   type ChartPayload,
 } from "./dashboardEditorController";
-
-type BlockLike = {
-  id: string;
-  type: string;
-  props?: Record<string, unknown>;
-  children?: BlockLike[];
-};
 
 export const MAX_CONTEXT_CHARTS = 50;
 export const MAX_COMPACT_SQL_LENGTH = 300;
@@ -252,15 +247,6 @@ export function validateTagsForSend(
     : "Some tagged charts were removed from the Dashboard. Remove their tags to send this message.";
 }
 
-function parseJsonProp(raw: unknown): unknown {
-  if (typeof raw !== "string" || !raw) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Everything needed to show or re-run a chart that is currently on the Dashboard. */
 export interface ChartBlockSnapshot {
   blockId: string;
@@ -291,9 +277,9 @@ export function findChartBlockSnapshot(
   };
   const block = find(blocks);
   if (!block || !summary) return undefined;
-  const params = parseJsonProp(block.props?.sqlParams);
+  const params = parseJson(block.props?.sqlParams);
   const isJsonRender = block.type === "json-render-chart";
-  const spec = parseJsonProp(isJsonRender ? block.props?.jsonRenderSpec : block.props?.chartSpec);
+  const spec = parseJson(isJsonRender ? block.props?.jsonRenderSpec : block.props?.chartSpec);
   return {
     blockId: block.id,
     chartId,

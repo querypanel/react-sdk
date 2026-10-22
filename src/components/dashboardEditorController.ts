@@ -56,7 +56,7 @@ export interface DashboardEditorController {
   focusChart(blockId: string): boolean;
 }
 
-type BlockLike = {
+export type BlockLike = {
   id: string;
   type: string;
   props?: Record<string, unknown>;
@@ -137,7 +137,8 @@ export function buildChartPropsPatch(
   return props;
 }
 
-function parseJson(raw: unknown): unknown {
+/** Parsed JSON string prop, or undefined when absent or invalid. */
+export function parseJson(raw: unknown): unknown {
   if (typeof raw !== "string" || !raw) return undefined;
   try {
     return JSON.parse(raw);
