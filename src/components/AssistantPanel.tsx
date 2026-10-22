@@ -65,13 +65,8 @@ import {
   fetchTagIntent,
   NEEDS_SINGLE_CHART_MESSAGE,
 } from "./ai-chart-modal/tagIntent";
-import {
-  createThreadsClient,
-  hydrateThreadCharts,
-  threadMessagesToChatMessages,
-  threadTitleFromQuestion,
-  type AssistantThreadSummary,
-} from "./ai-chart-modal/assistantThreads";
+import { threadTitleFromQuestion } from "./ai-chart-modal/assistantThreads";
+import { useAssistantThreads } from "./ai-chart-modal/useAssistantThreads";
 import {
   buildChartBlockInput,
   type ChartBlockSummary,
@@ -327,25 +322,6 @@ export function AssistantPanel({
     promptInputRef.current?.focus();
   };
   const authHeaders = { "x-organization-id": organizationId, ...headers };
-  const threadsClient = useMemo(
-    () =>
-      threadsUrl
-        ? createThreadsClient({
-            baseUrl: threadsUrl,
-            dashboardId,
-            headers: authHeaders,
-          })
-        : null,
-    // headers is a fresh object per render for most hosts; the endpoint and Dashboard identify the client.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [threadsUrl, dashboardId, organizationId]
-  );
-  const [threads, setThreads] = useState<AssistantThreadSummary[]>([]);
-  const [activeThread, setActiveThread] = useState<AssistantThreadSummary | null>(null);
-  const [threadsError, setThreadsError] = useState<string | null>(null);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const threadLoadSeqRef = useRef(0);
-
   const resetConversation = (next: Message[]) => {
     setMessages(next);
     setTaggedChartIds([]);
@@ -385,60 +361,27 @@ export function AssistantPanel({
     return { resultId: chart.resultId, fields, rows, rowCount: rows.length };
   };
 
-  const openThread = async (thread: AssistantThreadSummary) => {
-    if (!threadsClient) return;
-    const seq = ++threadLoadSeqRef.current;
-    setThreadsLoading(true);
-    setThreadsError(null);
-    try {
-      const stored = await threadsClient.messages(thread.id);
-      const hydrated = await hydrateThreadCharts(
-        threadMessagesToChatMessages(stored),
-        runSqlForRestoredChart,
-      );
-      if (seq !== threadLoadSeqRef.current) return;
-      resetConversation(hydrated);
-      setActiveThread(thread);
+  const {
+    threadsClient,
+    threads,
+    setThreads,
+    activeThread,
+    setActiveThread,
+    threadsError,
+    threadsLoading,
+    openThread,
+    startNewConversation,
+  } = useAssistantThreads({
+    threadsUrl,
+    dashboardId,
+    headers: authHeaders,
+    runSqlForRestoredChart,
+    onRestore: (restored, thread) => {
+      resetConversation(restored);
       setQuerypanelSessionId(thread.mastra_thread_id);
-    } catch (err) {
-      if (seq === threadLoadSeqRef.current) {
-        setThreadsError(err instanceof Error ? err.message : "Failed to load the conversation");
-      }
-    } finally {
-      if (seq === threadLoadSeqRef.current) setThreadsLoading(false);
-    }
-  };
-
-  // Restore the most recent Thread on mount.
-  useEffect(() => {
-    if (!threadsClient) return;
-    let cancelled = false;
-    setThreadsLoading(true);
-    threadsClient
-      .list()
-      .then((list) => {
-        if (cancelled) return;
-        setThreads(list);
-        if (list[0]) void openThread(list[0]);
-        else setThreadsLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setThreadsError(err instanceof Error ? err.message : "Failed to load conversations");
-        setThreadsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadsClient]);
-
-  const startNewConversation = () => {
-    threadLoadSeqRef.current += 1;
-    setActiveThread(null);
-    setThreadsError(null);
-    resetConversation([]);
-  };
+    },
+    onReset: () => resetConversation([]),
+  });
 
   const chipClickHandler = (chartId: string) => {
     const chart = (charts ?? []).find((candidate) => candidate.chartId === chartId);
