@@ -1,7 +1,8 @@
 {
   "name": "@querypanel/react-sdk",
   "version": "0.2.17-beta.0",
-  "description": "React components for QueryPanel - AI-powered data visualization",
+  "description": "Embedded analytics for React SaaS apps: multi-tenant dashboards with an AI assistant and natural-language-to-SQL charts, rendered natively in your React tree (no iframe).",
+  "homepage": "https://querypanel.io",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -76,11 +77,23 @@
   },
   "keywords": [
     "react",
+    "react-components",
     "querypanel",
+    "embedded-analytics",
+    "customer-facing-analytics",
+    "multi-tenant",
+    "dashboards",
+    "react-dashboard",
+    "saas",
+    "ai-analytics",
+    "ai-assistant",
+    "natural-language-to-sql",
+    "text-to-sql",
+    "white-label",
     "data-visualization",
-    "vizspec",
+    "charts",
     "recharts",
-    "charts"
+    "vizspec"
   ],
   "license": "MIT",
   "repository": {
