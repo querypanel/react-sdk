@@ -1,6 +1,6 @@
 {
   "name": "@querypanel/react-sdk",
-  "version": "0.2.16",
+  "version": "0.2.17-beta.0",
   "description": "React components for QueryPanel - AI-powered data visualization",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
