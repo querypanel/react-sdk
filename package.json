@@ -1,6 +1,6 @@
 {
   "name": "@querypanel/react-sdk",
-  "version": "0.2.17-beta.0",
+  "version": "0.2.17",
   "description": "Embedded analytics for React SaaS apps: multi-tenant dashboards with an AI assistant and natural-language-to-SQL charts, rendered natively in your React tree (no iframe).",
   "homepage": "https://querypanel.io",
   "main": "dist/index.js",

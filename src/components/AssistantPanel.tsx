@@ -385,7 +385,7 @@ export function AssistantPanel({
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [activeAssistantMessageId, setActiveAssistantMessageId] = useState<string | null>(null);
   const [lastSqlExecution, setLastSqlExecution] = useState<SqlExecutionArtifact | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const promptInputRef = useRef<HTMLInputElement>(null);
   const tenantFieldId = useId();
   const previewTenantIdFieldId = useId();
@@ -429,7 +429,9 @@ export function AssistantPanel({
 
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll only the messages list; scrollIntoView would also scroll the host page.
+    const el = messagesRef.current;
+    el?.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading, transientStatus, toolEvents, lastSqlExecution, activeAssistantMessageId]);
 
   useEffect(() => {
@@ -1088,7 +1090,7 @@ export function AssistantPanel({
                   {threadsError}
                 </div>
               )}
-              <div className="qp-ai-modal-messages">
+              <div ref={messagesRef} className="qp-ai-modal-messages">
                 {messages.length === 0 && (
                   <div className="qp-ai-modal-empty">
                     <div className="qp-ai-modal-empty-inner">
@@ -1370,7 +1372,6 @@ export function AssistantPanel({
                   );
                 })}
 
-                <div ref={messagesEndRef} />
               </div>
 
               {selectionTurn && !isNarrowLayout && (
