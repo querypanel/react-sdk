@@ -10,6 +10,7 @@ import {
   type AssistantPanelStatus,
 } from "./AssistantPanel";
 import { isDocumentDark } from "../utils/documentTheme";
+import { ThemeProvider } from "../context/ThemeContext";
 import "./AIChartModal.css";
 
 export { DEFAULT_AI_CHART_MODEL_OPTIONS };
@@ -63,6 +64,7 @@ export function AIChartModal({
   const effectiveDarkMode = isDocumentDark();
 
   const modalContent = (
+    <ThemeProvider darkMode={effectiveDarkMode}>
     <div data-qp-ai-modal data-theme={effectiveDarkMode ? "dark" : "light"}>
       <button
         type="button"
@@ -120,6 +122,7 @@ export function AIChartModal({
         </div>
       </div>
     </div>
+    </ThemeProvider>
   );
 
   if (typeof document === "undefined" || !document.body) {

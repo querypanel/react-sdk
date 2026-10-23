@@ -21,6 +21,7 @@ import {
 import { DatasourceSelector } from "./DatasourceSelector";
 import { useElementWidth } from "./useElementWidth";
 import { NarrowLayoutContext } from "./ai-chart-modal/narrowLayoutContext";
+import { ThemeProvider } from "../context/ThemeContext";
 import {
   ChatMarkdown,
   JsonRenderPreview,
@@ -1042,6 +1043,7 @@ export function AssistantPanel({
 
   return (
     <NarrowLayoutContext.Provider value={isNarrowLayout}>
+    <ThemeProvider darkMode={darkMode}>
     <div
       ref={panelRef}
       className="qp-ai-assistant-panel"
@@ -1660,6 +1662,7 @@ export function AssistantPanel({
 
           </div>
     </div>
+    </ThemeProvider>
     </NarrowLayoutContext.Provider>
   );
 }
