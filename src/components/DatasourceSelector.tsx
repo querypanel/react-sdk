@@ -7,7 +7,7 @@ import { runDedupedRequest } from "../utils/requestDedup";
 type Datasource = {
   id: string;
   name: string;
-  dialect: "postgres" | "clickhouse" | "bigquery";
+  dialect: "postgres" | "redshift" | "clickhouse" | "bigquery";
   has_password?: boolean;
 };
 
