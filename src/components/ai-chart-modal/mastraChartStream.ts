@@ -225,7 +225,14 @@ export function formatToolStatus(toolName: string) {
 		case "generate_sql":
 			return "Generating SQL";
 		case "execute_sql":
+		case "run_sql":
 			return "Running SQL";
+		case "explore_schema":
+		case "list_tables":
+		case "search_annotations":
+			return "Exploring schema";
+		case "describe_tables":
+			return "Reading table details";
 		case "generate_visualization":
 			return "Building visualization";
 		case "update_plan":

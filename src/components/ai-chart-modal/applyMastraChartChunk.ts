@@ -235,7 +235,28 @@ export function createMastraChartChunkHandler(
 			);
 		}
 
-		const applyToolResult = (toolName: string, result: Record<string, unknown>) => {
+		const applyToolResult = (toolName: string, result: Record<string, unknown>): boolean => {
+			// Single-LLM agent: run_sql writes and runs the SQL in one step, and may carry the chart.
+			if (toolName === "run_sql") {
+				applyToolResult("generate_sql", {
+					sql: result.sql,
+					rationale: result.rationale,
+					params: result.params,
+				});
+				applyToolResult("execute_sql", result);
+				finishTool("run_sql", { status: "succeeded" });
+				if (result.visualization && typeof result.visualization === "object") {
+					applyToolResult("generate_visualization", {
+						...(result.visualization as Record<string, unknown>),
+						resultId: result.resultId,
+						sql: result.sql,
+						params: result.params,
+						rationale: result.rationale,
+					});
+				}
+				return true;
+			}
+
 			if (toolName === "update_plan") {
 				finishTool("update_plan", { status: "succeeded" });
 				const plan = parsePlanSteps(result);
