@@ -118,6 +118,11 @@ function upsertTextBlock(
 	return next;
 }
 
+function datasourceIdOf(value: unknown): string | undefined {
+	const id = value && typeof value === "object" ? (value as { id?: unknown }).id : undefined;
+	return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
 function upsertDataBlock(
 	blocks: ReportBlock[],
 	createBlockId: (prefix: string) => string,
@@ -252,6 +257,7 @@ export function createMastraChartChunkHandler(
 						sql: result.sql,
 						params: result.params,
 						rationale: result.rationale,
+						datasource: result.datasource,
 					});
 				}
 				return true;
@@ -393,6 +399,9 @@ export function createMastraChartChunkHandler(
 							sqlParams: sqlParams ?? current.sqlParams ?? null,
 							queryResult: queryResult ?? lastResult,
 							rationale,
+							// Each chart keeps the datasource its SQL ran on, so adding it later never
+							// depends on what the panel has selected by then.
+							datasourceId: datasourceIdOf(result.datasource) ?? (queryResult ?? lastResult)?.datasource?.id,
 						}),
 					};
 				});

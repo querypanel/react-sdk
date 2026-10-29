@@ -897,7 +897,7 @@ export function AssistantPanel({
       return {
         ...block,
         question,
-        datasourceIds: selectedDatasourceIds,
+        datasourceIds: block.datasourceIds ?? selectedDatasourceIds,
         tenantFieldName: scopedTenantField,
         previewTenantId: scopedPreviewTenant,
       };

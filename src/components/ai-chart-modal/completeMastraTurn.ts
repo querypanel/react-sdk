@@ -144,6 +144,7 @@ export function collectDashboardReportBlocks(
 				sqlParams: block.sqlParams ?? message.sqlParams ?? null,
 				resultId: block.resultId ?? message.resultId,
 				presentationKind: block.presentationKind,
+				...(block.datasourceId ? { datasourceIds: [block.datasourceId] } : {}),
 			});
 		}
 	}

@@ -65,6 +65,15 @@ describe("chart previews in history", () => {
     ]);
   });
 
+  it("keeps two charts of one result apart and remembers the latest result for follow-ups", () => {
+    const [message] = threadMessagesToChatMessages(
+      [stored({ role: "assistant", text: "", charts: [chart, { ...chart, spec: { kind: "table" } }, { ...chart, resultId: "r2" }] })],
+    );
+    const ids = message!.blocks?.map((block) => block.id) ?? [];
+    expect(new Set(ids).size).toBe(3);
+    expect(message!.resultId).toBe("r2");
+  });
+
   it("carries the json-render spec so restored charts insert like live ones", () => {
     const jsonRenderSpec = { root: "p", elements: {} };
     const [message] = threadMessagesToChatMessages(

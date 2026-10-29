@@ -262,6 +262,57 @@ describe("createMastraChartChunkHandler", () => {
 		expect(message.jsonRenderSpec).toBeTruthy();
 	});
 
+	it("shows every run_sql chart of a turn, each with its own datasource", () => {
+		let next = 0;
+		const { handler, getMessage } = setup({ createMessageId: (prefix) => `${prefix}-${++next}` });
+		const runSql = (resultId: string, datasourceId: string) => ({
+			type: "tool-result",
+			toolName: "run_sql",
+			result: {
+				resultId,
+				sql: `SELECT ${resultId}`,
+				fields: ["week", "n"],
+				rows: [{ week: "2026-01-05", n: 3 }],
+				rowCount: 1,
+				datasource: { id: datasourceId, name: "db", dialect: "postgres" },
+				visualization: {
+					spec: { kind: "chart" },
+					jsonRenderSpec: { element: { type: "LineChart" } },
+					presentationKind: "chart",
+				},
+			},
+		});
+
+		handler(runSql("r1", "ds-a"));
+		handler(runSql("r2", "ds-b"));
+
+		const viz = getMessage().blocks?.filter((b) => b.type === "viz") ?? [];
+		expect(viz.map((b) => b.type === "viz" && [b.resultId, b.sql, b.datasourceId])).toEqual([
+			["r1", "SELECT r1", "ds-a"],
+			["r2", "SELECT r2", "ds-b"],
+		]);
+	});
+
+	it("adds each report chart on the datasource it ran on", () => {
+		let next = 0;
+		const { handler, getMessage } = setup({ createMessageId: (prefix) => `${prefix}-${++next}` });
+		handler({
+			type: "tool-result",
+			toolName: "run_sql",
+			result: {
+				resultId: "r1",
+				sql: "SELECT 1",
+				fields: ["x", "n"],
+				rows: [{ x: "a", n: 1 }],
+				rowCount: 1,
+				datasource: { id: "ds-a", name: "db", dialect: "postgres" },
+				visualization: { spec: { kind: "chart" }, presentationKind: "chart" },
+			},
+		});
+		const [viz] = collectDashboardReportBlocks(getMessage()).filter((b) => b.type === "viz");
+		expect(viz).toMatchObject({ type: "viz", resultId: "r1", datasourceIds: ["ds-a"] });
+	});
+
 	it("does not treat Mastra output validation errors as empty SQL results", () => {
 		const { handler, getMessage, toolEvents, statuses } = setup({
 			toolEvents: [

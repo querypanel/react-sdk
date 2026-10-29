@@ -78,9 +78,10 @@ export function threadMessagesToChatMessages(
       ? [{ id: `${message.id}-text`, type: "text", content: message.text }]
       : [];
     const blocks: ReportBlock[] = [];
-    for (const chart of message.charts ?? []) {
+    for (const [index, chart] of (message.charts ?? []).entries()) {
       blocks.push({
-        id: `${message.id}-viz-${chart.resultId}`,
+        // A result can be charted twice in one turn (run_sql's chart, then a re-chart), so ids need the index.
+        id: `${message.id}-viz-${index}-${chart.resultId}`,
         type: "viz",
         chartSpec: chart.spec,
         jsonRenderSpec: chart.jsonRenderSpec,
@@ -100,6 +101,8 @@ export function threadMessagesToChatMessages(
       kind: "turn",
       content: message.text,
       blocks: summaryLast ? [...blocks, ...textBlocks] : [...textBlocks, ...blocks],
+      // Follow-ups ("make it a line chart") reuse the latest result, as after a live turn.
+      resultId: message.charts?.at(-1)?.resultId,
       timestamp,
     });
   }
