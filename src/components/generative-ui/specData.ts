@@ -1,3 +1,5 @@
+import { isMapVizSpec } from "../mapKind";
+
 type JsonRenderElement = {
   type?: unknown;
   props?: unknown;
@@ -489,6 +491,17 @@ export function injectRowsIntoJsonRenderSpec(
   }
 
   return spec;
+}
+
+/** Spec carrying fresh SQL rows: a map spec holds them in `data`, a json-render spec in its root element. */
+export function hydrateSpecRows(
+  spec: unknown,
+  rows: Array<Record<string, unknown>>,
+  fields: string[],
+) {
+  return isMapVizSpec(spec)
+    ? { ...spec, data: rows }
+    : injectRowsIntoJsonRenderSpec(spec, rows, fields);
 }
 
 /** Inject SQL rows into a json-render spec when present; otherwise return spec unchanged. */

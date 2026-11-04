@@ -1,4 +1,5 @@
 import type { MastraChartMessage, ReportBlock, ReportVizBlock, SqlExecutionArtifact } from "./types";
+import type { VizSpecKind } from "../vizSpecGuard";
 import { hydrateJsonRenderSpecFromRows } from "../generative-ui/specData";
 
 /** Shapes returned by the Assistant Threads endpoints (`/assistant-threads`). */
@@ -16,7 +17,7 @@ export interface StoredChartRef {
   datasourceId?: string;
   sql: string;
   params: Record<string, unknown> | null;
-  presentationKind?: "chart" | "table" | "metric" | "map";
+  presentationKind?: VizSpecKind;
   rationale: string | null;
   spec: unknown;
   /** json-render presentation without row data; what dashboard charts are inserted as. */

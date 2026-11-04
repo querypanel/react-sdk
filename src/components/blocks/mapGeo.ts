@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { createContext, createElement, useContext, useMemo, type ReactNode } from "react";
 import type { MapTopology } from "../vizSpecMapGeometry";
 import type { PlaceInput, ResolvedPlace } from "../vizSpecMapPlaces";
 
@@ -25,6 +25,13 @@ export function resolveGeoBaseUrl(geoBaseUrl: string | undefined, apiBaseUrl: st
   return base ? `${base}/geo` : "/api/geo";
 }
 
+const MapGeoContext = createContext<string | undefined>(undefined);
+
+/** Provides the map geo base URL to every block and panel below it (a `geoBaseUrl` prop still overrides). */
+export function MapGeoProvider({ geoBaseUrl, children }: { geoBaseUrl?: string; children: ReactNode }) {
+  return createElement(MapGeoContext.Provider, { value: geoBaseUrl }, children);
+}
+
 /** Memoised geo client for a block or panel; re-created only when the URLs, org or headers change. */
 export function useMapGeoClient({
   geoBaseUrl,
@@ -37,11 +44,13 @@ export function useMapGeoClient({
   headers?: Record<string, string>;
   organizationId?: string;
 }): MapGeoClient {
+  const contextGeoBaseUrl = useContext(MapGeoContext);
+  const effectiveGeoBaseUrl = geoBaseUrl ?? contextGeoBaseUrl;
   const headersKey = JSON.stringify(headers ?? {});
   // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by their JSON
   return useMemo(
-    () => createMapGeoClient({ geoBaseUrl: resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl), headers, organizationId }),
-    [geoBaseUrl, apiBaseUrl, organizationId, headersKey]
+    () => createMapGeoClient({ geoBaseUrl: resolveGeoBaseUrl(effectiveGeoBaseUrl, apiBaseUrl), headers, organizationId }),
+    [effectiveGeoBaseUrl, apiBaseUrl, organizationId, headersKey]
   );
 }
 

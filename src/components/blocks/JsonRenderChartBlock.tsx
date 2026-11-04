@@ -10,16 +10,17 @@ import { PersistedSpecRenderer } from "../generative-ui/PersistedSpecRenderer";
 import {
   getRootElement,
   hasInlineJsonRenderData,
+  hydrateSpecRows,
   injectRowsIntoJsonRenderSpec,
   withJsonRenderResultId,
 } from "../generative-ui/specData";
-import { runDedupedRequest } from "../../utils/requestDedup";
 import { DEFAULT_CHART_HEIGHT, parseBlockHeight, resolveChartBlockHeight } from "./chartBlockHeight";
 import { ChartBlockFrame } from "./ChartBlockFrame";
+import { MapBlockBody } from "./MapBlockBody";
+import { blockSqlRequestKey, buildBlockSqlPayload, resolveRunSqlUrl, runBlockSql } from "./runBlockSql";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromJsonRenderSpec } from "./pinnedChartModify";
 import { isMapVizSpec, mapCountryOf } from "../mapKind";
-import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useMapGeoClient } from "./mapGeo";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
@@ -32,8 +33,6 @@ type JsonRenderChartBlockOptions = {
   colors: ThemeColors;
   queryResultBaseUrl?: string;
   runSqlUrl?: string;
-  /** Base URL for map geo routes. Default: apiBaseUrl + /geo. Admin: /api/geo. */
-  geoBaseUrl?: string;
   modifyChartUrl?: string;
   enableChartControls?: boolean;
   /** Workspace: adds an "Ask about this" shortcut to each chart's controls. */
@@ -44,16 +43,11 @@ type JsonRenderChartBlockOptions = {
 };
 
 const EMPTY_HEADERS: Record<string, string> = {};
-
-function getHeadersSignature(headers: Record<string, string>) {
-  return JSON.stringify(
-    Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
-  );
-}
+const SQL_KEY_PREFIX = "json-render-run-sql";
 
 function mapRows(spec: unknown): Array<Record<string, unknown>> {
-  const data = (spec as { data?: unknown } | null)?.data;
-  return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+  if (!spec || typeof spec !== "object" || !("data" in spec)) return [];
+  return Array.isArray(spec.data) ? spec.data : [];
 }
 
 function extractControlData(spec: unknown): {
@@ -97,7 +91,6 @@ export function createJsonRenderChartBlockSpec({
   colors,
   queryResultBaseUrl = "/api/query-results",
   runSqlUrl,
-  geoBaseUrl,
   modifyChartUrl,
   enableChartControls = true,
   onAskAboutThis,
@@ -209,7 +202,7 @@ export function createJsonRenderChartBlockSpec({
           savedHeight != null && savedHeight !== DEFAULT_CHART_HEIGHT ? savedHeight : undefined;
         const editor = getBlockNoteEditor(props);
         const isMap = isMapVizSpec(parsedSpec);
-        const mapGeo = useMapGeoClient({ geoBaseUrl, apiBaseUrl, headers, organizationId });
+        const mapGeo = useMapGeoClient({ apiBaseUrl, headers, organizationId });
 
         const modify = usePinnedChartBlockModify({
           format: "json-render",
@@ -242,63 +235,42 @@ export function createJsonRenderChartBlockSpec({
 
         const hasSql = Boolean(props.block.props.sql) && datasourceIds.length > 0;
 
+        const sqlUrl = resolveRunSqlUrl(runSqlUrl, apiBaseUrl);
+        const sqlPayload = buildBlockSqlPayload({
+          sql: props.block.props.sql,
+          datasourceIds,
+          dashboardId,
+          sqlParams,
+          tenantFieldName: props.block.props.tenantFieldName,
+          previewTenantId: props.block.props.previewTenantId,
+        });
+        const sqlRequestKey = blockSqlRequestKey({
+          keyPrefix: SQL_KEY_PREFIX,
+          url: sqlUrl,
+          payload: sqlPayload,
+          headers,
+        });
+
         /** Runs the block's SQL. `force` (map refresh) bypasses the 60 s block cache. */
         const fetchRows = async (force: boolean, isCancelled: () => boolean = () => false) => {
           if (!parsedSpec) return;
-          const url = runSqlUrl ?? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql`;
-          const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
-          const previewTenantId = props.block.props.previewTenantId?.trim() || undefined;
-          const requestPayload = {
-            sql: props.block.props.sql,
-            datasourceIds,
-            ...(dashboardId ? { dashboardId } : {}),
-            params: sqlParams,
-            ...(tenantFieldName ? { tenantFieldName } : {}),
-            ...(previewTenantId ? { previewTenantId } : {}),
-          };
-          const requestKey = `json-render-run-sql:${url}:${JSON.stringify(
-            requestPayload
-          )}:${getHeadersSignature(headers)}`;
-
           setIsLoading(true);
           setLoadError(null);
           try {
-            const payload = await runDedupedRequest(
-              requestKey,
-              async () => {
-                const response = await fetch(url, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(organizationId ? { "x-organization-id": organizationId } : {}),
-                    ...headers,
-                  },
-                  body: JSON.stringify(requestPayload),
-                });
-
-                const parsed = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                  throw new Error(parsed?.error || "Failed to load visualization data");
-                }
-                return parsed;
-              },
-              { cacheMs: 60_000, bypassCache: force }
-            );
+            const { rows, fields } = await runBlockSql({
+              url: sqlUrl,
+              headers,
+              organizationId,
+              payload: sqlPayload,
+              force,
+              keyPrefix: SQL_KEY_PREFIX,
+              errorMessage: "Failed to load visualization data",
+            });
 
             if (!isCancelled()) {
-              const rows = Array.isArray(payload?.rows)
-                ? (payload.rows as Array<Record<string, unknown>>)
-                : [];
-              const fields = Array.isArray(payload?.fields)
-                ? (payload.fields as string[])
-                : [];
-              lastSqlFetchKeyRef.current = requestKey;
+              lastSqlFetchKeyRef.current = sqlRequestKey;
               setLastUpdated(Date.now());
-              setHydratedSpec(
-                isMapVizSpec(parsedSpec)
-                  ? { ...(parsedSpec as object), data: rows }
-                  : injectRowsIntoJsonRenderSpec(parsedSpec, rows, fields)
-              );
+              setHydratedSpec(hydrateSpecRows(parsedSpec, rows, fields));
             }
           } catch (err) {
             if (!isCancelled()) {
@@ -323,31 +295,13 @@ export function createJsonRenderChartBlockSpec({
             return;
           }
 
-          const url = runSqlUrl ?? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql`;
-          const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
-          const previewTenantId = props.block.props.previewTenantId?.trim() || undefined;
-          const requestPayload = {
-            sql: props.block.props.sql,
-            datasourceIds,
-            ...(dashboardId ? { dashboardId } : {}),
-            params: sqlParams,
-            ...(tenantFieldName ? { tenantFieldName } : {}),
-            ...(previewTenantId ? { previewTenantId } : {}),
-          };
-          const requestKey = `json-render-run-sql:${url}:${JSON.stringify(
-            requestPayload
-          )}:${getHeadersSignature(headers)}`;
-
           // Same SQL/params: reuse hydrated rows onto a possibly type-swapped spec.
           // Do this before trusting inline data so chart-type swaps still work.
-          if (!isMapVizSpec(parsedSpec) && lastSqlFetchKeyRef.current === requestKey) {
+          if (!isMap && lastSqlFetchKeyRef.current === sqlRequestKey) {
             setHydratedSpec((prev: unknown) => {
               const { rows, fields } = extractControlData(prev);
               if (rows.length === 0 && hasInlineJsonRenderData(parsedSpec)) {
                 return parsedSpec;
-              }
-              if (rows.length === 0) {
-                return injectRowsIntoJsonRenderSpec(parsedSpec, [], fields);
               }
               return injectRowsIntoJsonRenderSpec(parsedSpec, rows, fields);
             });
@@ -356,8 +310,8 @@ export function createJsonRenderChartBlockSpec({
 
           // Params/SQL changed (e.g. date-range modify). Prefer fresh inline rows from
           // the modify response when present; otherwise refetch.
-          if (!isMapVizSpec(parsedSpec) && hasInlineJsonRenderData(parsedSpec)) {
-            lastSqlFetchKeyRef.current = requestKey;
+          if (!isMap && hasInlineJsonRenderData(parsedSpec)) {
+            lastSqlFetchKeyRef.current = sqlRequestKey;
             setHydratedSpec(parsedSpec);
             return;
           }
@@ -432,7 +386,7 @@ export function createJsonRenderChartBlockSpec({
           );
         }
 
-        if (isMap) {
+        if (isMap && isMapVizSpec(specForRenderer)) {
           return (
             <ChartBlockFrame
               title={props.block.props.title || "Map"}
@@ -443,15 +397,13 @@ export function createJsonRenderChartBlockSpec({
               height={resolveChartBlockHeight(props.block.props.height, "map")}
               colors={resolvedColors}
             >
-              <VizSpecRenderer
-                spec={specForRenderer as VizSpec}
-                data={mapRows(specForRenderer)}
+              <MapBlockBody
+                spec={specForRenderer}
+                rows={mapRows(specForRenderer)}
+                geo={mapGeo}
                 colors={resolvedColors}
-                chartHeight="100%"
-                fetchMapBoundaries={mapGeo.fetchBoundaries}
-                resolveMapPlaces={mapGeo.resolvePlaces}
-                mapLastUpdated={lastUpdated}
-                onMapRefresh={hasSql ? () => fetchRows(true) : undefined}
+                lastUpdated={lastUpdated}
+                onRefresh={hasSql ? () => fetchRows(true) : undefined}
               />
             </ChartBlockFrame>
           );

@@ -7,9 +7,10 @@ import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
 import { useThemeContext } from "../../context/ThemeContext";
 import { getColorsForMode } from "../../themes";
 import type { ThemeColors } from "../../types";
-import { runDedupedRequest } from "../../utils/requestDedup";
 import { resolveChartBlockHeight } from "./chartBlockHeight";
 import { ChartBlockFrame } from "./ChartBlockFrame";
+import { MapBlockBody } from "./MapBlockBody";
+import { buildBlockSqlPayload, resolveRunSqlUrl, runBlockSql } from "./runBlockSql";
 import { isVizSpec } from "../vizSpecGuard";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromVizSpec } from "./pinnedChartModify";
@@ -23,8 +24,6 @@ type ChartBlockOptions = {
   colors: ThemeColors;
   /** Override URL for run-sql (e.g. /api/dashboards/run-sql for admin). If not set, uses apiBaseUrl + /query/run-sql */
   runSqlUrl?: string;
-  /** Base URL for map geo routes (`/boundaries/:country`, `/resolve`). Default: apiBaseUrl + /geo. Admin: /api/geo. */
-  geoBaseUrl?: string;
   /** Override URL for pinned-chart modify (admin: /api/dashboards/modify-chart). */
   modifyChartUrl?: string;
   /** Show date-range / chart-type controls when modifyChartUrl is set. Default true. */
@@ -38,17 +37,10 @@ type ChartBlockOptions = {
 
 const EMPTY_HEADERS: Record<string, string> = {};
 
-function getHeadersSignature(headers: Record<string, string>) {
-  return JSON.stringify(
-    Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
-  );
-}
-
 export function createChartBlockSpec({
   apiBaseUrl,
   colors,
   runSqlUrl,
-  geoBaseUrl,
   modifyChartUrl,
   enableChartControls = true,
   onAskAboutThis,
@@ -136,7 +128,7 @@ export function createChartBlockSpec({
           }
         }, [props.block.props.chartSpec]);
 
-        const mapGeo = useMapGeoClient({ geoBaseUrl, apiBaseUrl, headers, organizationId });
+        const mapGeo = useMapGeoClient({ apiBaseUrl, headers, organizationId });
 
         const chartHeight = resolveChartBlockHeight(
           props.block.props.height,
@@ -200,49 +192,29 @@ export function createChartBlockSpec({
 
         /** Runs the block's SQL. `force` (map refresh) bypasses the 60 s block cache. */
         const fetchRows = async (force: boolean, isCancelled: () => boolean = () => false) => {
-          const url = runSqlUrl ?? `${apiBaseUrl.replace(/\/+$/, "")}/query/run-sql`;
-          const tenantFieldName = props.block.props.tenantFieldName?.trim() || undefined;
-          const previewTenantId =
-            props.block.props.previewTenantId?.trim() ||
-            props.block.props.tenantId?.trim() ||
-            undefined;
-          const requestPayload = {
-            sql: props.block.props.sql,
-            datasourceIds,
-            ...(dashboardId ? { dashboardId } : {}),
-            params: sqlParams,
-            ...(tenantFieldName && { tenantFieldName }),
-            ...(previewTenantId && { previewTenantId }),
-          };
-          const requestKey = `run-sql:${url}:${JSON.stringify(requestPayload)}:${getHeadersSignature(headers)}`;
-
           setIsLoading(true);
           setLoadError(null);
           try {
-            const payload = await runDedupedRequest(
-              requestKey,
-              async () => {
-                const response = await fetch(url, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(organizationId ? { "x-organization-id": organizationId } : {}),
-                    ...headers,
-                  },
-                  body: JSON.stringify(requestPayload),
-                });
-
-                const parsed = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                  throw new Error(parsed?.error || "Failed to load chart data");
-                }
-                return parsed;
-              },
-              { cacheMs: 60_000, bypassCache: force }
-            );
+            const { rows } = await runBlockSql({
+              url: resolveRunSqlUrl(runSqlUrl, apiBaseUrl),
+              headers,
+              organizationId,
+              payload: buildBlockSqlPayload({
+                sql: props.block.props.sql,
+                datasourceIds,
+                dashboardId,
+                sqlParams,
+                tenantFieldName: props.block.props.tenantFieldName,
+                previewTenantId:
+                  props.block.props.previewTenantId?.trim() || props.block.props.tenantId,
+              }),
+              force,
+              keyPrefix: "run-sql",
+              errorMessage: "Failed to load chart data",
+            });
 
             if (!isCancelled()) {
-              setData(Array.isArray(payload?.rows) ? payload.rows : []);
+              setData(rows);
               setLastUpdated(Date.now());
               if (force) setRefreshed(true);
             }
@@ -292,7 +264,6 @@ export function createChartBlockSpec({
           Array.isArray(parsedSpec?.embeddedData) && parsedSpec.embeddedData.length > 0;
         const effectiveData =
           hasEmbeddedData && parsedSpec && !refreshed ? parsedSpec.embeddedData : (data ?? []);
-        const isMap = isMapVizSpec(parsedSpec?.spec);
 
         const error = modify.error || loadError;
 
@@ -342,20 +313,23 @@ export function createChartBlockSpec({
             height={chartHeight}
             colors={resolvedColors}
           >
-            <VizSpecRenderer
-              spec={parsedSpec.spec}
-              data={effectiveData}
-              colors={resolvedColors}
-              chartHeight="100%"
-              {...(isMap
-                ? {
-                    fetchMapBoundaries: mapGeo.fetchBoundaries,
-                    resolveMapPlaces: mapGeo.resolvePlaces,
-                    mapLastUpdated: lastUpdated,
-                    onMapRefresh: hasSql ? () => fetchRows(true) : undefined,
-                  }
-                : {})}
-            />
+            {isMapVizSpec(parsedSpec.spec) ? (
+              <MapBlockBody
+                spec={parsedSpec.spec}
+                rows={effectiveData}
+                geo={mapGeo}
+                colors={resolvedColors}
+                lastUpdated={lastUpdated}
+                onRefresh={hasSql ? () => fetchRows(true) : undefined}
+              />
+            ) : (
+              <VizSpecRenderer
+                spec={parsedSpec.spec}
+                data={effectiveData}
+                colors={resolvedColors}
+                chartHeight="100%"
+              />
+            )}
           </ChartBlockFrame>
         );
       },

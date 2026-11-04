@@ -20,7 +20,7 @@ import {
 } from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
-import { resolveGeoBaseUrl } from "./blocks/mapGeo";
+import { MapGeoProvider, resolveGeoBaseUrl } from "./blocks/mapGeo";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import { AssistantPanel } from "./AssistantPanel";
 import { Workspace, type WorkspaceHandle } from "./Workspace";
@@ -295,7 +295,6 @@ export function DashboardAiEditor({
         apiBaseUrl: apiBaseUrl || "",
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
-        geoBaseUrl: resolvedGeoBaseUrl,
         modifyChartUrl: resolvedModifyChartUrl,
         onAskAboutThis,
         organizationId,
@@ -306,7 +305,6 @@ export function DashboardAiEditor({
       apiBaseUrl,
       themeColors,
       resolvedRunSqlUrl,
-      resolvedGeoBaseUrl,
       resolvedModifyChartUrl,
       onAskAboutThis,
       organizationId,
@@ -322,7 +320,6 @@ export function DashboardAiEditor({
         colors: themeColors,
         queryResultBaseUrl: resolvedQueryResultBaseUrl,
         runSqlUrl: resolvedRunSqlUrl,
-        geoBaseUrl: resolvedGeoBaseUrl,
         modifyChartUrl: resolvedModifyChartUrl,
         onAskAboutThis,
         organizationId,
@@ -334,7 +331,6 @@ export function DashboardAiEditor({
       themeColors,
       resolvedQueryResultBaseUrl,
       resolvedRunSqlUrl,
-      resolvedGeoBaseUrl,
       resolvedModifyChartUrl,
       onAskAboutThis,
       organizationId,
@@ -689,7 +685,7 @@ export function DashboardAiEditor({
   );
 
   return (
-    <>
+    <MapGeoProvider geoBaseUrl={resolvedGeoBaseUrl}>
       <style>{editorStyles}</style>
       <div className={`space-y-4 ${className}`}>
         {editable && (showDeployButton || showSaveButton || toolbarExtra) && (
@@ -746,7 +742,6 @@ export function DashboardAiEditor({
                 generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
                 datasourcesUrl={resolvedDatasourcesUrl}
                 queryResultBaseUrl={resolvedQueryResultBaseUrl}
-                geoBaseUrl={resolvedGeoBaseUrl}
                 headers={headers}
                 darkMode={effectiveDarkMode}
                 availableDatasourceIds={availableDatasourceIds}
@@ -785,7 +780,6 @@ export function DashboardAiEditor({
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
           datasourcesUrl={resolvedDatasourcesUrl}
           queryResultBaseUrl={resolvedQueryResultBaseUrl}
-          geoBaseUrl={resolvedGeoBaseUrl}
           headers={headers}
           darkMode={effectiveDarkMode}
           availableDatasourceIds={availableDatasourceIds}
@@ -803,6 +797,6 @@ export function DashboardAiEditor({
         onOpenChange={setShowDeploySuccess}
         darkMode={effectiveDarkMode}
       />
-    </>
+    </MapGeoProvider>
   );
 }

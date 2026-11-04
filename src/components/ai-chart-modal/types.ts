@@ -1,3 +1,5 @@
+import type { VizSpecKind } from "../vizSpecGuard";
+
 export type ToolEventStatus = "running" | "succeeded" | "failed";
 
 export type ToolEvent = {
@@ -39,7 +41,7 @@ export type ReportVizBlock = {
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;
 	resultId?: string;
-	presentationKind?: "chart" | "table" | "metric" | "map";
+	presentationKind?: VizSpecKind;
 	sql?: string;
 	sqlParams?: Record<string, unknown> | null;
 	queryResult?: SqlExecutionArtifact;
@@ -76,7 +78,7 @@ export type DashboardReportInsertBlock =
 			sql?: string;
 			sqlParams?: Record<string, unknown> | null;
 			resultId?: string;
-			presentationKind?: "chart" | "table" | "metric" | "map";
+			presentationKind?: VizSpecKind;
 			datasourceIds?: string[];
 			tenantFieldName?: string;
 			previewTenantId?: string;
@@ -105,7 +107,7 @@ export type MastraChartMessage = {
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;
 	resultId?: string;
-	presentationKind?: "chart" | "table" | "metric" | "map";
+	presentationKind?: VizSpecKind;
 	queryResult?: SqlExecutionArtifact;
 	rationale?: string;
 	sql?: string;

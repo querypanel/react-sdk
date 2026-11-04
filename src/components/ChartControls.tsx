@@ -230,62 +230,61 @@ export function ChartControls({
 
       <div style={styles.grid}>
         {showChartShape && (
-        <>
-        {/* Chart Type */}
-        <div style={styles.fieldGroup}>
-          <span style={styles.label}>Chart</span>
-          <select
-            value={chartType}
-            onChange={(e) => setChartType(e.target.value as ChartType | "")}
-            disabled={disabled}
-            style={styles.select}
-          >
-            <option value="">Auto</option>
-            {CHART_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
+          <>
+          {/* Chart Type */}
+          <div style={styles.fieldGroup}>
+            <span style={styles.label}>Chart</span>
+            <select
+              value={chartType}
+              onChange={(e) => setChartType(e.target.value as ChartType | "")}
+              disabled={disabled}
+              style={styles.select}
+            >
+              <option value="">Auto</option>
+              {CHART_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* X Axis */}
-        <div style={styles.fieldGroup}>
-          <span style={styles.label}>X Axis</span>
-          <select
-            value={xField}
-            onChange={(e) => setXField(e.target.value)}
-            disabled={disabled}
-            style={styles.select}
-          >
-            <option value="">Auto</option>
-            {fields.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </div>
+          {/* X Axis */}
+          <div style={styles.fieldGroup}>
+            <span style={styles.label}>X Axis</span>
+            <select
+              value={xField}
+              onChange={(e) => setXField(e.target.value)}
+              disabled={disabled}
+              style={styles.select}
+            >
+              <option value="">Auto</option>
+              {fields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* Y Axis */}
-        <div style={styles.fieldGroup}>
-          <span style={styles.label}>Y Axis</span>
-          <select
-            value={yField}
-            onChange={(e) => setYField(e.target.value)}
-            disabled={disabled}
-            style={styles.select}
-          >
-            <option value="">Auto</option>
-            {fields.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        </>
+          {/* Y Axis */}
+          <div style={styles.fieldGroup}>
+            <span style={styles.label}>Y Axis</span>
+            <select
+              value={yField}
+              onChange={(e) => setYField(e.target.value)}
+              disabled={disabled}
+              style={styles.select}
+            >
+              <option value="">Auto</option>
+              {fields.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+          </>
         )}
 
         {/* Time Granularity */}

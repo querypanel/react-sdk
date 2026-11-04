@@ -23,8 +23,13 @@ export function PersistedSpecRenderer({
     return autoFixSpec(spec as Spec).spec;
   }, [spec]);
 
-  // Map specs are not json-render trees; dashboard blocks render them with VizSpecMap (JsonRenderChartBlock).
-  if (isMapVizSpec(spec) || !fixedSpec) return null;
+  if (!fixedSpec) return null;
+
+  // Map specs are not json-render trees. Dashboard blocks and report previews draw them with
+  // VizSpecMap before reaching this renderer, so this only guards a stray caller.
+  if (isMapVizSpec(spec)) {
+    return <div style={{ fontSize: "0.875rem", opacity: 0.7 }}>Map preview is not available here.</div>;
+  }
 
   return (
     <GenerativeUIProvider

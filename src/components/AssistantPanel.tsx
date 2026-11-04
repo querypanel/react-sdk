@@ -169,7 +169,7 @@ export interface AssistantPanelProps {
   headers?: Record<string, string>;
   /** URL for result artifact fetches used by json-render previews */
   queryResultBaseUrl?: string;
-  /** Base URL of the geo routes a map answer draws with (default: /api/geo). */
+  /** Base URL of the geo routes a map answer draws with. Overrides the surrounding MapGeoProvider (default: /api/geo). */
   geoBaseUrl?: string;
   /** Whether to render dark theme styles */
   darkMode?: boolean;

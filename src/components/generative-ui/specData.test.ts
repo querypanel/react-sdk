@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hasInlineJsonRenderData,
+  hydrateSpecRows,
   hydrateJsonRenderSpecFromRows,
   injectRowsIntoJsonRenderSpec,
   normalizeRowsForJsonRenderChart,
@@ -318,5 +319,19 @@ describe("hydrateJsonRenderSpecFromRows", () => {
     expect(hydrated.elements.c1?.props.data).toEqual([
       { label: "2026-08-10", value: 123 },
     ]);
+  });
+});
+
+describe("hydrateSpecRows", () => {
+  it("puts rows in `data` for a map spec", () => {
+    const spec = { kind: "map", encoding: { country: "US" } };
+    const rows = [{ lat: 1, lng: 2 }];
+    expect(hydrateSpecRows(spec, rows, ["lat", "lng"])).toEqual({ ...spec, data: rows });
+  });
+
+  it("delegates json-render specs to injectRowsIntoJsonRenderSpec", () => {
+    const spec = { root: "a", elements: { a: { type: "Text", props: {} } } };
+    const rows = [{ x: 1 }];
+    expect(hydrateSpecRows(spec, rows, ["x"])).toEqual(injectRowsIntoJsonRenderSpec(spec, rows, ["x"]));
   });
 });
