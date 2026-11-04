@@ -8,8 +8,6 @@ export type MapRow = Record<string, unknown>;
 export interface MapPoint {
   lat: number;
   lng: number;
-  /** Index into the source rows, so later tickets can attach labels/colors. */
-  rowIndex: number;
 }
 
 /**
@@ -26,19 +24,6 @@ export function toCoordinate(value: unknown, limit: number): number | null {
   return n;
 }
 
-/** One point per row with valid lat/lng; rows with missing or invalid coordinates are skipped. */
-export function extractLatLngPoints(rows: MapRow[], latField: string | null, lngField: string | null): MapPoint[] {
-  if (!latField || !lngField) return [];
-  const points: MapPoint[] = [];
-  rows.forEach((row, rowIndex) => {
-    const lat = toCoordinate(row[latField], 90);
-    const lng = toCoordinate(row[lngField], 180);
-    if (lat === null || lng === null) return;
-    points.push({ lat, lng, rowIndex });
-  });
-  return points;
-}
-
 export function getCountryFeature(topology: MapTopology): GeoPermissibleObjects | null {
   const object = topology.objects?.country;
   if (!object) return null;
@@ -53,12 +38,14 @@ export interface MapProjection {
   regionBorders: string | null;
 }
 
+const MAP_PADDING = 12;
+
 /** Mercator projection fitted into `width` x `height` (with `padding`), plus the outline path string. */
 export function buildMapProjection(
   topology: MapTopology,
   width: number,
   height: number,
-  padding = 12,
+  padding = MAP_PADDING,
 ): MapProjection | null {
   const country = getCountryFeature(topology);
   if (!country || width <= 0 || height <= 0) return null;
@@ -76,7 +63,7 @@ export function buildMapProjection(
 }
 
 /** Project a point to pixel coordinates; null when the projection yields no finite result. */
-export function projectPoint(projection: GeoProjection, point: Pick<MapPoint, "lat" | "lng">): [number, number] | null {
+export function projectPoint(projection: GeoProjection, point: MapPoint): [number, number] | null {
   const xy = projection([point.lng, point.lat]);
   if (!xy || !Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) return null;
   return xy;

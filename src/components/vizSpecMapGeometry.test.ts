@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import hungary from "./fixtures/hungary.topo.json";
 import {
   buildMapProjection,
-  extractLatLngPoints,
   projectPoint,
   toCoordinate,
   type MapTopology,
@@ -17,25 +16,6 @@ describe("toCoordinate", () => {
   });
   it("rejects missing, non-numeric and out-of-range values", () => {
     for (const v of [null, undefined, "", "abc", NaN, Infinity, 91, {}]) expect(toCoordinate(v, 90)).toBeNull();
-  });
-});
-
-describe("extractLatLngPoints", () => {
-  it("skips rows with missing or invalid coordinates and keeps row indexes", () => {
-    const rows = [
-      { lat: "47.49", lng: "19.04" },
-      { lat: null, lng: 19 },
-      { lat: 47, lng: "x" },
-      { lat: 120, lng: 19 },
-      { lat: 47.53, lng: 21.62 },
-    ];
-    expect(extractLatLngPoints(rows, "lat", "lng")).toEqual([
-      { lat: 47.49, lng: 19.04, rowIndex: 0 },
-      { lat: 47.53, lng: 21.62, rowIndex: 4 },
-    ]);
-  });
-  it("returns nothing when a coordinate field is not configured", () => {
-    expect(extractLatLngPoints([{ lat: 1, lng: 1 }], null, "lng")).toEqual([]);
   });
 });
 

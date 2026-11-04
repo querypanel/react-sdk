@@ -25,15 +25,21 @@ export const toScreen = (t: ZoomTransform, x: number, y: number): [number, numbe
 
 export const isIdentity = (t: ZoomTransform): boolean => t.k === 1 && t.x === 0 && t.y === 0;
 
+const WHEEL_SENSITIVITY = 0.002;
+const WHEEL_MAX_DELTA = 100;
+
 /** Wheel zoom factor from a wheel event's deltaY (ctrl-pinch on trackpads sends small deltas). */
-export const wheelFactor = (deltaY: number): number => Math.exp(-Math.max(-100, Math.min(100, deltaY)) * 0.002);
+export const wheelFactor = (deltaY: number): number => Math.exp(-Math.max(-WHEEL_MAX_DELTA, Math.min(WHEEL_MAX_DELTA, deltaY)) * WHEEL_SENSITIVITY);
+
+const MARKER_SCALE_EXPONENT = 0.15;
+const MAX_MARKER_SCALE = 1.5;
 
 /**
  * Marker radius in screen pixels. Markers are drawn in screen space, not inside the zoomed group,
  * so they keep their size at every zoom; it grows only gently (k^0.15) so zoomed-in markers are not
  * lost against the larger map, and stays capped at 1.5x.
  */
-export const markerScreenScale = (k: number): number => Math.min(1.5, Math.pow(Math.max(1, k), 0.15));
+export const markerScreenScale = (k: number): number => Math.min(MAX_MARKER_SCALE, Math.pow(Math.max(1, k), MARKER_SCALE_EXPONENT));
 
 /** "HH:MM" in local time for a Date or epoch milliseconds. */
 export function formatLastUpdated(value: Date | number): string {

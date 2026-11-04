@@ -239,9 +239,19 @@ export function VizSpecMap({
   const categories = useMemo(() => legendCategories(markers), [markers]);
   const categoryColors = useMemo(() => assignCategoryColors(categories, colors.range), [categories, colors.range]);
 
-  const [transform, setTransform] = useState<ZoomTransform>(IDENTITY);
-  // Start fitted again whenever the fit changes (new country, resize).
-  useEffect(() => setTransform(IDENTITY), [fitted]);
+  // The zoom belongs to the fit it was made on: a new fit (new country, resize) starts fitted again.
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<{ fitted: typeof fitted; transform: ZoomTransform }>({ fitted, transform: IDENTITY });
+  const transform = zoom.fitted === fitted ? zoom.transform : IDENTITY;
+  const setTransform = useCallback(
+    (update: ZoomTransform | ((t: ZoomTransform) => ZoomTransform)) =>
+      setZoom((z) => {
+        const current = z.fitted === fitted ? z.transform : IDENTITY;
+        return { fitted, transform: typeof update === "function" ? update(current) : update };
+      }),
+    [fitted],
+  );
 
   const drawn = useMemo(() => {
     if (!fitted) return [];
@@ -280,7 +290,7 @@ export function VizSpecMap({
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [hasMap]);
+  }, [hasMap, setTransform]);
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     moved.current = false;
@@ -313,20 +323,11 @@ export function VizSpecMap({
   const onPointerEnd = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
   };
-  const zoomBy = useCallback((factor: number) => setTransform((t) => zoomAt(t, factor, (width ?? 0) / 2, pixelHeight / 2)), [width, pixelHeight]);
+  const zoomBy = useCallback((factor: number) => setTransform((t) => zoomAt(t, factor, (width ?? 0) / 2, pixelHeight / 2)), [setTransform, width, pixelHeight]);
 
-  const [loadedAt, setLoadedAt] = useState(() => Date.now());
-  useEffect(() => setLoadedAt(Date.now()), [data]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-stamped when `data` changes, not on every render
+  const loadedAt = useMemo(() => Date.now(), [data]);
   const [refreshing, setRefreshing] = useState(false);
-  const mounted = useRef(true);
-  // Set to true on every mount too: React dev (StrictMode) runs mount -> cleanup -> mount, and a cleanup-only
-  // guard would stay false and leave the Refresh button stuck on "Refreshing…".
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
   const refresh = async () => {
     if (!onRefresh || refreshing) return;
     setRefreshing(true);
@@ -335,12 +336,10 @@ export function VizSpecMap({
     } catch {
       // The host reports its own fetch errors; the label keeps the last successful time.
     } finally {
-      if (mounted.current) setRefreshing(false);
+      setRefreshing(false);
     }
   };
 
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
   const hoveredDot = screenDots.find((d) => d.index === hovered);
   const selectedMarker = selected === null ? null : (markers[selected] ?? null);
 

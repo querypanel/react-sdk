@@ -54,7 +54,7 @@ export function VizSpecPreview({
 
   return (
     <ChartBlockFrame
-      title={(model.spec as { description?: string }).description || "Chart"}
+      title={model.spec.description || "Chart"}
       datasourceCount={datasourceCount}
       height={resolveChartBlockHeight(undefined, model.spec.kind)}
       colors={colors}

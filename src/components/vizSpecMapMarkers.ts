@@ -59,8 +59,8 @@ export interface MapMarker {
 
 /** Group lat/lng rows that share identical coordinates into points (rows without valid coordinates are skipped). */
 export function groupLatLngRows(rows: MapRow[], latField: string | null, lngField: string | null): PlacedPoint[] {
-  const points = new Map<string, PlacedPoint>();
   if (!latField || !lngField) return [];
+  const points = new Map<string, PlacedPoint>();
   rows.forEach((row, rowIndex) => {
     const lat = toCoordinate(row[latField], 90);
     const lng = toCoordinate(row[lngField], 180);
@@ -99,8 +99,10 @@ export function legendCategories(markers: MapMarker[]): string[] {
   return [...seen];
 }
 
+const MIN_MARKER_RADIUS = 4;
+
 /** Marker radius so that area is proportional to count; the largest marker gets `maxRadius`. */
-export function markerRadius(total: number, maxTotal: number, maxRadius: number, minRadius = 4): number {
+export function markerRadius(total: number, maxTotal: number, maxRadius: number, minRadius = MIN_MARKER_RADIUS): number {
   if (maxTotal <= 0 || total <= 0) return minRadius;
   return Math.max(minRadius, maxRadius * Math.sqrt(total / maxTotal));
 }
