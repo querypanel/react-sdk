@@ -22,6 +22,8 @@ function toChartNumber(value: unknown): number | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
+    // Zero-padded codes ("05", "007") are identifiers, not measures.
+    if (/^[+-]?0\d/.test(trimmed)) return null;
     const parsed = Number(trimmed.replace(/,/g, "").replace(/[$%]/g, ""));
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -95,7 +97,11 @@ const IDENTITY_NAME_RE = /(^|_)(id|uuid|tenant_id|user_id|org_id|state)(_|$)/i;
 export type JsonRenderChartFieldHints = {
   labelField?: string | null;
   valueField?: string | null;
+  /** Column that splits a line chart into one line per distinct value. */
+  seriesField?: string | null;
 };
+
+export type ChartPoint = { label: string; value: number; series?: string };
 
 function isChartDataPoint(row: Record<string, unknown>) {
   return (
@@ -206,21 +212,25 @@ function findLabelKey(
   return null;
 }
 
-function resolveChartFieldHints(
+export function resolveChartFieldHints(
   fields: string[],
   hints?: JsonRenderChartFieldHints
 ) {
-  const labelField = hints?.labelField?.trim() || null;
-  const valueField = hints?.valueField?.trim() || null;
+  const pick = (field?: string | null) => {
+    const trimmed = field?.trim() || null;
+    return trimmed && fields.includes(trimmed) ? trimmed : null;
+  };
+  const labelField = pick(hints?.labelField);
+  const valueField = pick(hints?.valueField);
+  const seriesField = pick(hints?.seriesField);
 
   return {
-    labelField:
-      labelField && fields.includes(labelField)
-        ? labelField
-        : null,
-    valueField:
-      valueField && fields.includes(valueField)
-        ? valueField
+    labelField,
+    valueField,
+    // A series column that doubles as the label or value would draw nonsense.
+    seriesField:
+      seriesField && seriesField !== labelField && seriesField !== valueField
+        ? seriesField
         : null,
   };
 }
@@ -228,15 +238,19 @@ function resolveChartFieldHints(
 export function normalizeRowsForJsonRenderChart(
   rows: Array<Record<string, unknown>>,
   hints?: JsonRenderChartFieldHints
-) {
+): ChartPoint[] {
   if (rows.length === 0) return [];
 
   if (isPreformattedChartData(rows)) {
     return rows
-      .map((point) => ({
-        label: toChartLabel(point.label) ?? "",
-        value: toChartNumber(point.value) ?? 0,
-      }))
+      .map((point) => {
+        const series = toChartLabel(point.series);
+        return {
+          label: toChartLabel(point.label) ?? "",
+          value: toChartNumber(point.value) ?? 0,
+          ...(series ? { series } : {}),
+        };
+      })
       .filter((point) => point.label.length > 0);
   }
 
@@ -248,21 +262,24 @@ export function normalizeRowsForJsonRenderChart(
   }
 
   const keys = Object.keys(rows[0] ?? {});
-  const { labelField, valueField } = resolveChartFieldHints(keys, hints);
+  const { labelField, valueField, seriesField } = resolveChartFieldHints(
+    keys,
+    hints
+  );
 
   if (labelField && valueField) {
     const mapped = rows
-      .map((point, index) => {
+      .map((point, index): ChartPoint | null => {
         const value = toChartNumber(point[valueField]);
         if (value === null) return null;
+        const series = seriesField ? toChartLabel(point[seriesField]) : null;
         return {
           label: toChartLabel(point[labelField]) ?? `Item ${index + 1}`,
           value,
+          ...(series ? { series } : {}),
         };
       })
-      .filter(
-        (point): point is { label: string; value: number } => point !== null
-      );
+      .filter((point): point is ChartPoint => point !== null);
     if (mapped.length > 0) {
       return mapped;
     }
@@ -270,8 +287,12 @@ export function normalizeRowsForJsonRenderChart(
   }
 
   const sampleRow = rows[0] ?? {};
-  const valueKey = findValueKey(keys, rows, sampleRow);
-  const labelKey = findLabelKey(keys, sampleRow, valueKey);
+  // A lone hint still wins over guessing for that axis.
+  const valueKey = valueField ?? findValueKey(keys, rows, sampleRow);
+  const labelKey =
+    labelField && labelField !== valueKey
+      ? labelField
+      : findLabelKey(keys, sampleRow, valueKey);
 
   return rows
     .map((point, index) => {
@@ -282,21 +303,71 @@ export function normalizeRowsForJsonRenderChart(
 
       return value === null ? null : { label, value };
     })
-    .filter(
-      (point): point is { label: string; value: number } => point !== null
+    .filter((point): point is ChartPoint => point !== null);
+}
+
+const MAX_SERIES = 12;
+
+export type PivotedSeries = {
+  /** One row per label; `s0`, `s1`, ... hold each series' value, absent when missing. */
+  rows: Array<Record<string, string | number>>;
+  series: Array<{ key: string; name: string }>;
+  /** Series dropped because there were more than `maxSeries` (smallest totals go first). */
+  droppedSeries: number;
+};
+
+/**
+ * Pivot long points ({label, series, value}) into wide rows keyed by label with one
+ * key per series. Returns null for single-series data so callers keep the old path.
+ * Missing label/series combinations stay absent (a gap), never zero.
+ */
+export function pivotSeriesPoints(
+  points: ChartPoint[],
+  maxSeries = MAX_SERIES
+): PivotedSeries | null {
+  if (!points.some((point) => point.series)) return null;
+
+  const totals = new Map<string, number>();
+  for (const point of points) {
+    const name = point.series ?? "";
+    totals.set(name, (totals.get(name) ?? 0) + Math.abs(point.value));
+  }
+  const names = [...totals.keys()];
+  const kept = new Set(
+    [...names].sort((a, b) => totals.get(b)! - totals.get(a)!).slice(0, maxSeries)
+  );
+  // Keep first-appearance order so colours stay stable between renders.
+  const series = names
+    .filter((name) => kept.has(name))
+    .map((name, index) => ({ key: `s${index}`, name }));
+  const keyByName = new Map(series.map((entry) => [entry.name, entry.key]));
+
+  const byLabel = new Map<string, Record<string, string | number>>();
+  for (const point of points) {
+    const key = keyByName.get(point.series ?? "");
+    if (!key) continue;
+    const row = byLabel.get(point.label) ?? { label: point.label };
+    row[key] = point.value;
+    byLabel.set(point.label, row);
+  }
+
+  let rows = [...byLabel.values()];
+  const labels = rows.map((row) => String(row.label));
+  if (labels.every((label) => !Number.isNaN(Date.parse(label)))) {
+    // Series that start late would otherwise push their weeks to the end.
+    rows = rows.sort(
+      (a, b) => Date.parse(String(a.label)) - Date.parse(String(b.label))
     );
+  }
+
+  return { rows, series, droppedSeries: names.length - series.length };
 }
 
 function resolvePersistedChartFieldHints(
   props: Record<string, unknown>,
   fields: string[]
 ) {
-  const explicit = resolveChartFieldHints(fields, {
-    labelField:
-      typeof props.labelField === "string" ? props.labelField : null,
-    valueField:
-      typeof props.valueField === "string" ? props.valueField : null,
-  });
+  const explicit = resolveChartFieldHints(fields, chartHintsFromProps(props));
   if (explicit.labelField && explicit.valueField) {
     return explicit;
   }
@@ -309,7 +380,20 @@ function resolvePersistedChartFieldHints(
   return resolveChartFieldHints(fields, {
     labelField: explicit.labelField ?? (xLabel && fields.includes(xLabel) ? xLabel : null),
     valueField: explicit.valueField ?? (yLabel && fields.includes(yLabel) ? yLabel : null),
+    seriesField: explicit.seriesField,
   });
+}
+
+/** Field hints a persisted chart element carries in its props. */
+export function chartHintsFromProps(
+  props: Record<string, unknown>
+): JsonRenderChartFieldHints {
+  const str = (value: unknown) => (typeof value === "string" ? value : null);
+  return {
+    labelField: str(props.labelField),
+    valueField: str(props.valueField),
+    seriesField: str(props.seriesField),
+  };
 }
 
 export function isJsonRenderSpecLike(spec: unknown): spec is JsonRenderSpec {
@@ -365,10 +449,10 @@ export function hasInlineJsonRenderData(spec: unknown) {
     root.element.type === "PieChart"
   ) {
     if (!Array.isArray(props.data)) return false;
-    return normalizeRowsForJsonRenderChart(props.data as Array<Record<string, unknown>>, {
-      labelField: typeof props.labelField === "string" ? props.labelField : null,
-      valueField: typeof props.valueField === "string" ? props.valueField : null,
-    }).length > 0;
+    return normalizeRowsForJsonRenderChart(
+      props.data as Array<Record<string, unknown>>,
+      chartHintsFromProps(props),
+    ).length > 0;
   }
 
   if (root.element.type === "Metric") {

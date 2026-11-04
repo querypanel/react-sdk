@@ -5,6 +5,8 @@ import { z } from "zod";
 const dataPointSchema = z.object({
   label: z.string(),
   value: z.number(),
+  /** Series name; when present on LineChart points, one line is drawn per distinct value. */
+  series: z.string().optional(),
 });
 
 // Public catalog type. Props are built with the zod install @json-render/core
@@ -66,6 +68,8 @@ export const catalog: Catalog = defineCatalog(schema, {
         data: z.array(dataPointSchema).optional(),
         labelField: z.string().nullable().optional(),
         valueField: z.string().nullable().optional(),
+        /** SQL column that splits the chart into one line per distinct value. */
+        seriesField: z.string().nullable().optional(),
         xLabel: z.string().nullable().optional(),
         yLabel: z.string().nullable().optional(),
       }),

@@ -11,23 +11,43 @@ import {
   Tooltip,
   LineChart as RechartsLineChart,
   Line,
+  Legend,
   PieChart as RechartsPieChart,
   Pie,
   Cell,
 } from "recharts";
 import { useThemeContext } from "../../context/ThemeContext";
 import { useGenerativeUIConfig } from "./provider";
-import { normalizeRowsForJsonRenderChart } from "./specData";
+import {
+  chartHintsFromProps,
+  normalizeRowsForJsonRenderChart,
+  pivotSeriesPoints,
+  type ChartPoint,
+} from "./specData";
 
 type ChartSeriesProps = {
   resultId?: string | null;
   title?: string | null;
-  data?: { label: string; value: number }[];
+  data?: { label: string; value: number; series?: string }[];
   labelField?: string | null;
   valueField?: string | null;
+  seriesField?: string | null;
 };
 
-const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+const CHART_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ec4899",
+  "#84cc16",
+  "#f97316",
+  "#6366f1",
+  "#14b8a6",
+  "#a855f7",
+];
 
 function getSurfaceColors(darkMode: boolean) {
   return darkMode
@@ -156,22 +176,17 @@ function useResultData(resultId?: string | null) {
 /** Prefer inline series; fall back to artifact fetch when host enables it. */
 function useNormalizedChartSeries(props: ChartSeriesProps) {
   const inlineData = props.data ?? [];
-  const inlineSeries = normalizeRowsForJsonRenderChart(inlineData, {
-    labelField: props.labelField,
-    valueField: props.valueField,
-  });
+  const hints = chartHintsFromProps(props);
+  const inlineSeries = normalizeRowsForJsonRenderChart(inlineData, hints);
   const { rows, loading, error } = useResultData(
     inlineSeries.length > 0 ? null : props.resultId,
   );
-  let chartData: Array<{ label: string; value: number }> = [];
+  let chartData: ChartPoint[] = [];
   if (!loading && !error) {
     if (inlineSeries.length > 0) {
       chartData = inlineSeries;
     } else {
-      chartData = normalizeRowsForJsonRenderChart(rows ?? [], {
-        labelField: props.labelField,
-        valueField: props.valueField,
-      });
+      chartData = normalizeRowsForJsonRenderChart(rows ?? [], hints);
     }
   }
   return { chartData, loading, error };
@@ -442,11 +457,18 @@ export function LineChartComponent({
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
 
+  // One line per distinct series value; single-series data keeps the plain {label, value} path.
+  const pivoted = pivotSeriesPoints(chartData);
+  const lines = pivoted
+    ? pivoted.series
+    : [{ key: "value", name: "value" }];
+  const manySeries = lines.length > CHART_COLORS.length;
+
   return (
     <ChartShell title={props.title}>
-      <div style={{ width: "100%", height: 260 }}>
+      <div style={{ width: "100%", height: pivoted ? 300 : 260 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <RechartsLineChart data={chartData}>
+          <RechartsLineChart data={pivoted ? pivoted.rows : chartData}>
             <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 12, fill: colors.muted }} />
             <YAxis tick={{ fontSize: 12, fill: colors.muted }} />
@@ -456,17 +478,36 @@ export function LineChartComponent({
               itemStyle={tooltipStyles.itemStyle}
               labelStyle={tooltipStyles.labelStyle}
               cursor={tooltipStyles.cursor}
+              {...(pivoted ? { itemSorter: (item) => -(Number(item.value) || 0) } : {})}
             />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke={CHART_COLORS[0]}
-              strokeWidth={2}
-              dot={{ r: 3, fill: CHART_COLORS[0] }}
-            />
+            {pivoted ? (
+              <Legend wrapperStyle={{ fontSize: 12, color: colors.muted }} />
+            ) : null}
+            {lines.map((line, index) => {
+              const color = CHART_COLORS[index % CHART_COLORS.length];
+              return (
+                <Line
+                  key={line.key}
+                  type="monotone"
+                  dataKey={line.key}
+                  name={line.name}
+                  stroke={color}
+                  strokeWidth={2}
+                  // Missing points are gaps, not zeros.
+                  connectNulls={false}
+                  dot={manySeries ? false : { r: 3, fill: color }}
+                />
+              );
+            })}
           </RechartsLineChart>
         </ResponsiveContainer>
       </div>
+      {pivoted && pivoted.droppedSeries > 0 ? (
+        <div style={{ color: colors.muted, fontSize: "0.75rem", marginTop: "0.5rem" }}>
+          Showing the {pivoted.series.length} largest of{" "}
+          {pivoted.series.length + pivoted.droppedSeries} series.
+        </div>
+      ) : null}
     </ChartShell>
   );
 }
