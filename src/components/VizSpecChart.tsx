@@ -20,6 +20,10 @@ import {
 } from "recharts";
 import type { ThemeColors } from "../types";
 import { formatTimestampForDisplay } from "../utils/formatters";
+import {
+  normalizeRowsForJsonRenderChart,
+  pivotSeriesPoints,
+} from "./generative-ui/specData";
 
 // VizSpec types (copied from querypanel-sdk for now)
 type FieldType = "quantitative" | "temporal" | "ordinal" | "nominal" | "boolean";
@@ -314,15 +318,34 @@ function renderLineChart(
   margin: { top: number; right: number; left: number; bottom: number },
   height: number | string
 ) {
-  const { x, y } = spec.encoding;
+  const { x, y, series } = spec.encoding;
   const yFields = Array.isArray(y) ? y : y ? [y] : [];
+
+  // One line per distinct value of the series column (long rows -> wide rows).
+  const seriesPoints =
+    series?.field && x?.field && yFields[0]
+      ? normalizeRowsForJsonRenderChart(data, {
+          labelField: x.field,
+          valueField: yFields[0].field,
+          seriesField: series.field,
+        })
+      : [];
+  const pivoted = pivotSeriesPoints(seriesPoints);
+  const chartRows = pivoted ? pivoted.rows : data;
+  const xKey = pivoted ? "label" : x?.field;
+  const lines = pivoted
+    ? pivoted.series
+    : yFields.map((yField) => ({
+        key: yField.field,
+        name: yField.label || yField.field,
+      }));
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={margin}>
+      <LineChart data={chartRows} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
-          dataKey={x?.field}
+          dataKey={xKey}
           stroke={colors.text}
           tick={{ fill: colors.text }}
           tickFormatter={formatTimestampForDisplay}
@@ -330,15 +353,20 @@ function renderLineChart(
         <YAxis stroke={colors.text} tick={{ fill: colors.text }} />
         <Tooltip {...tooltipProps(colors)} />
         <Legend />
-        {yFields.map((yField, idx) => (
+        {lines.map((line, idx) => (
           <Line
-            key={yField.field}
+            key={line.key}
             type="monotone"
-            dataKey={yField.field}
-            name={yField.label || yField.field}
+            dataKey={line.key}
+            name={line.name}
             stroke={colors.range[idx % colors.range.length]}
             strokeWidth={2}
-            dot={{ fill: colors.range[idx % colors.range.length] }}
+            connectNulls={false}
+            dot={
+              lines.length > colors.range.length
+                ? false
+                : { fill: colors.range[idx % colors.range.length] }
+            }
           />
         ))}
       </LineChart>
