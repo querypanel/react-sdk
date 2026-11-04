@@ -363,7 +363,7 @@ export function VizSpecMap({
         aria-label={spec.title ?? `Map of ${country}`}
         width={width ?? undefined}
         height={pixelHeight}
-        style={{ display: "block", touchAction: "none", cursor: "grab" }}
+        style={{ display: "block", touchAction: "none", cursor: "grab", outline: "none", userSelect: "none", WebkitTapHighlightColor: "transparent" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}

@@ -39,12 +39,22 @@ const columnLayoutStyles = `
       flex-direction: column !important;
     }
   }
-  /* Drop BlockNote's blue selection ring around pinned charts — it fights the card chrome. */
+  /* Drop BlockNote's blue selection ring and tint around pinned charts — they fight the card chrome. */
   .bn-block-content[data-content-type="chart"].ProseMirror-selectednode > *,
   .ProseMirror-selectednode > .bn-block-content[data-content-type="chart"] > *,
   .bn-block-content[data-content-type="json-render-chart"].ProseMirror-selectednode > *,
   .ProseMirror-selectednode > .bn-block-content[data-content-type="json-render-chart"] > * {
     outline: none !important;
+  }
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="chart"],
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="json-render-chart"] {
+    outline: none !important;
+  }
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="chart"] > *::after,
+  .ProseMirror-selectednode > .bn-block-content[data-content-type="json-render-chart"] > *::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
   }
 `;
 
