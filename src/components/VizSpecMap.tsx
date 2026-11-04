@@ -319,7 +319,14 @@ export function VizSpecMap({
   useEffect(() => setLoadedAt(Date.now()), [data]);
   const [refreshing, setRefreshing] = useState(false);
   const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
+  // Set to true on every mount too: React dev (StrictMode) runs mount -> cleanup -> mount, and a cleanup-only
+  // guard would stay false and leave the Refresh button stuck on "Refreshing…".
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const refresh = async () => {
     if (!onRefresh || refreshing) return;
     setRefreshing(true);
