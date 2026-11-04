@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { MapTopology } from "../vizSpecMapGeometry";
 import type { PlaceInput, ResolvedPlace } from "../vizSpecMapPlaces";
 
@@ -15,13 +16,33 @@ export function clearMapBoundariesCache() {
 }
 
 /**
- * Geo base URL for a block: an explicit override wins, otherwise `{apiBaseUrl}/geo` (embed: the
- * API's `/geo/*` routes, called with the same headers as run-sql) or `/api/geo` for admin.
+ * Geo base URL: an explicit override wins, otherwise `{apiBaseUrl}/geo` (embed: the API's
+ * `/geo/*` routes, called with the same headers as run-sql) or `/api/geo` for admin.
  */
 export function resolveGeoBaseUrl(geoBaseUrl: string | undefined, apiBaseUrl: string | undefined): string {
   if (geoBaseUrl) return geoBaseUrl.replace(/\/+$/, "");
   const base = (apiBaseUrl ?? "").replace(/\/+$/, "");
-  return `${base}/geo`;
+  return base ? `${base}/geo` : "/api/geo";
+}
+
+/** Memoised geo client for a block or panel; re-created only when the URLs, org or headers change. */
+export function useMapGeoClient({
+  geoBaseUrl,
+  apiBaseUrl,
+  headers,
+  organizationId,
+}: {
+  geoBaseUrl?: string;
+  apiBaseUrl?: string;
+  headers?: Record<string, string>;
+  organizationId?: string;
+}): MapGeoClient {
+  const headersKey = JSON.stringify(headers ?? {});
+  // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by their JSON
+  return useMemo(
+    () => createMapGeoClient({ geoBaseUrl: resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl), headers, organizationId }),
+    [geoBaseUrl, apiBaseUrl, organizationId, headersKey]
+  );
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartTypesForSpec, isMapVizSpec, withMapCountry } from "./mapKind";
+import { isMapVizSpec, mapCountryOf, withMapCountry } from "./mapKind";
 import { chartTypeFromVizSpec, patchVizSpecChartType } from "./blocks/pinnedChartModify";
 import { isVizSpec } from "./vizSpecGuard";
 import { vizKindOf } from "./ai-chart-modal/vizKind";
@@ -26,10 +26,11 @@ describe("map kind enumerations", () => {
     expect(isVizSpec(mapSpec)).toBe(true);
   });
 
-  it("hides every chart type for maps and leaves other kinds unrestricted", () => {
-    expect(chartTypesForSpec(mapSpec, ["bar", "pie"])).toEqual([]);
-    expect(chartTypesForSpec({ kind: "chart" })).toBeUndefined();
-    expect(chartTypesForSpec({ kind: "chart" }, ["bar"])).toEqual(["bar"]);
+  it("reads the trimmed country, undefined when missing or not a map", () => {
+    expect(mapCountryOf(mapSpec)).toBe("HU");
+    expect(mapCountryOf({ ...mapSpec, encoding: { ...mapSpec.encoding, country: " " } })).toBeUndefined();
+    expect(mapCountryOf({ kind: "map" })).toBeUndefined();
+    expect(mapCountryOf({ kind: "chart", encoding: { country: "HU" } })).toBeUndefined();
   });
 
   it("does not treat a map as a chart in pinned-chart modify helpers", () => {

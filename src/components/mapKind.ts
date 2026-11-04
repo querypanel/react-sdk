@@ -1,17 +1,15 @@
-import type { ChartType } from "../types";
+import type { MapSpec } from "./VizSpecMap";
 
 /** True for a VizSpec whose kind is `map`. Map specs are not charts: no chart type, axes or json-render element. */
-export function isMapVizSpec(spec: unknown): boolean {
+export function isMapVizSpec(spec: unknown): spec is MapSpec {
   return Boolean(spec) && typeof spec === "object" && (spec as { kind?: unknown }).kind === "map";
 }
 
-/**
- * Chart types a type picker may offer for this spec. Maps cannot switch to another chart type
- * (and the reverse), so the list is empty and pickers hide the chart-type choice.
- * `undefined` means "no restriction" (caller's own default list).
- */
-export function chartTypesForSpec(spec: unknown, allowed?: ChartType[]): ChartType[] | undefined {
-  return isMapVizSpec(spec) ? [] : allowed;
+/** The map's country code as stored in the spec (trimmed), or undefined when not a map or none is set. */
+export function mapCountryOf(spec: unknown): string | undefined {
+  if (!isMapVizSpec(spec)) return undefined;
+  const country = spec.encoding?.country;
+  return typeof country === "string" && country.trim() ? country.trim() : undefined;
 }
 
 /**
@@ -21,6 +19,5 @@ export function chartTypesForSpec(spec: unknown, allowed?: ChartType[]): ChartTy
 export function withMapCountry(spec: unknown, country: string): Record<string, unknown> | null {
   const code = country.trim().toUpperCase();
   if (!isMapVizSpec(spec) || !/^[A-Z]{2}$/.test(code)) return null;
-  const mapSpec = spec as { encoding?: Record<string, unknown> };
-  return { ...mapSpec, encoding: { ...mapSpec.encoding, country: code } };
+  return { ...spec, encoding: { ...spec.encoding, country: code } };
 }

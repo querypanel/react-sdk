@@ -1,3 +1,4 @@
+import { isMapVizSpec } from "../mapKind";
 import type { ReportVizBlock } from "./types";
 
 /** Coarse chart family used for the small glyph/color pips in the selection tray. */
@@ -28,7 +29,7 @@ export function vizKindOf(block: Pick<ReportVizBlock, "chartSpec" | "jsonRenderS
   const spec = parseSpec(block.chartSpec) ?? parseSpec(block.jsonRenderSpec);
   if (spec?.kind === "metric") return "metric";
   if (spec?.kind === "table") return "table";
-  if (spec?.kind === "map") return "map";
+  if (isMapVizSpec(spec)) return "map";
   if (spec?.kind === "chart") {
     const encoding = spec.encoding as { chartType?: unknown } | undefined;
     return chartFamily(encoding?.chartType);

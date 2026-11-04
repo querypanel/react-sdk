@@ -20,6 +20,7 @@ import {
 } from "./blocknoteDashboard";
 import { createChartBlockSpec } from "./blocks/ChartBlock";
 import { createJsonRenderChartBlockSpec } from "./blocks/JsonRenderChartBlock";
+import { resolveGeoBaseUrl } from "./blocks/mapGeo";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import { AssistantPanel } from "./AssistantPanel";
 import { Workspace, type WorkspaceHandle } from "./Workspace";
@@ -260,7 +261,7 @@ export function DashboardAiEditor({
     override ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}${embedPath}` : adminPath);
 
   const resolvedRunSqlUrl = resolveUrl(runSqlUrl, "/query/run-sql", "/api/dashboards/run-sql");
-  const resolvedGeoBaseUrl = resolveUrl(geoBaseUrl, "/geo", "/api/geo");
+  const resolvedGeoBaseUrl = resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl);
   const resolvedModifyChartUrl = resolveUrl(
     modifyChartUrl,
     "/query/modify-chart",

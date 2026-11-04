@@ -53,7 +53,7 @@ type PinnedTitleActionsProps = {
   onUndo: () => void;
   onDateShortcut: (preset: DateRangePreset) => void;
   /** Maps show a snapshot of current status, so a 7d/30d date filter makes no sense there. */
-  hideDateShortcuts?: boolean;
+  isMap: boolean;
   onAsk?: () => void;
 };
 
@@ -67,7 +67,7 @@ function PinnedTitleActions({
   onToggleControls,
   onUndo,
   onDateShortcut,
-  hideDateShortcuts,
+  isMap,
   onAsk,
 }: PinnedTitleActionsProps) {
   const buttonStyle = {
@@ -90,7 +90,7 @@ function PinnedTitleActions({
           Undo
         </button>
       ) : null}
-      {(hideDateShortcuts ? [] : DATE_RANGE_SHORTCUTS).map((shortcut) => {
+      {(isMap ? [] : DATE_RANGE_SHORTCUTS).map((shortcut) => {
         const active = activeShortcut === shortcut.value;
         return (
           <button
@@ -160,6 +160,7 @@ export function usePinnedChartChrome({
   sqlParams,
   currentChartType,
   chartTypes,
+  isMap,
   mapCountry,
   onAsk,
 }: {
@@ -170,7 +171,9 @@ export function usePinnedChartChrome({
   sqlParams: Record<string, unknown>;
   currentChartType: ChartType | "";
   chartTypes?: ChartType[];
-  /** Map blocks: the map's country code, editable in settings. */
+  /** Map block: no date range or chart type (a map shows current status), country is editable instead. */
+  isMap: boolean;
+  /** Map blocks: the map's country code, if the spec has one. */
   mapCountry?: string;
   /** Adds an "Ask about this" shortcut to the title row (Workspace only). */
   onAsk?: () => void;
@@ -193,7 +196,7 @@ export function usePinnedChartChrome({
       canUndo={canUndo}
       controlsOpen={open}
       activeShortcut={activeDateShortcut(sqlParams)}
-      hideDateShortcuts={mapCountry !== undefined}
+      isMap={isMap}
       onToggleControls={() => setOpen((v) => !v)}
       onUndo={onUndo}
       onDateShortcut={(preset) => {
@@ -223,9 +226,10 @@ export function usePinnedChartChrome({
           disabled={isDisabled}
           currentChartType={currentChartType}
           chartTypes={chartTypes}
+          isMap={isMap}
           mapCountry={mapCountry}
           onMapCountryChange={
-            mapCountry
+            isMap
               ? (country) => {
                   if (modify.onMapCountryChange(country)) close();
                 }

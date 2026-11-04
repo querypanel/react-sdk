@@ -7,7 +7,8 @@ describe("resolveGeoBaseUrl", () => {
   it("prefers an override, else derives from the api base", () => {
     expect(resolveGeoBaseUrl("/api/geo/", "https://api.x")).toBe("/api/geo");
     expect(resolveGeoBaseUrl(undefined, "https://api.x/")).toBe("https://api.x/geo");
-    expect(resolveGeoBaseUrl(undefined, "")).toBe("/geo");
+    expect(resolveGeoBaseUrl(undefined, "")).toBe("/api/geo");
+    expect(resolveGeoBaseUrl(undefined, undefined)).toBe("/api/geo");
   });
 });
 

@@ -3,6 +3,8 @@ import {
   getJsonRenderTitle,
   isJsonRenderSpecLike,
 } from "./generative-ui/specData";
+import { isMapVizSpec } from "./mapKind";
+import { isVizSpec } from "./vizSpecGuard";
 
 export type ChartBlockType = "chart" | "json-render-chart";
 
@@ -69,8 +71,8 @@ function chartBlockTypeForSpec(spec: unknown): ChartBlockType {
 
 function specTitle(type: ChartBlockType, spec: unknown): string {
   if (type === "json-render-chart") return getJsonRenderTitle(spec) || "Visualization";
-  const { title, description, kind } = (spec ?? {}) as { title?: string; description?: string; kind?: string };
-  return title?.trim() || description || (kind === "map" ? "Map" : "Chart");
+  const { title, description } = (spec ?? {}) as { title?: string; description?: string };
+  return title?.trim() || description || (isMapVizSpec(spec) ? "Map" : "Chart");
 }
 
 function metadataProps(type: ChartBlockType, payload: ChartPayload): Record<string, string> {
@@ -156,8 +158,7 @@ function summarizeChartBlock(block: BlockLike): ChartBlockSummary {
   if (type === "json-render-chart") {
     presentationKind = getJsonRenderPresentationKind(spec);
   } else {
-    const kind = (spec as { kind?: unknown } | undefined)?.kind;
-    if (kind === "chart" || kind === "table" || kind === "metric" || kind === "map") presentationKind = kind;
+    if (isVizSpec(spec)) presentationKind = spec.kind;
   }
 
   const datasourceIds = parseJson(props.datasourceIds);

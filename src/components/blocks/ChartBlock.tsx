@@ -13,8 +13,8 @@ import { ChartBlockFrame } from "./ChartBlockFrame";
 import { isVizSpec } from "../vizSpecGuard";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromVizSpec } from "./pinnedChartModify";
-import { chartTypesForSpec, isMapVizSpec } from "../mapKind";
-import { createMapGeoClient, resolveGeoBaseUrl } from "./mapGeo";
+import { isMapVizSpec, mapCountryOf } from "../mapKind";
+import { useMapGeoClient } from "./mapGeo";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
@@ -42,12 +42,6 @@ function getHeadersSignature(headers: Record<string, string>) {
   return JSON.stringify(
     Object.entries(headers).sort(([a], [b]) => a.localeCompare(b))
   );
-}
-
-function mapCountryOf(spec: unknown): string | undefined {
-  if (!isMapVizSpec(spec)) return undefined;
-  const country = (spec as { encoding?: { country?: unknown } }).encoding?.country;
-  return typeof country === "string" && country ? country : undefined;
 }
 
 export function createChartBlockSpec({
@@ -142,17 +136,7 @@ export function createChartBlockSpec({
           }
         }, [props.block.props.chartSpec]);
 
-        const headersSignature = getHeadersSignature(headers);
-        // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by signature
-        const mapGeo = useMemo(
-          () =>
-            createMapGeoClient({
-              geoBaseUrl: resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl),
-              headers,
-              organizationId,
-            }),
-          [headersSignature]
-        );
+        const mapGeo = useMapGeoClient({ geoBaseUrl, apiBaseUrl, headers, organizationId });
 
         const chartHeight = resolveChartBlockHeight(
           props.block.props.height,
@@ -208,7 +192,7 @@ export function createChartBlockSpec({
           disabled: isLoading,
           sqlParams,
           currentChartType: chartTypeFromVizSpec(parsedSpec?.spec),
-          chartTypes: chartTypesForSpec(parsedSpec?.spec),
+          isMap: isMapVizSpec(parsedSpec?.spec),
           mapCountry: mapCountryOf(parsedSpec?.spec),
         });
 

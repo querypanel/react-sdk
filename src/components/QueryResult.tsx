@@ -5,6 +5,7 @@ import { VizSpecRenderer } from "./VizSpecRenderer";
 import type { VizSpec } from "./VizSpecRenderer";
 import { DataTable } from "./DataTable";
 import { ChartControls } from "./ChartControls";
+import { isMapVizSpec } from "./mapKind";
 import { getColorsByPreset } from "../themes";
 
 export interface QueryResultProps {
@@ -233,7 +234,7 @@ export function QueryResult({
                 disabled={isLoading}
                 onApply={onModify}
                 colors={mergedColors}
-                vizKind={(result.chart?.vizSpec as { kind?: string } | null | undefined)?.kind}
+                isMap={isMapVizSpec(result.chart?.vizSpec)}
               />
             )}
             <div style={{ position: "relative" }}>

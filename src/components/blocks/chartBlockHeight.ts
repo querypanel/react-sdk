@@ -12,14 +12,16 @@ export function parseBlockHeight(raw: unknown): number | undefined {
   return undefined;
 }
 
+/** Kinds whose default height differs from a plain chart. */
+const DEFAULT_HEIGHT_BY_KIND: Record<string, number> = {
+  metric: DEFAULT_METRIC_HEIGHT,
+  map: DEFAULT_MAP_HEIGHT,
+};
+
 /** Metrics use a compact default and maps a tall one; explicit non-default heights are kept. */
 export function resolveChartBlockHeight(raw: unknown, kind?: string): number {
   const parsed = parseBlockHeight(raw);
-  if (kind === "metric" && (parsed == null || parsed === DEFAULT_CHART_HEIGHT)) {
-    return DEFAULT_METRIC_HEIGHT;
-  }
-  if (kind === "map" && (parsed == null || parsed === DEFAULT_CHART_HEIGHT)) {
-    return DEFAULT_MAP_HEIGHT;
-  }
+  const kindDefault = kind ? DEFAULT_HEIGHT_BY_KIND[kind] : undefined;
+  if (kindDefault !== undefined && (parsed == null || parsed === DEFAULT_CHART_HEIGHT)) return kindDefault;
   return parsed ?? DEFAULT_CHART_HEIGHT;
 }

@@ -27,8 +27,8 @@ export interface ChartControlsProps {
   className?: string;
   /** Show color preset selector */
   showColorPresets?: boolean;
-  /** VizSpec kind being tweaked. For "map" the chart-type and axis selectors are hidden. */
-  vizKind?: string;
+  /** The VizSpec being tweaked is a map: the chart-type and axis selectors are hidden. */
+  isMap?: boolean;
 }
 
 const CHART_TYPES: { label: string; value: ChartType }[] = [
@@ -71,7 +71,7 @@ export function ChartControls({
   colors = defaultColors,
   className = "",
   showColorPresets = true,
-  vizKind,
+  isMap,
 }: ChartControlsProps) {
   const [chartType, setChartType] = useState<ChartType | "">("");
   const [xField, setXField] = useState<string>("");
@@ -83,7 +83,7 @@ export function ChartControls({
 
   const mergedColors = { ...defaultColors, ...colors };
   // Maps have no chart type or axes; switching a map to another chart type is out of scope.
-  const showChartShape = vizKind !== "map";
+  const showChartShape = !isMap;
 
   const handleApply = () => {
     const vizModifications: VizModifications = {};

@@ -18,9 +18,9 @@ import { DEFAULT_CHART_HEIGHT, parseBlockHeight, resolveChartBlockHeight } from 
 import { ChartBlockFrame } from "./ChartBlockFrame";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromJsonRenderSpec } from "./pinnedChartModify";
-import { chartTypesForSpec, isMapVizSpec } from "../mapKind";
+import { isMapVizSpec, mapCountryOf } from "../mapKind";
 import { VizSpecRenderer, type VizSpec } from "../VizSpecRenderer";
-import { createMapGeoClient, resolveGeoBaseUrl } from "./mapGeo";
+import { useMapGeoClient } from "./mapGeo";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
@@ -209,17 +209,7 @@ export function createJsonRenderChartBlockSpec({
           savedHeight != null && savedHeight !== DEFAULT_CHART_HEIGHT ? savedHeight : undefined;
         const editor = getBlockNoteEditor(props);
         const isMap = isMapVizSpec(parsedSpec);
-        const headersSignature = getHeadersSignature(headers);
-        // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by signature
-        const mapGeo = useMemo(
-          () =>
-            createMapGeoClient({
-              geoBaseUrl: resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl),
-              headers,
-              organizationId,
-            }),
-          [headersSignature]
-        );
+        const mapGeo = useMapGeoClient({ geoBaseUrl, apiBaseUrl, headers, organizationId });
 
         const modify = usePinnedChartBlockModify({
           format: "json-render",
@@ -245,10 +235,9 @@ export function createJsonRenderChartBlockSpec({
           disabled: isLoading,
           sqlParams,
           currentChartType: chartTypeFromJsonRenderSpec(specForRenderer),
-          chartTypes: chartTypesForSpec(specForRenderer, JSON_RENDER_CHART_TYPES),
-          mapCountry: isMapVizSpec(specForRenderer)
-            ? ((specForRenderer as { encoding?: { country?: string } }).encoding?.country ?? undefined)
-            : undefined,
+          chartTypes: JSON_RENDER_CHART_TYPES,
+          isMap,
+          mapCountry: mapCountryOf(specForRenderer),
         });
 
         const hasSql = Boolean(props.block.props.sql) && datasourceIds.length > 0;

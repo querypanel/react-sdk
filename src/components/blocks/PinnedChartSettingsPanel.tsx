@@ -7,6 +7,7 @@ import {
   resolveDateRangePreset,
   type DateRangePreset,
 } from "../dateRangePresets";
+import { MapCountryField } from "./MapCountryField";
 import type { PinnedChartApplyOptions } from "./usePinnedChartBlockModify";
 
 const CHART_TYPE_OPTIONS: { label: string; value: ChartType }[] = [
@@ -84,9 +85,11 @@ type PinnedChartSettingsPanelProps = {
   disabled: boolean;
   /** Chart type currently rendered (marked with a dashed outline). */
   currentChartType: ChartType | "";
-  /** Chart types the block can render; defaults to all. An empty list hides the picker (map kind). */
+  /** Chart types the block can render; defaults to all. */
   chartTypes?: ChartType[];
-  /** Map blocks: the map's country code (ISO 3166-1 alpha-2), editable. */
+  /** Map blocks: no date range or chart type, but a country field instead. */
+  isMap?: boolean;
+  /** Map blocks: the map's country code (ISO 3166-1 alpha-2), if the spec has one. */
   mapCountry?: string;
   /** Map blocks: sets a new country; the map re-resolves and redraws. */
   onMapCountryChange?: (country: string) => void;
@@ -103,14 +106,12 @@ export function PinnedChartSettingsPanel({
   disabled,
   currentChartType,
   chartTypes,
+  isMap = false,
   mapCountry,
   onMapCountryChange,
   onApply,
   onClose,
 }: PinnedChartSettingsPanelProps) {
-  const [country, setCountry] = useState(mapCountry?.toUpperCase() ?? "");
-  const countryValid = /^[A-Za-z]{2}$/.test(country);
-  const countryChanged = countryValid && country.toUpperCase() !== (mapCountry ?? "").toUpperCase();
   const panelRef = useRef<HTMLDivElement>(null);
   const [preset, setPreset] = useState<DateRangePreset | "">("");
   const [dateFrom, setDateFrom] = useState("");
@@ -273,7 +274,7 @@ export function PinnedChartSettingsPanel({
       </div>
 
       {/* A map shows current status, so a date range filter makes no sense for it. */}
-      {mapCountry === undefined ? (
+      {isMap ? null : (
         <div style={section}>
           <span style={label}>Date range</span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
@@ -325,51 +326,20 @@ export function PinnedChartSettingsPanel({
             </div>
           ) : null}
         </div>
+      )}
+
+      {isMap && onMapCountryChange ? (
+        <MapCountryField
+          country={mapCountry}
+          disabled={disabled}
+          onChange={onMapCountryChange}
+          sectionStyle={section}
+          labelStyle={label}
+          inputStyle={dateInput}
+        />
       ) : null}
 
-      {mapCountry ? (
-        <div style={section}>
-          <span style={label}>Country</span>
-          {onMapCountryChange ? (
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <input
-                type="text"
-                value={country}
-                maxLength={2}
-                disabled={disabled}
-                aria-label="Country code (ISO 3166-1 alpha-2)"
-                data-testid="map-country"
-                placeholder="HU"
-                onChange={(e) => setCountry(e.target.value.toUpperCase())}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && countryChanged) onMapCountryChange(country);
-                }}
-                style={{ ...dateInput, width: "3.5rem", textTransform: "uppercase" }}
-              />
-              <button
-                type="button"
-                disabled={disabled || !countryChanged}
-                data-testid="map-country-apply"
-                onClick={() => onMapCountryChange(country)}
-                style={{
-                  ...dateInput,
-                  width: "auto",
-                  cursor: disabled || !countryChanged ? "not-allowed" : "pointer",
-                  opacity: disabled || !countryChanged ? 0.5 : 1,
-                }}
-              >
-                Set
-              </button>
-            </div>
-          ) : (
-            <span style={{ fontSize: "0.8125rem", color: colors.text }} data-testid="map-country">
-              {mapCountry.toUpperCase()}
-            </span>
-          )}
-        </div>
-      ) : null}
-
-      {chartTypes?.length === 0 ? null : (
+      {isMap ? null : (
       <div style={section}>
         <span style={label}>
           Chart type

@@ -52,7 +52,7 @@ import {
 } from "./ai-chart-modal/reportRouting";
 import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import { VizSpecPreview } from "./ai-chart-modal/VizSpecPreview";
-import { createMapGeoClient } from "./blocks/mapGeo";
+import { useMapGeoClient } from "./blocks/mapGeo";
 import type {
   DashboardReportInsertBlock,
   MastraChartMessage,
@@ -250,7 +250,7 @@ export function AssistantPanel({
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
   queryResultBaseUrl = "/api/query-results",
-  geoBaseUrl = "/api/geo",
+  geoBaseUrl,
   darkMode = false,
   availableDatasourceIds,
   defaultTenantFieldName,
@@ -274,12 +274,7 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
-  const headersKey = JSON.stringify(headers);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by their JSON
-  const mapGeo = useMemo(
-    () => createMapGeoClient({ geoBaseUrl, headers, organizationId }),
-    [geoBaseUrl, organizationId, headersKey]
-  );
+  const mapGeo = useMapGeoClient({ geoBaseUrl, headers, organizationId });
   const tenantInputsEnabled =
     !hideTenantInputs && dashboardType === "customer";
 
