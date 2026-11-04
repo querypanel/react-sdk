@@ -331,9 +331,10 @@ function renderLineChart(
         })
       : [];
   const pivoted = pivotSeriesPoints(seriesPoints);
-
+  const chartRows = pivoted ? pivoted.rows : data;
+  const xKey = pivoted ? "label" : x?.field;
   const lines = pivoted
-    ? pivoted.series.map(({ key, name }) => ({ key, name }))
+    ? pivoted.series
     : yFields.map((yField) => ({
         key: yField.field,
         name: yField.label || yField.field,
@@ -341,10 +342,10 @@ function renderLineChart(
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={pivoted ? pivoted.rows : data} margin={margin}>
+      <LineChart data={chartRows} margin={margin}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
-          dataKey={pivoted ? "label" : x?.field}
+          dataKey={xKey}
           stroke={colors.text}
           tick={{ fill: colors.text }}
           tickFormatter={formatTimestampForDisplay}

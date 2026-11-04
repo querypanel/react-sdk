@@ -358,6 +358,14 @@ describe("multi-series line charts", () => {
     expect("s1" in pivoted.rows[1]!).toBe(false);
   });
 
+  it("keeps first-appearance order for non-ISO labels such as week numbers", () => {
+    const pivoted = pivotSeriesPoints([
+      { label: "12", value: 1, series: "a" },
+      { label: "5", value: 2, series: "a" },
+    ])!;
+    expect(pivoted.rows.map((r) => r.label)).toEqual(["12", "5"]);
+  });
+
   it("returns null for single-series points", () => {
     expect(pivotSeriesPoints([{ label: "a", value: 1 }])).toBeNull();
   });

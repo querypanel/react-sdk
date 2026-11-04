@@ -457,18 +457,19 @@ export function LineChartComponent({
     return <MessageState title={props.title} message="No numeric data available for this chart." />;
   }
 
-  // One line per distinct series value; single-series data keeps the plain {label, value} path.
-  const pivoted = pivotSeriesPoints(chartData);
-  const lines = pivoted
-    ? pivoted.series
-    : [{ key: "value", name: "value" }];
-  const manySeries = lines.length > CHART_COLORS.length;
+  // One line per distinct series value; single-series data is the one-series case.
+  const { rows, series, droppedSeries } = pivotSeriesPoints(chartData) ?? {
+    rows: chartData,
+    series: [{ key: "value", name: "value" }],
+    droppedSeries: 0,
+  };
+  const multiSeries = series.length > 1;
 
   return (
     <ChartShell title={props.title}>
-      <div style={{ width: "100%", height: pivoted ? 300 : 260 }}>
+      <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <RechartsLineChart data={pivoted ? pivoted.rows : chartData}>
+          <RechartsLineChart data={rows}>
             <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 12, fill: colors.muted }} />
             <YAxis tick={{ fontSize: 12, fill: colors.muted }} />
@@ -478,12 +479,12 @@ export function LineChartComponent({
               itemStyle={tooltipStyles.itemStyle}
               labelStyle={tooltipStyles.labelStyle}
               cursor={tooltipStyles.cursor}
-              {...(pivoted ? { itemSorter: (item) => -(Number(item.value) || 0) } : {})}
+              itemSorter={(item) => -(Number(item.value) || 0)}
             />
-            {pivoted ? (
+            {multiSeries ? (
               <Legend wrapperStyle={{ fontSize: 12, color: colors.muted }} />
             ) : null}
-            {lines.map((line, index) => {
+            {series.map((line, index) => {
               const color = CHART_COLORS[index % CHART_COLORS.length];
               return (
                 <Line
@@ -495,17 +496,16 @@ export function LineChartComponent({
                   strokeWidth={2}
                   // Missing points are gaps, not zeros.
                   connectNulls={false}
-                  dot={manySeries ? false : { r: 3, fill: color }}
+                  dot={series.length > CHART_COLORS.length ? false : { r: 3, fill: color }}
                 />
               );
             })}
           </RechartsLineChart>
         </ResponsiveContainer>
       </div>
-      {pivoted && pivoted.droppedSeries > 0 ? (
+      {droppedSeries > 0 ? (
         <div style={{ color: colors.muted, fontSize: "0.75rem", marginTop: "0.5rem" }}>
-          Showing the {pivoted.series.length} largest of{" "}
-          {pivoted.series.length + pivoted.droppedSeries} series.
+          Showing the {series.length} largest of {series.length + droppedSeries} series.
         </div>
       ) : null}
     </ChartShell>

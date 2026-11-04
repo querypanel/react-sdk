@@ -307,6 +307,8 @@ export function normalizeRowsForJsonRenderChart(
 }
 
 const MAX_SERIES = 12;
+/** Only ISO-style labels are sorted as dates; Date.parse also accepts "5" or "2026". */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 
 export type PivotedSeries = {
   /** One row per label; `s0`, `s1`, ... hold each series' value, absent when missing. */
@@ -352,9 +354,8 @@ export function pivotSeriesPoints(
   }
 
   let rows = [...byLabel.values()];
-  const labels = rows.map((row) => String(row.label));
-  if (labels.every((label) => !Number.isNaN(Date.parse(label)))) {
-    // Series that start late would otherwise push their weeks to the end.
+  // Series that start late would otherwise push their weeks to the end.
+  if (rows.every((row) => ISO_DATE_RE.test(String(row.label)))) {
     rows = rows.sort(
       (a, b) => Date.parse(String(a.label)) - Date.parse(String(b.label))
     );
