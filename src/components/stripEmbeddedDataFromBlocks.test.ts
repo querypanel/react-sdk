@@ -105,4 +105,35 @@ describe("stripEmbeddedDataFromBlocks", () => {
       },
     });
   });
+
+  describe("map specs", () => {
+    const mapSpec = {
+      kind: "map",
+      encoding: {
+        country: "HU",
+        location: { mode: "latlng", latField: "lat", lngField: "lng" },
+        colorField: "status",
+      },
+    };
+    const rows = [{ lat: 47.5, lng: 19, status: "active" }];
+
+    it("strips rows from a chart block but keeps the map spec intact", () => {
+      const [block] = stripEmbeddedDataFromBlocks<BlockLike>([
+        { type: "chart", props: { chartSpec: JSON.stringify({ ...mapSpec, data: rows }), sql: "select 1" } },
+      ]);
+      expect(JSON.parse(String(readProp(block, "chartSpec")))).toEqual(mapSpec);
+      expect(readProp(block, "sql")).toBe("select 1");
+    });
+
+    it("strips rows from a json-render block holding a map spec", () => {
+      const [block] = stripEmbeddedDataFromBlocks<BlockLike>([
+        {
+          type: "json-render-chart",
+          props: { jsonRenderSpec: JSON.stringify({ ...mapSpec, data: rows }), resultId: "abc" },
+        },
+      ]);
+      expect(JSON.parse(String(readProp(block, "jsonRenderSpec")))).toEqual(mapSpec);
+      expect(readProp(block, "resultId")).toBe("");
+    });
+  });
 });

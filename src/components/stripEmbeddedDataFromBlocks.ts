@@ -1,4 +1,5 @@
 import { stripDataFromJsonRenderSpec } from "./generative-ui/specData";
+import { isMapVizSpec } from "./mapKind";
 
 export type BlockLike = {
   type: string;
@@ -44,7 +45,10 @@ function stripBlockProps(block: BlockLike): BlockLike {
         ...block,
         props: {
           ...block.props,
-          jsonRenderSpec: JSON.stringify(stripDataFromJsonRenderSpec(spec)),
+          // A map VizSpec is not a json-render tree: its rows live in `data`, like a chart block's.
+          jsonRenderSpec: isMapVizSpec(spec)
+            ? stripChartSpecJson(block.props.jsonRenderSpec)
+            : JSON.stringify(stripDataFromJsonRenderSpec(spec)),
           resultId: "",
         },
       };

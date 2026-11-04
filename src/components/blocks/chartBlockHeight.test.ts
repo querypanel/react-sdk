@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CHART_HEIGHT,
+  DEFAULT_MAP_HEIGHT,
   DEFAULT_METRIC_HEIGHT,
   parseBlockHeight,
   resolveChartBlockHeight,
@@ -24,6 +25,13 @@ describe("resolveChartBlockHeight", () => {
 
   it("keeps an explicit metric height", () => {
     expect(resolveChartBlockHeight(110, "metric")).toBe(110);
+  });
+
+  it("uses a tall default for maps and keeps an explicit height", () => {
+    expect(resolveChartBlockHeight(undefined, "map")).toBe(DEFAULT_MAP_HEIGHT);
+    expect(resolveChartBlockHeight(DEFAULT_CHART_HEIGHT, "map")).toBe(DEFAULT_MAP_HEIGHT);
+    expect(resolveChartBlockHeight(700, "map")).toBe(700);
+    expect(DEFAULT_MAP_HEIGHT).toBeGreaterThan(DEFAULT_CHART_HEIGHT);
   });
 
   it("uses the chart default for non-metrics", () => {

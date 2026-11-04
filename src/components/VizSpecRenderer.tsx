@@ -8,6 +8,7 @@ import type { MetricSpec } from "./VizSpecMetric";
 import { VizSpecMap } from "./VizSpecMap";
 import type { MapSpec } from "./VizSpecMap";
 import type { MapTopology } from "./vizSpecMapGeometry";
+import type { ResolvePlaces } from "./vizSpecMapPlaces";
 
 // VizSpec union type
 export type VizSpec = ChartSpec | TableSpec | MetricSpec | MapSpec;
@@ -22,9 +23,25 @@ export interface VizSpecRendererProps {
   mapBoundaries?: MapTopology;
   /** Map kind only: loads the outline for a country code when `mapBoundaries` is not given. */
   fetchMapBoundaries?: (country: string) => Promise<MapTopology>;
+  /** Map kind only: resolves postal codes / city names to coordinates. */
+  resolveMapPlaces?: ResolvePlaces;
+  /** Map kind only: re-fetches the data; shows the map's refresh button. */
+  onMapRefresh?: () => Promise<unknown>;
+  /** Map kind only: when the data was loaded. */
+  mapLastUpdated?: Date | number;
 }
 
-export function VizSpecRenderer({ spec, data, colors, chartHeight, mapBoundaries, fetchMapBoundaries }: VizSpecRendererProps) {
+export function VizSpecRenderer({
+  spec,
+  data,
+  colors,
+  chartHeight,
+  mapBoundaries,
+  fetchMapBoundaries,
+  resolveMapPlaces,
+  onMapRefresh,
+  mapLastUpdated,
+}: VizSpecRendererProps) {
   switch (spec.kind) {
     case "chart":
       return <VizSpecChart spec={spec} data={data} colors={colors} height={chartHeight} />;
@@ -41,6 +58,9 @@ export function VizSpecRenderer({ spec, data, colors, chartHeight, mapBoundaries
           height={chartHeight}
           boundaries={mapBoundaries}
           fetchBoundaries={fetchMapBoundaries}
+          resolvePlaces={resolveMapPlaces}
+          onRefresh={onMapRefresh}
+          lastUpdated={mapLastUpdated}
         />
       );
     default:

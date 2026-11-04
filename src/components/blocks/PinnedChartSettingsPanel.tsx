@@ -86,6 +86,8 @@ type PinnedChartSettingsPanelProps = {
   currentChartType: ChartType | "";
   /** Chart types the block can render; defaults to all. An empty list hides the picker (map kind). */
   chartTypes?: ChartType[];
+  /** Map blocks: the map's country code, shown read-only (editing comes with AI maps). */
+  mapCountry?: string;
   onApply: (options: PinnedChartApplyOptions) => void;
   onClose: () => void;
 };
@@ -99,6 +101,7 @@ export function PinnedChartSettingsPanel({
   disabled,
   currentChartType,
   chartTypes,
+  mapCountry,
   onApply,
   onClose,
 }: PinnedChartSettingsPanelProps) {
@@ -314,6 +317,15 @@ export function PinnedChartSettingsPanel({
           </div>
         ) : null}
       </div>
+
+      {mapCountry ? (
+        <div style={section}>
+          <span style={label}>Country</span>
+          <span style={{ fontSize: "0.8125rem", color: colors.text }} data-testid="map-country">
+            {mapCountry.toUpperCase()}
+          </span>
+        </div>
+      ) : null}
 
       {chartTypes?.length === 0 ? null : (
       <div style={section}>

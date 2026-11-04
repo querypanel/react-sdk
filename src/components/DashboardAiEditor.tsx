@@ -130,6 +130,8 @@ export interface DashboardAiEditorProps {
   apiBaseUrl?: string;
   /** Override run-sql URL (e.g. /api/dashboards/run-sql for admin) */
   runSqlUrl?: string;
+  /** Override the map geo base URL (`/boundaries/:country`, `/resolve`). Default: apiBaseUrl + /geo, else /api/geo. */
+  geoBaseUrl?: string;
   /** Override modify-chart URL for pinned chart controls */
   modifyChartUrl?: string;
   /** Override AI chart URL. Pass a Mastra agent stream URL to get the streaming agent UI. */
@@ -192,6 +194,7 @@ export function DashboardAiEditor({
   editable = true,
   apiBaseUrl = "",
   runSqlUrl,
+  geoBaseUrl,
   modifyChartUrl,
   generateChartWithSqlUrl,
   datasourcesUrl,
@@ -257,6 +260,7 @@ export function DashboardAiEditor({
     override ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}${embedPath}` : adminPath);
 
   const resolvedRunSqlUrl = resolveUrl(runSqlUrl, "/query/run-sql", "/api/dashboards/run-sql");
+  const resolvedGeoBaseUrl = resolveUrl(geoBaseUrl, "/geo", "/api/geo");
   const resolvedModifyChartUrl = resolveUrl(
     modifyChartUrl,
     "/query/modify-chart",
@@ -290,6 +294,7 @@ export function DashboardAiEditor({
         apiBaseUrl: apiBaseUrl || "",
         colors: themeColors,
         runSqlUrl: resolvedRunSqlUrl,
+        geoBaseUrl: resolvedGeoBaseUrl,
         modifyChartUrl: resolvedModifyChartUrl,
         onAskAboutThis,
         organizationId,
@@ -300,6 +305,7 @@ export function DashboardAiEditor({
       apiBaseUrl,
       themeColors,
       resolvedRunSqlUrl,
+      resolvedGeoBaseUrl,
       resolvedModifyChartUrl,
       onAskAboutThis,
       organizationId,
@@ -315,6 +321,7 @@ export function DashboardAiEditor({
         colors: themeColors,
         queryResultBaseUrl: resolvedQueryResultBaseUrl,
         runSqlUrl: resolvedRunSqlUrl,
+        geoBaseUrl: resolvedGeoBaseUrl,
         modifyChartUrl: resolvedModifyChartUrl,
         onAskAboutThis,
         organizationId,
@@ -326,6 +333,7 @@ export function DashboardAiEditor({
       themeColors,
       resolvedQueryResultBaseUrl,
       resolvedRunSqlUrl,
+      resolvedGeoBaseUrl,
       resolvedModifyChartUrl,
       onAskAboutThis,
       organizationId,

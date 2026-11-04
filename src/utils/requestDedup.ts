@@ -8,6 +8,8 @@ const resultCache = new Map<
 export type RunDedupedRequestOptions = {
   /** Cache successful response for this many ms. Same key within TTL returns cached result without refetch. */
   cacheMs?: number;
+  /** Skip a cached result (still dedupes in-flight requests) and store the fresh one. Used by manual refresh. */
+  bypassCache?: boolean;
 };
 
 /**
@@ -21,7 +23,7 @@ export function runDedupedRequest<T>(
   options?: RunDedupedRequestOptions
 ): Promise<T> {
   const cacheMs = options?.cacheMs;
-  if (cacheMs != null && cacheMs > 0) {
+  if (cacheMs != null && cacheMs > 0 && !options?.bypassCache) {
     const cached = resultCache.get(key);
     if (cached && cached.expiry > Date.now()) {
       return Promise.resolve(cached.value as T);

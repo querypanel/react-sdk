@@ -157,6 +157,7 @@ export function usePinnedChartChrome({
   sqlParams,
   currentChartType,
   chartTypes,
+  mapCountry,
   onAsk,
 }: {
   modify: ReturnType<typeof usePinnedChartBlockModify>;
@@ -166,6 +167,8 @@ export function usePinnedChartChrome({
   sqlParams: Record<string, unknown>;
   currentChartType: ChartType | "";
   chartTypes?: ChartType[];
+  /** Map blocks: country code shown read-only in settings. */
+  mapCountry?: string;
   /** Adds an "Ask about this" shortcut to the title row (Workspace only). */
   onAsk?: () => void;
 }): { titleActions: ReactNode; controls: ReactNode } {
@@ -216,6 +219,7 @@ export function usePinnedChartChrome({
           disabled={isDisabled}
           currentChartType={currentChartType}
           chartTypes={chartTypes}
+          mapCountry={mapCountry}
           onApply={apply}
           onClose={close}
         />

@@ -13,5 +13,3 @@ export function isMapVizSpec(spec: unknown): boolean {
 export function chartTypesForSpec(spec: unknown, allowed?: ChartType[]): ChartType[] | undefined {
   return isMapVizSpec(spec) ? [] : allowed;
 }
-
-export const MAP_NOT_SUPPORTED_MESSAGE = "Map charts aren't supported in this view yet.";
