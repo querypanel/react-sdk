@@ -272,57 +272,60 @@ export function PinnedChartSettingsPanel({
         </button>
       </div>
 
-      <div style={section}>
-        <span style={label}>Date range</span>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-          {DATE_RANGE_PRESETS.map((p) => {
-            const active = preset === p.value;
-            return (
-              <button
-                key={p.value}
-                type="button"
-                disabled={disabled}
-                aria-pressed={active}
-                title={p.label}
-                onClick={() => setPreset(active ? "" : p.value)}
-                style={{
-                  ...chip(active),
-                  height: "1.75rem",
-                  padding: "0 0.6rem",
-                  borderRadius: "999px",
-                  fontSize: "0.6875rem",
-                }}
-              >
-                {p.chip}
-              </button>
-            );
-          })}
-        </div>
-        {preset === "custom" ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "0.375rem",
-            }}
-          >
-            <input
-              type="date"
-              value={dateFrom}
-              disabled={disabled}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={dateInput}
-            />
-            <input
-              type="date"
-              value={dateTo}
-              disabled={disabled}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={dateInput}
-            />
+      {/* A map shows current status, so a date range filter makes no sense for it. */}
+      {mapCountry === undefined ? (
+        <div style={section}>
+          <span style={label}>Date range</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+            {DATE_RANGE_PRESETS.map((p) => {
+              const active = preset === p.value;
+              return (
+                <button
+                  key={p.value}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={active}
+                  title={p.label}
+                  onClick={() => setPreset(active ? "" : p.value)}
+                  style={{
+                    ...chip(active),
+                    height: "1.75rem",
+                    padding: "0 0.6rem",
+                    borderRadius: "999px",
+                    fontSize: "0.6875rem",
+                  }}
+                >
+                  {p.chip}
+                </button>
+              );
+            })}
           </div>
-        ) : null}
-      </div>
+          {preset === "custom" ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "0.375rem",
+              }}
+            >
+              <input
+                type="date"
+                value={dateFrom}
+                disabled={disabled}
+                onChange={(e) => setDateFrom(e.target.value)}
+                style={dateInput}
+              />
+              <input
+                type="date"
+                value={dateTo}
+                disabled={disabled}
+                onChange={(e) => setDateTo(e.target.value)}
+                style={dateInput}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {mapCountry ? (
         <div style={section}>

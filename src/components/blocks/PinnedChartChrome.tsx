@@ -52,6 +52,8 @@ type PinnedTitleActionsProps = {
   onToggleControls: () => void;
   onUndo: () => void;
   onDateShortcut: (preset: DateRangePreset) => void;
+  /** Maps show a snapshot of current status, so a 7d/30d date filter makes no sense there. */
+  hideDateShortcuts?: boolean;
   onAsk?: () => void;
 };
 
@@ -65,6 +67,7 @@ function PinnedTitleActions({
   onToggleControls,
   onUndo,
   onDateShortcut,
+  hideDateShortcuts,
   onAsk,
 }: PinnedTitleActionsProps) {
   const buttonStyle = {
@@ -87,7 +90,7 @@ function PinnedTitleActions({
           Undo
         </button>
       ) : null}
-      {DATE_RANGE_SHORTCUTS.map((shortcut) => {
+      {(hideDateShortcuts ? [] : DATE_RANGE_SHORTCUTS).map((shortcut) => {
         const active = activeShortcut === shortcut.value;
         return (
           <button
@@ -190,6 +193,7 @@ export function usePinnedChartChrome({
       canUndo={canUndo}
       controlsOpen={open}
       activeShortcut={activeDateShortcut(sqlParams)}
+      hideDateShortcuts={mapCountry !== undefined}
       onToggleControls={() => setOpen((v) => !v)}
       onUndo={onUndo}
       onDateShortcut={(preset) => {
