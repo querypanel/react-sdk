@@ -745,6 +745,7 @@ export function DashboardAiEditor({
                 generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
                 datasourcesUrl={resolvedDatasourcesUrl}
                 queryResultBaseUrl={resolvedQueryResultBaseUrl}
+                geoBaseUrl={resolvedGeoBaseUrl}
                 headers={headers}
                 darkMode={effectiveDarkMode}
                 availableDatasourceIds={availableDatasourceIds}
@@ -783,6 +784,7 @@ export function DashboardAiEditor({
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
           datasourcesUrl={resolvedDatasourcesUrl}
           queryResultBaseUrl={resolvedQueryResultBaseUrl}
+          geoBaseUrl={resolvedGeoBaseUrl}
           headers={headers}
           darkMode={effectiveDarkMode}
           availableDatasourceIds={availableDatasourceIds}

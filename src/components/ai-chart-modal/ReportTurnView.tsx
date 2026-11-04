@@ -12,6 +12,7 @@ import {
 import { formatToolStatus } from "./mastraChartStream";
 import { PlanChecklist } from "./PlanChecklist";
 import { withDerivedPlanProgress } from "./planProgress";
+import type { MapGeoClient } from "../blocks/mapGeo";
 import { VizSpecPreview } from "./VizSpecPreview";
 import { ChartChip } from "./ChartTagUi";
 import { ThoughtSummaryRail } from "./ChatPrimitives";
@@ -131,6 +132,7 @@ export function VizPreview({
 	fallbackRows,
 	datasourceCount,
 	darkMode,
+	mapGeo,
 }: {
 	block: ReportVizBlock;
 	queryResultBaseUrl?: string;
@@ -138,6 +140,7 @@ export function VizPreview({
 	fallbackRows: Array<Record<string, unknown>> | null;
 	datasourceCount?: number;
 	darkMode?: boolean;
+	mapGeo?: MapGeoClient;
 }) {
 	const rows =
 		Array.isArray(block.queryResult?.rows) && block.queryResult.rows.length > 0
@@ -178,6 +181,7 @@ export function VizPreview({
 						fallbackRows={rows}
 						darkMode={darkMode}
 						datasourceCount={datasourceCount}
+						mapGeo={mapGeo}
 					/>
 				)}
 			</div>
@@ -207,6 +211,7 @@ export function ReportTurnView({
 	requestHeaders,
 	darkMode,
 	datasourceCount,
+	mapGeo,
 	onAddViz,
 	onAddReport,
 	resolveChartRef,
@@ -224,6 +229,8 @@ export function ReportTurnView({
 	requestHeaders?: Record<string, string>;
 	darkMode?: boolean;
 	datasourceCount?: number;
+	/** Boundaries and place lookups for a map answer. */
+	mapGeo?: MapGeoClient;
 	onAddViz: (block: ReportVizBlock) => void;
 	onAddReport: (message: MastraChartMessage) => void;
 	/** When set, `[↗ cN]` citations in answer text render as chart chips. */
@@ -332,6 +339,7 @@ export function ReportTurnView({
 							fallbackRows={fallbackRows}
 							datasourceCount={datasourceCount}
 							darkMode={darkMode}
+							mapGeo={mapGeo}
 						/>
 					);
 					const custom = renderVizBlock?.(block, preview) ?? null;

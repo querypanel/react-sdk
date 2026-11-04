@@ -167,7 +167,7 @@ export function usePinnedChartChrome({
   sqlParams: Record<string, unknown>;
   currentChartType: ChartType | "";
   chartTypes?: ChartType[];
-  /** Map blocks: country code shown read-only in settings. */
+  /** Map blocks: the map's country code, editable in settings. */
   mapCountry?: string;
   /** Adds an "Ask about this" shortcut to the title row (Workspace only). */
   onAsk?: () => void;
@@ -220,6 +220,13 @@ export function usePinnedChartChrome({
           currentChartType={currentChartType}
           chartTypes={chartTypes}
           mapCountry={mapCountry}
+          onMapCountryChange={
+            mapCountry
+              ? (country) => {
+                  if (modify.onMapCountryChange(country)) close();
+                }
+              : undefined
+          }
           onApply={apply}
           onClose={close}
         />

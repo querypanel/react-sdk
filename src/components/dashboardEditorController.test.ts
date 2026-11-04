@@ -34,6 +34,14 @@ describe("buildChartBlockInput", () => {
     expect(input?.props).not.toHaveProperty("resultId");
   });
 
+  it("adds a map answer as a chart block that carries the map spec", () => {
+    const mapSpec = { kind: "map", data: { sourceId: "r1" }, encoding: { location: { mode: "place", cityField: "city" }, country: "HU" } };
+    const input = buildChartBlockInput({ chartSpec: mapSpec, jsonRenderSpec: undefined, sql: "select 1", datasourceIds: ["ds1"] });
+    expect(input?.type).toBe("chart");
+    expect(JSON.parse(input?.props.chartSpec ?? "{}")).toEqual(mapSpec);
+    expect(input?.props.title).toBe("Map");
+  });
+
   it("stores the original question on both block types", () => {
     expect(buildChartBlockInput({ chartSpec: vizSpec, question: "Revenue?" })?.props.question).toBe(
       "Revenue?",

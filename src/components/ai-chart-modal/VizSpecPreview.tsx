@@ -6,6 +6,7 @@ import { resolveChartBlockHeight } from "../blocks/chartBlockHeight";
 import { VizSpecRenderer } from "../VizSpecRenderer";
 import { defaultColors, getColorsForMode } from "../../themes";
 import type { ThemeColors } from "../../types";
+import type { MapGeoClient } from "../blocks/mapGeo";
 import { resolveVizSpecPreview } from "./chartPreviewSpec";
 
 /** Chat preview of a VizSpec: the same renderer and frame the Dashboard Chart block uses. */
@@ -15,12 +16,15 @@ export function VizSpecPreview({
   darkMode = false,
   themeColors = defaultColors,
   datasourceCount,
+  mapGeo,
 }: {
   chartSpec: unknown;
   fallbackRows?: Array<Record<string, unknown>> | null;
   darkMode?: boolean;
   themeColors?: ThemeColors;
   datasourceCount?: number;
+  /** Boundaries and place lookups for a map answer. */
+  mapGeo?: MapGeoClient;
 }) {
   const colors = useMemo(
     () => getColorsForMode(themeColors, darkMode),
@@ -55,7 +59,14 @@ export function VizSpecPreview({
       height={resolveChartBlockHeight(undefined, model.spec.kind)}
       colors={colors}
     >
-      <VizSpecRenderer spec={model.spec} data={model.data} colors={colors} chartHeight="100%" />
+      <VizSpecRenderer
+        spec={model.spec}
+        data={model.data}
+        colors={colors}
+        chartHeight="100%"
+        fetchMapBoundaries={mapGeo?.fetchBoundaries}
+        resolveMapPlaces={mapGeo?.resolvePlaces}
+      />
     </ChartBlockFrame>
   );
 }

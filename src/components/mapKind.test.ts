@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartTypesForSpec, isMapVizSpec } from "./mapKind";
+import { chartTypesForSpec, isMapVizSpec, withMapCountry } from "./mapKind";
 import { chartTypeFromVizSpec, patchVizSpecChartType } from "./blocks/pinnedChartModify";
 import { isVizSpec } from "./vizSpecGuard";
 import { vizKindOf } from "./ai-chart-modal/vizKind";
@@ -50,3 +50,18 @@ describe("map kind enumerations", () => {
     expect(decideReportMode({ text: "show my devices on a map", preference: "auto", hasTaggedCharts: false, hasPriorTurns: false })).toBe(false);
   });
 });
+
+describe("withMapCountry", () => {
+  it("sets an upper-cased country and keeps the rest of the spec", () => {
+    const next = withMapCountry(mapSpec, " de ");
+    expect((next?.encoding as { country: string }).country).toBe("DE");
+    expect((next?.encoding as { location: unknown }).location).toEqual(mapSpec.encoding.location);
+  });
+
+  it("refuses non-maps and invalid codes", () => {
+    expect(withMapCountry({ kind: "chart" }, "DE")).toBeNull();
+    expect(withMapCountry(mapSpec, "DEU")).toBeNull();
+    expect(withMapCountry(mapSpec, "")).toBeNull();
+  });
+});
+

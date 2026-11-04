@@ -1,6 +1,7 @@
 "use client";
 
 import { isVizSpec } from "../vizSpecGuard";
+import { withMapCountry } from "../mapKind";
 import { useCallback, useRef, useState } from "react";
 import type { SqlModifications, VizModifications } from "../../types";
 import type { VizSpec } from "../VizSpecRenderer";
@@ -305,6 +306,19 @@ export function usePinnedChartBlockModify(input: {
     ]
   );
 
+  /** Map blocks: sets the spec's country; the map re-resolves and redraws from the new spec. */
+  const onMapCountryChange = useCallback(
+    (country: string): boolean => {
+      if (!editor?.updateBlock) return false;
+      const key = format === "vizspec" ? "chartSpec" : "jsonRenderSpec";
+      const next = withMapCountry(parseJson(String(block.props[key] || "")), country);
+      if (!next) return false;
+      applyPropsUpdate({ [key]: JSON.stringify(next) });
+      return true;
+    },
+    [editor, format, block, applyPropsUpdate]
+  );
+
   const onUndo = useCallback(() => {
     if (!undoSnapshot || !editor?.updateBlock) return;
     applyPropsUpdate(undoSnapshot);
@@ -318,5 +332,6 @@ export function usePinnedChartBlockModify(input: {
     canUndo: Boolean(undoSnapshot),
     onApply,
     onUndo,
+    onMapCountryChange,
   };
 }

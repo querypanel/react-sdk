@@ -13,3 +13,14 @@ export function isMapVizSpec(spec: unknown): boolean {
 export function chartTypesForSpec(spec: unknown, allowed?: ChartType[]): ChartType[] | undefined {
   return isMapVizSpec(spec) ? [] : allowed;
 }
+
+/**
+ * The map spec with another country (ISO 3166-1 alpha-2, upper-cased), or null when `spec` is not a
+ * map or `country` is not a two-letter code. The map re-resolves its places and outline from the spec.
+ */
+export function withMapCountry(spec: unknown, country: string): Record<string, unknown> | null {
+  const code = country.trim().toUpperCase();
+  if (!isMapVizSpec(spec) || !/^[A-Z]{2}$/.test(code)) return null;
+  const mapSpec = spec as { encoding?: Record<string, unknown> };
+  return { ...mapSpec, encoding: { ...mapSpec.encoding, country: code } };
+}

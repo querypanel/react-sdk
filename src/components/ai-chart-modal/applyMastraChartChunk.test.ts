@@ -262,6 +262,33 @@ describe("createMastraChartChunkHandler", () => {
 		expect(message.jsonRenderSpec).toBeTruthy();
 	});
 
+	it("renders a map carried by run_sql as a viz block with the map spec and the full rows", () => {
+		const { handler, getMessage } = setup();
+		const spec = {
+			kind: "map",
+			data: { sourceId: "r" },
+			encoding: { location: { mode: "place", cityField: "city" }, country: "HU", colorField: "status" },
+		};
+
+		handler({
+			type: "tool-result",
+			toolName: "run_sql",
+			result: {
+				resultId: "44444444-4444-4444-4444-444444444444",
+				sql: "SELECT city, status FROM devices",
+				fields: ["city", "status"],
+				rows: [{ city: "Budapest", status: "active" }],
+				rowCount: 1,
+				visualization: { spec, jsonRenderSpec: null, presentationKind: "map" },
+			},
+		});
+
+		const viz = getMessage().blocks?.find((b) => b.type === "viz");
+		expect(viz?.type === "viz" && viz.chartSpec).toEqual(spec);
+		expect(viz?.type === "viz" && viz.presentationKind).toBe("map");
+		expect(viz?.type === "viz" && viz.queryResult?.rows).toHaveLength(1);
+	});
+
 	it("shows every run_sql chart of a turn, each with its own datasource", () => {
 		let next = 0;
 		const { handler, getMessage } = setup({ createMessageId: (prefix) => `${prefix}-${++next}` });

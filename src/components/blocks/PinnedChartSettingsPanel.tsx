@@ -86,8 +86,10 @@ type PinnedChartSettingsPanelProps = {
   currentChartType: ChartType | "";
   /** Chart types the block can render; defaults to all. An empty list hides the picker (map kind). */
   chartTypes?: ChartType[];
-  /** Map blocks: the map's country code, shown read-only (editing comes with AI maps). */
+  /** Map blocks: the map's country code (ISO 3166-1 alpha-2), editable. */
   mapCountry?: string;
+  /** Map blocks: sets a new country; the map re-resolves and redraws. */
+  onMapCountryChange?: (country: string) => void;
   onApply: (options: PinnedChartApplyOptions) => void;
   onClose: () => void;
 };
@@ -102,9 +104,13 @@ export function PinnedChartSettingsPanel({
   currentChartType,
   chartTypes,
   mapCountry,
+  onMapCountryChange,
   onApply,
   onClose,
 }: PinnedChartSettingsPanelProps) {
+  const [country, setCountry] = useState(mapCountry?.toUpperCase() ?? "");
+  const countryValid = /^[A-Za-z]{2}$/.test(country);
+  const countryChanged = countryValid && country.toUpperCase() !== (mapCountry ?? "").toUpperCase();
   const panelRef = useRef<HTMLDivElement>(null);
   const [preset, setPreset] = useState<DateRangePreset | "">("");
   const [dateFrom, setDateFrom] = useState("");
@@ -321,9 +327,42 @@ export function PinnedChartSettingsPanel({
       {mapCountry ? (
         <div style={section}>
           <span style={label}>Country</span>
-          <span style={{ fontSize: "0.8125rem", color: colors.text }} data-testid="map-country">
-            {mapCountry.toUpperCase()}
-          </span>
+          {onMapCountryChange ? (
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                type="text"
+                value={country}
+                maxLength={2}
+                disabled={disabled}
+                aria-label="Country code (ISO 3166-1 alpha-2)"
+                data-testid="map-country"
+                placeholder="HU"
+                onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && countryChanged) onMapCountryChange(country);
+                }}
+                style={{ ...dateInput, width: "3.5rem", textTransform: "uppercase" }}
+              />
+              <button
+                type="button"
+                disabled={disabled || !countryChanged}
+                data-testid="map-country-apply"
+                onClick={() => onMapCountryChange(country)}
+                style={{
+                  ...dateInput,
+                  width: "auto",
+                  cursor: disabled || !countryChanged ? "not-allowed" : "pointer",
+                  opacity: disabled || !countryChanged ? 0.5 : 1,
+                }}
+              >
+                Set
+              </button>
+            </div>
+          ) : (
+            <span style={{ fontSize: "0.8125rem", color: colors.text }} data-testid="map-country">
+              {mapCountry.toUpperCase()}
+            </span>
+          )}
         </div>
       ) : null}
 

@@ -52,6 +52,7 @@ import {
 } from "./ai-chart-modal/reportRouting";
 import { findPrecedingUserQuestion } from "./ai-chart-modal/findPrecedingUserQuestion";
 import { VizSpecPreview } from "./ai-chart-modal/VizSpecPreview";
+import { createMapGeoClient } from "./blocks/mapGeo";
 import type {
   DashboardReportInsertBlock,
   MastraChartMessage,
@@ -168,6 +169,8 @@ export interface AssistantPanelProps {
   headers?: Record<string, string>;
   /** URL for result artifact fetches used by json-render previews */
   queryResultBaseUrl?: string;
+  /** Base URL of the geo routes a map answer draws with (default: /api/geo). */
+  geoBaseUrl?: string;
   /** Whether to render dark theme styles */
   darkMode?: boolean;
   /** When set, only these datasource IDs are shown (e.g. from dashboard.available_datasource_ids). */
@@ -247,6 +250,7 @@ export function AssistantPanel({
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
   queryResultBaseUrl = "/api/query-results",
+  geoBaseUrl = "/api/geo",
   darkMode = false,
   availableDatasourceIds,
   defaultTenantFieldName,
@@ -270,6 +274,12 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
   const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
+  const headersKey = JSON.stringify(headers);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: headers are keyed by their JSON
+  const mapGeo = useMemo(
+    () => createMapGeoClient({ geoBaseUrl, headers, organizationId }),
+    [geoBaseUrl, organizationId, headersKey]
+  );
   const tenantInputsEnabled =
     !hideTenantInputs && dashboardType === "customer";
 
@@ -1215,6 +1225,7 @@ export function AssistantPanel({
                             requestHeaders={headers}
                             darkMode={darkMode}
                             datasourceCount={selectedDatasourceIds.length}
+                            mapGeo={mapGeo}
                             hidePlan={isNarrowLayout && message.id === pinnedPlanId}
                             onAddViz={(block) => handleAddVizBlock(block, message)}
                             onAddReport={(turn) => handleAddReportToEditor(turn)}
@@ -1343,6 +1354,7 @@ export function AssistantPanel({
                                   }
                                   darkMode={darkMode}
                                   datasourceCount={selectedDatasourceIds.length}
+                                  mapGeo={mapGeo}
                                 />
                               )}
                             </div>
