@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { VizSpecMap, type MapSpec } from "./VizSpecMap";
+import { VizSpecMap, type MapSpec, type ResolvePlaces } from "./VizSpecMap";
 import type { MapTopology } from "./vizSpecMapGeometry";
 import hungary from "./fixtures/hungary.topo.json";
 import { defaultColors } from "../themes";
@@ -54,8 +54,57 @@ export const SkipsInvalidRows: Story = {
   args: { data: [...rows, { city: "Nowhere", lat: null, lng: "n/a" }, { city: "Out of range", lat: 120, lng: 19 }] },
 };
 
-export const PlaceModePending: Story = {
+// Osc App-shaped: 26 chambers, Hungarian postal codes and towns, one `Cloud` that cannot be placed.
+const TOWNS: Record<string, [number, number, string]> = {
+  "1011": [47.498, 19.04, "Budapest"],
+  "4025": [47.5316, 21.6273, "Debrecen"],
+  "6720": [46.253, 20.1414, "Szeged"],
+  "7133": [46.465, 18.819, "Fadd"],
+  "9021": [47.6875, 17.6504, "Győr"],
+  "3525": [48.1035, 20.7784, "Miskolc"],
+  "4400": [47.9554, 21.7167, "Nyíregyháza"],
+  "6000": [46.8964, 19.6897, "Kecskemét"],
+  "7621": [46.0727, 18.2323, "Pécs"],
+  "8000": [47.1914, 18.4101, "Székesfehérvár"],
+};
+const TOWN_BY_NAME = new Map(Object.values(TOWNS).map(([lat, lng, name]) => [name.toLowerCase(), { lat, lng, name }]));
+
+/** Stand-in for `POST /geo/resolve`: postal code first, then town name. */
+const fakeResolvePlaces: ResolvePlaces = async (_country, places) =>
+  places.map((place) => {
+    const byPostal = place.postalCode ? TOWNS[place.postalCode] : undefined;
+    if (byPostal) return { lat: byPostal[0], lng: byPostal[1], resolvedName: byPostal[2], matchedBy: "postal" as const };
+    const byCity = place.city ? TOWN_BY_NAME.get(place.city.toLowerCase()) : undefined;
+    return byCity ? { lat: byCity.lat, lng: byCity.lng, resolvedName: byCity.name, matchedBy: "city" as const } : null;
+  });
+
+const chamberAddresses = ["1011", "4025", "6720", "7133", "9021", "3525", "4400", "6000", "7621", "8000"];
+const chambers = [
+  ...Array.from({ length: 17 }, (_, i) => {
+    const postal = chamberAddresses[i % chamberAddresses.length] as string;
+    return { chamber: `chamber-${i + 1}`, postal_code: postal, city: TOWNS[postal]?.[2] ?? null };
+  }),
+  // No postal code in the address: falls back to the town name.
+  ...["Szeged", "Debrecen", "Győr", "Pécs", "Miskolc", "Kecskemét", "Budapest", "Fadd"].map((city, i) => ({
+    chamber: `chamber-${18 + i}`,
+    postal_code: null,
+    city,
+  })),
+  { chamber: "chamber-26", postal_code: null, city: "Cloud" },
+];
+
+export const PlaceMode: Story = {
   args: {
-    spec: { ...spec, encoding: { ...spec.encoding, location: { ...spec.encoding.location, mode: "place", cityField: "city", latField: null, lngField: null } } },
+    spec: {
+      ...spec,
+      title: "Chambers in Hungary",
+      encoding: {
+        ...spec.encoding,
+        location: { mode: "place", postalCodeField: "postal_code", cityField: "city", latField: null, lngField: null },
+        labelField: "chamber",
+      },
+    },
+    data: chambers,
+    resolvePlaces: fakeResolvePlaces,
   },
 };
