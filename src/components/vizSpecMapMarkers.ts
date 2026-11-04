@@ -5,6 +5,8 @@ import type { PlacedPoint } from "./vizSpecMapPlaces";
 /** Category shown for null/empty color values. */
 export const UNKNOWN_CATEGORY = "unknown";
 
+// Status presets: category names that read as a status get a fixed traffic-light color (case-insensitive);
+// any other category takes the next palette color. Not configurable per spec.
 // Mid-tone fills that read on both the light and dark map backgrounds.
 export const STATUS_COLORS = { green: "#22C55E", amber: "#F59E0B", red: "#EF4444", grey: "#94A3B8" } as const;
 

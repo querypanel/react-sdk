@@ -47,7 +47,7 @@ const meta: Meta<typeof VizSpecMap> = {
       },
     },
   },
-  args: { spec, data: rows, colors: defaultColors, boundaries: hungaryWithCounties },
+  args: { spec, data: rows, colors: defaultColors, boundaries: hungaryWithCounties, itemNoun: { singular: "device", plural: "devices" } },
 };
 
 export default meta;

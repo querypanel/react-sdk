@@ -6,7 +6,7 @@ import type { TableSpec } from "./VizSpecTable";
 import { VizSpecMetric } from "./VizSpecMetric";
 import type { MetricSpec } from "./VizSpecMetric";
 import { VizSpecMap } from "./VizSpecMap";
-import type { MapSpec } from "./VizSpecMap";
+import type { MapItemNoun, MapSpec } from "./VizSpecMap";
 import type { MapTopology } from "./vizSpecMapGeometry";
 import type { ResolvePlaces } from "./vizSpecMapPlaces";
 
@@ -29,6 +29,8 @@ export interface VizSpecRendererProps {
   onMapRefresh?: () => Promise<unknown>;
   /** Map kind only: when the data was loaded. */
   mapLastUpdated?: Date | number;
+  /** Map kind only: what one row is called in the map's wording (default item / items). */
+  mapItemNoun?: MapItemNoun;
 }
 
 export function VizSpecRenderer({
@@ -41,6 +43,7 @@ export function VizSpecRenderer({
   resolveMapPlaces,
   onMapRefresh,
   mapLastUpdated,
+  mapItemNoun,
 }: VizSpecRendererProps) {
   switch (spec.kind) {
     case "chart":
@@ -61,6 +64,7 @@ export function VizSpecRenderer({
           resolvePlaces={resolveMapPlaces}
           onRefresh={onMapRefresh}
           lastUpdated={mapLastUpdated}
+          itemNoun={mapItemNoun}
         />
       );
     default:
