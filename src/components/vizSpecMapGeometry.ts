@@ -12,8 +12,11 @@ export interface MapPoint {
   rowIndex: number;
 }
 
-/** Topology whose `objects.country` is the country's admin-0 outline (see `GET /geo/boundaries/:country`). */
-export type MapTopology = Topology<{ country: GeometryObject }>;
+/**
+ * Topology whose `objects.country` is the country's admin-0 outline (see `GET /geo/boundaries/:country`).
+ * `objects.regions` (first-level regions, Natural Earth admin-1) is present only when available.
+ */
+export type MapTopology = Topology<{ country: GeometryObject; regions?: GeometryObject }>;
 
 /** Parse a coordinate cell (number or numeric string); null when missing/invalid or out of range. */
 export function toCoordinate(value: unknown, limit: number): number | null {
@@ -46,6 +49,8 @@ export interface MapProjection {
   projection: GeoProjection;
   path: GeoPath;
   outline: string | null;
+  /** Borders of the first-level regions; null when the topology has none. */
+  regionBorders: string | null;
 }
 
 /** Mercator projection fitted into `width` x `height` (with `padding`), plus the outline path string. */
@@ -65,7 +70,9 @@ export function buildMapProjection(
     country,
   );
   const path = geoPath(projection);
-  return { projection, path, outline: path(country) };
+  const regionsObject = topology.objects.regions;
+  const regions = regionsObject ? (feature(topology as Topology, regionsObject) as GeoPermissibleObjects) : null;
+  return { projection, path, outline: path(country), regionBorders: regions ? path(regions) : null };
 }
 
 /** Project a point to pixel coordinates; null when the projection yields no finite result. */

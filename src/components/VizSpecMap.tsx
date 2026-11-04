@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThemeColors } from "../types";
 import { useElementWidth } from "./useElementWidth";
 import { buildMapProjection, projectPoint, type MapTopology } from "./vizSpecMapGeometry";
@@ -12,6 +12,17 @@ import {
   markerRadius,
   type MapMarker,
 } from "./vizSpecMapMarkers";
+import {
+  IDENTITY,
+  formatLastUpdated,
+  isIdentity,
+  markerScreenScale,
+  panBy,
+  toScreen,
+  wheelFactor,
+  zoomAt,
+  type ZoomTransform,
+} from "./vizSpecMapZoom";
 import { describeRow, distinctPlaces, placeRows, type ResolvePlaces, type ResolvedPlace } from "./vizSpecMapPlaces";
 
 export type { PlaceInput, ResolvedPlace, ResolvePlaces } from "./vizSpecMapPlaces";
@@ -55,12 +66,33 @@ export interface VizSpecMapProps {
    * Called once per render of the data with distinct places only.
    */
   resolvePlaces?: ResolvePlaces;
+  /** Re-fetches the data. When supplied, a refresh button is shown; it is disabled while the promise runs. */
+  onRefresh?: () => Promise<unknown>;
+  /** When the data was loaded, for the "Updated HH:MM" label. Defaults to when `data` last changed. */
+  lastUpdated?: Date | number;
 }
 
 const DEFAULT_HEIGHT = 400;
 const MAX_MARKER_RADIUS = 16;
 const DONUT_HOLE = 0.55;
 const PANEL_WIDTH = 240;
+const DRAG_THRESHOLD = 3;
+const BUTTON_ZOOM = 1.6;
+
+function controlStyle(colors: ThemeColors): React.CSSProperties {
+  return {
+    ...overlayStyle(colors),
+    width: 26,
+    height: 26,
+    padding: 0,
+    cursor: "pointer",
+    fontSize: "0.875rem",
+    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+}
 
 function markerTitle(marker: MapMarker): string {
   return marker.name ?? `${marker.lat.toFixed(3)}, ${marker.lng.toFixed(3)}`;
@@ -109,7 +141,17 @@ function MapMessage({ colors, children }: { colors: ThemeColors; children: React
   );
 }
 
-export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, boundaries, fetchBoundaries, resolvePlaces }: VizSpecMapProps) {
+export function VizSpecMap({
+  spec,
+  data,
+  colors,
+  height = DEFAULT_HEIGHT,
+  boundaries,
+  fetchBoundaries,
+  resolvePlaces,
+  onRefresh,
+  lastUpdated,
+}: VizSpecMapProps) {
   const { location, country } = spec.encoding;
   const containerRef = useRef<HTMLDivElement>(null);
   const width = useElementWidth(containerRef);
@@ -197,6 +239,10 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
   const categories = useMemo(() => legendCategories(markers), [markers]);
   const categoryColors = useMemo(() => assignCategoryColors(categories, colors.range), [categories, colors.range]);
 
+  const [transform, setTransform] = useState<ZoomTransform>(IDENTITY);
+  // Start fitted again whenever the fit changes (new country, resize).
+  useEffect(() => setTransform(IDENTITY), [fitted]);
+
   const drawn = useMemo(() => {
     if (!fitted) return [];
     const maxTotal = Math.max(1, ...markers.map((m) => m.total));
@@ -205,12 +251,90 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
       return xy ? [{ index, marker, x: xy[0], y: xy[1], r: markerRadius(marker.total, maxTotal, MAX_MARKER_RADIUS) }] : [];
     });
   }, [fitted, markers]);
+  // Markers live in screen space: positions follow the zoom, sizes barely change (see markerScreenScale).
+  const screenDots = useMemo(() => {
+    const scale = markerScreenScale(transform.k);
+    return drawn.map((d) => {
+      const [x, y] = toScreen(transform, d.x, d.y);
+      return { ...d, x, y, r: d.r * scale };
+    });
+  }, [drawn, transform]);
   // Largest first so small markers stay on top and hoverable.
-  const drawOrder = useMemo(() => [...drawn].sort((a, b) => b.r - a.r), [drawn]);
+  const drawOrder = useMemo(() => [...screenDots].sort((a, b) => b.r - a.r), [screenDots]);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const moved = useRef(false);
+  const svgPoint = (clientX: number, clientY: number): [number, number] => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    return [clientX - (rect?.left ?? 0), clientY - (rect?.top ?? 0)];
+  };
+  const hasMap = Boolean(fitted?.outline);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const [x, y] = svgPoint(e.clientX, e.clientY);
+      setTransform((t) => zoomAt(t, wheelFactor(e.deltaY), x, y));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [hasMap]);
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    moved.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const prev = pointers.current.get(e.pointerId);
+    if (!prev) return;
+    const next = { x: e.clientX, y: e.clientY };
+    const others = [...pointers.current.entries()].filter(([id]) => id !== e.pointerId);
+    if (!moved.current && Math.hypot(next.x - prev.x, next.y - prev.y) < DRAG_THRESHOLD && others.length === 0) return;
+    if (!moved.current) {
+      moved.current = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      setHovered(null);
+    }
+    pointers.current.set(e.pointerId, next);
+    const other = others[0]?.[1];
+    if (other) {
+      // Pinch: scale by the change in finger distance around their midpoint, and follow the midpoint.
+      const before = Math.hypot(prev.x - other.x, prev.y - other.y) || 1;
+      const after = Math.hypot(next.x - other.x, next.y - other.y) || 1;
+      const [mx, my] = svgPoint((next.x + other.x) / 2, (next.y + other.y) / 2);
+      const dx = (next.x - prev.x) / 2;
+      const dy = (next.y - prev.y) / 2;
+      setTransform((t) => panBy(zoomAt(t, after / before, mx, my), dx, dy));
+    } else {
+      setTransform((t) => panBy(t, next.x - prev.x, next.y - prev.y));
+    }
+  };
+  const onPointerEnd = (e: React.PointerEvent<SVGSVGElement>) => {
+    pointers.current.delete(e.pointerId);
+  };
+  const zoomBy = useCallback((factor: number) => setTransform((t) => zoomAt(t, factor, (width ?? 0) / 2, pixelHeight / 2)), [width, pixelHeight]);
+
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  useEffect(() => setLoadedAt(Date.now()), [data]);
+  const [refreshing, setRefreshing] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
+  const refresh = async () => {
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } catch {
+      // The host reports its own fetch errors; the label keeps the last successful time.
+    } finally {
+      if (mounted.current) setRefreshing(false);
+    }
+  };
 
   const [hovered, setHovered] = useState<number | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const hoveredDot = drawn.find((d) => d.index === hovered);
+  const hoveredDot = screenDots.find((d) => d.index === hovered);
   const selectedMarker = selected === null ? null : (markers[selected] ?? null);
 
   let body: React.ReactNode;
@@ -227,13 +351,23 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
   } else {
     body = (
       <svg
+        ref={svgRef}
         role="img"
         aria-label={spec.title ?? `Map of ${country}`}
         width={width ?? undefined}
         height={pixelHeight}
-        style={{ display: "block" }}
+        style={{ display: "block", touchAction: "none", cursor: "grab" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
       >
-        <path d={fitted.outline} fill={colors.surface} stroke={colors.border} strokeWidth={1} />
+        <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
+          <path d={fitted.outline} fill={colors.surface} stroke={colors.border} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          {fitted.regionBorders && (
+            <path d={fitted.regionBorders} fill="none" stroke={colors.border} strokeOpacity={0.7} strokeWidth={0.75} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          )}
+        </g>
         {drawOrder.map(({ index, marker, x, y, r }) => (
           <g
             key={index}
@@ -245,7 +379,9 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
             onMouseLeave={() => setHovered((h) => (h === index ? null : h))}
             onFocus={() => setHovered(index)}
             onBlur={() => setHovered((h) => (h === index ? null : h))}
-            onClick={() => setSelected((s) => (s === index ? null : index))}
+            onClick={() => {
+              if (!moved.current) setSelected((s) => (s === index ? null : index));
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
@@ -335,6 +471,26 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
         }}
       >
         {body}
+        {hasMap && (
+          <div style={{ position: "absolute", top: 8, left: 8, display: "flex", flexDirection: "column", gap: 4, zIndex: 2 }}>
+            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(BUTTON_ZOOM)} style={controlStyle(colors)}>
+              +
+            </button>
+            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / BUTTON_ZOOM)} style={controlStyle(colors)}>
+              −
+            </button>
+            <button
+              type="button"
+              aria-label="Reset zoom"
+              title="Reset zoom"
+              disabled={isIdentity(transform)}
+              onClick={() => setTransform(IDENTITY)}
+              style={{ ...controlStyle(colors), opacity: isIdentity(transform) ? 0.5 : 1, cursor: isIdentity(transform) ? "default" : "pointer" }}
+            >
+              ⤢
+            </button>
+          </div>
+        )}
         {hoveredDot && (
           <div
             role="tooltip"
@@ -412,6 +568,22 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
           </div>
         )}
       </div>
+      {hasMap && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.375rem 0.25rem 0", fontSize: "0.75rem", color: colors.muted }}>
+          <span>Updated {formatLastUpdated(lastUpdated ?? loadedAt)}</span>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              aria-busy={refreshing}
+              style={{ all: "unset", cursor: refreshing ? "default" : "pointer", textDecoration: "underline", opacity: refreshing ? 0.6 : 1 }}
+            >
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </button>
+          )}
+        </div>
+      )}
       {categories.length > 0 && (
         <ul
           aria-label="Legend"

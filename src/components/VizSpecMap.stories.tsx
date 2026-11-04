@@ -2,9 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { VizSpecMap, type MapSpec, type ResolvePlaces } from "./VizSpecMap";
 import type { MapTopology } from "./vizSpecMapGeometry";
 import hungary from "./fixtures/hungary.topo.json";
+import hungaryRegions from "./fixtures/hungary-regions.topo.json";
+import { useState } from "react";
 import { defaultColors, getColorsForMode } from "../themes";
 
+// Outline only: what the API returns for a country without admin-1 data.
 const hungaryTopology = hungary as unknown as MapTopology;
+// Outline plus `objects.regions` (19 counties and Budapest).
+const hungaryWithCounties = hungaryRegions as unknown as MapTopology;
 
 const spec: MapSpec = {
   kind: "map",
@@ -42,13 +47,29 @@ const meta: Meta<typeof VizSpecMap> = {
       },
     },
   },
-  args: { spec, data: rows, colors: defaultColors, boundaries: hungaryTopology },
+  args: { spec, data: rows, colors: defaultColors, boundaries: hungaryWithCounties },
 };
 
 export default meta;
 type Story = StoryObj<typeof VizSpecMap>;
 
 export const Hungary: Story = {};
+
+export const OutlineOnly: Story = { args: { boundaries: hungaryTopology } };
+
+function RefreshDemo(args: React.ComponentProps<typeof VizSpecMap>) {
+  const [loadedAt, setLoadedAt] = useState(() => new Date());
+  const [data, setData] = useState(args.data);
+  const onRefresh = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    // Simulated re-run: a new random subset of the rows.
+    setData(args.data.filter(() => Math.random() > 0.3));
+    setLoadedAt(new Date());
+  };
+  return <VizSpecMap {...args} data={data} lastUpdated={loadedAt} onRefresh={onRefresh} />;
+}
+
+export const WithRefresh: Story = { render: (args) => <RefreshDemo {...args} /> };
 
 export const SkipsInvalidRows: Story = {
   args: { data: [...rows, { city: "Nowhere", lat: null, lng: "n/a" }, { city: "Out of range", lat: 120, lng: 19 }] },
