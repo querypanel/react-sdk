@@ -17,6 +17,7 @@ import { runDedupedRequest } from "../../utils/requestDedup";
 import { DEFAULT_CHART_HEIGHT, parseBlockHeight } from "./chartBlockHeight";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromJsonRenderSpec } from "./pinnedChartModify";
+import { chartTypesForSpec } from "../mapKind";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
@@ -220,7 +221,7 @@ export function createJsonRenderChartBlockSpec({
           disabled: isLoading,
           sqlParams,
           currentChartType: chartTypeFromJsonRenderSpec(specForRenderer),
-          chartTypes: JSON_RENDER_CHART_TYPES,
+          chartTypes: chartTypesForSpec(specForRenderer, JSON_RENDER_CHART_TYPES),
         });
 
         useEffect(() => {

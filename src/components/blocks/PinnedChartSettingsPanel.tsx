@@ -84,7 +84,7 @@ type PinnedChartSettingsPanelProps = {
   disabled: boolean;
   /** Chart type currently rendered (marked with a dashed outline). */
   currentChartType: ChartType | "";
-  /** Chart types the block can render; defaults to all. */
+  /** Chart types the block can render; defaults to all. An empty list hides the picker (map kind). */
   chartTypes?: ChartType[];
   onApply: (options: PinnedChartApplyOptions) => void;
   onClose: () => void;
@@ -315,6 +315,7 @@ export function PinnedChartSettingsPanel({
         ) : null}
       </div>
 
+      {chartTypes?.length === 0 ? null : (
       <div style={section}>
         <span style={label}>
           Chart type
@@ -366,6 +367,7 @@ export function PinnedChartSettingsPanel({
           })}
         </div>
       </div>
+      )}
 
       <button
         type="button"

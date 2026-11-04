@@ -27,6 +27,8 @@ export interface ChartControlsProps {
   className?: string;
   /** Show color preset selector */
   showColorPresets?: boolean;
+  /** VizSpec kind being tweaked. For "map" the chart-type and axis selectors are hidden. */
+  vizKind?: string;
 }
 
 const CHART_TYPES: { label: string; value: ChartType }[] = [
@@ -69,6 +71,7 @@ export function ChartControls({
   colors = defaultColors,
   className = "",
   showColorPresets = true,
+  vizKind,
 }: ChartControlsProps) {
   const [chartType, setChartType] = useState<ChartType | "">("");
   const [xField, setXField] = useState<string>("");
@@ -79,6 +82,8 @@ export function ChartControls({
   const [colorPreset, setColorPreset] = useState<ColorPreset>("default");
 
   const mergedColors = { ...defaultColors, ...colors };
+  // Maps have no chart type or axes; switching a map to another chart type is out of scope.
+  const showChartShape = vizKind !== "map";
 
   const handleApply = () => {
     const vizModifications: VizModifications = {};
@@ -224,6 +229,8 @@ export function ChartControls({
       </div>
 
       <div style={styles.grid}>
+        {showChartShape && (
+        <>
         {/* Chart Type */}
         <div style={styles.fieldGroup}>
           <span style={styles.label}>Chart</span>
@@ -277,6 +284,9 @@ export function ChartControls({
             ))}
           </select>
         </div>
+
+        </>
+        )}
 
         {/* Time Granularity */}
         <div style={styles.fieldGroup}>

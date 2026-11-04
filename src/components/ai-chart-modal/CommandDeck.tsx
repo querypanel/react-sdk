@@ -10,6 +10,7 @@ import {
   HashIcon,
   LayoutDashboardIcon,
   SparklesIcon,
+  MapIcon,
   TableIcon,
   ZapIcon,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const KIND_META: Record<VizKind, { label: string; Icon: typeof HashIcon }> = {
   line: { label: "Line chart", Icon: ChartLineIcon },
   pie: { label: "Pie chart", Icon: ChartPieIcon },
   table: { label: "Table", Icon: TableIcon },
+  map: { label: "Map", Icon: MapIcon },
   chart: { label: "Chart", Icon: ChartColumnIcon },
 };
 

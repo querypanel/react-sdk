@@ -1,6 +1,7 @@
 import type { ChartType, SqlModifications, VizModifications } from "../../types";
 import type { VizSpec } from "../VizSpecRenderer";
 import { getRootElement } from "../generative-ui/specData";
+import { isMapVizSpec } from "../mapKind";
 
 export type PinnedChartModifyRequest = {
   sql: string;
@@ -59,6 +60,7 @@ export async function callPinnedChartModify(
 
 export function chartTypeFromVizSpec(spec: unknown): ChartType | "" {
   if (!spec || typeof spec !== "object") return "";
+  if (isMapVizSpec(spec)) return "";
   const encoding = (spec as { encoding?: { chartType?: unknown } }).encoding;
   const chartType = encoding?.chartType;
   if (
@@ -129,6 +131,7 @@ export function chartTypeFromJsonRenderSpec(spec: unknown): ChartType | "" {
 
 /** Clone a VizSpec chart and set its encoding chart type. */
 export function patchVizSpecChartType(spec: VizSpec, chartType: ChartType): VizSpec {
+  // Only chart kinds carry a chart type; tables, metrics and maps are left as they are.
   if (spec.kind !== "chart") return spec;
   return {
     ...spec,

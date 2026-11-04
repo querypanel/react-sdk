@@ -13,6 +13,7 @@ import { ChartBlockFrame } from "./ChartBlockFrame";
 import { isVizSpec } from "../vizSpecGuard";
 import { getBlockNoteEditor } from "./blockNoteEditor";
 import { chartTypeFromVizSpec } from "./pinnedChartModify";
+import { chartTypesForSpec } from "../mapKind";
 import { usePinnedChartChrome } from "./PinnedChartChrome";
 import { usePinnedChartBlockModify } from "./usePinnedChartBlockModify";
 
@@ -182,6 +183,7 @@ export function createChartBlockSpec({
           disabled: isLoading,
           sqlParams,
           currentChartType: chartTypeFromVizSpec(parsedSpec?.spec),
+          chartTypes: chartTypesForSpec(parsedSpec?.spec),
         });
 
         // biome-ignore lint/correctness/useExhaustiveDependencies: values come from createChartBlockSpec closure

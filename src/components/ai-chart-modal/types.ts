@@ -39,7 +39,7 @@ export type ReportVizBlock = {
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;
 	resultId?: string;
-	presentationKind?: "chart" | "table" | "metric";
+	presentationKind?: "chart" | "table" | "metric" | "map";
 	sql?: string;
 	sqlParams?: Record<string, unknown> | null;
 	queryResult?: SqlExecutionArtifact;
@@ -76,7 +76,7 @@ export type DashboardReportInsertBlock =
 			sql?: string;
 			sqlParams?: Record<string, unknown> | null;
 			resultId?: string;
-			presentationKind?: "chart" | "table" | "metric";
+			presentationKind?: "chart" | "table" | "metric" | "map";
 			datasourceIds?: string[];
 			tenantFieldName?: string;
 			previewTenantId?: string;
@@ -105,7 +105,7 @@ export type MastraChartMessage = {
 	chartSpec?: unknown;
 	jsonRenderSpec?: unknown;
 	resultId?: string;
-	presentationKind?: "chart" | "table" | "metric";
+	presentationKind?: "chart" | "table" | "metric" | "map";
 	queryResult?: SqlExecutionArtifact;
 	rationale?: string;
 	sql?: string;

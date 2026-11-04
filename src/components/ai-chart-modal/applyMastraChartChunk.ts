@@ -333,7 +333,8 @@ export function createMastraChartChunkHandler(
 				const presentationKind =
 					result.presentationKind === "chart" ||
 					result.presentationKind === "table" ||
-					result.presentationKind === "metric"
+					result.presentationKind === "metric" ||
+					result.presentationKind === "map"
 						? result.presentationKind
 						: undefined;
 				const sql = typeof result.sql === "string" ? result.sql : undefined;

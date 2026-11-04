@@ -1,5 +1,6 @@
 "use client";
 
+import { isVizSpec } from "../vizSpecGuard";
 import { useCallback, useRef, useState } from "react";
 import type { SqlModifications, VizModifications } from "../../types";
 import type { VizSpec } from "../VizSpecRenderer";
@@ -33,12 +34,6 @@ type JsonRenderSnapshot = CommonProps & {
   jsonRenderSpec: string;
   resultId: string;
 };
-
-function isVizSpec(value: unknown): value is VizSpec {
-  if (!value || typeof value !== "object") return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return kind === "chart" || kind === "table" || kind === "metric";
-}
 
 function parseJson(raw: string): unknown {
   try {

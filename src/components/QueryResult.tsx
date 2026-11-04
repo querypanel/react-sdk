@@ -233,6 +233,7 @@ export function QueryResult({
                 disabled={isLoading}
                 onApply={onModify}
                 colors={mergedColors}
+                vizKind={(result.chart?.vizSpec as { kind?: string } | null | undefined)?.kind}
               />
             )}
             <div style={{ position: "relative" }}>

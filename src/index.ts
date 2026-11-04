@@ -8,6 +8,8 @@ import "@blocknote/mantine/style.css";
 export { VizSpecRenderer, type VizSpecRendererProps, type VizSpec } from "./components/VizSpecRenderer";
 export { VizSpecChart, type VizSpecChartProps, type ChartSpec } from "./components/VizSpecChart";
 export { VizSpecTable, type VizSpecTableProps, type TableSpec } from "./components/VizSpecTable";
+export { VizSpecMap, type VizSpecMapProps, type MapSpec } from "./components/VizSpecMap";
+export type { MapTopology } from "./components/vizSpecMapGeometry";
 export { VizSpecMetric, type VizSpecMetricProps, type MetricSpec } from "./components/VizSpecMetric";
 export { DataTable, type DataTableProps } from "./components/DataTable";
 export { ChartControls, type ChartControlsProps } from "./components/ChartControls";

@@ -1,7 +1,7 @@
 import type { ReportVizBlock } from "./types";
 
 /** Coarse chart family used for the small glyph/color pips in the selection tray. */
-export type VizKind = "metric" | "bar" | "line" | "pie" | "table" | "chart";
+export type VizKind = "metric" | "bar" | "line" | "pie" | "table" | "map" | "chart";
 
 function parseSpec(raw: unknown): Record<string, unknown> | null {
   let value = raw;
@@ -28,6 +28,7 @@ export function vizKindOf(block: Pick<ReportVizBlock, "chartSpec" | "jsonRenderS
   const spec = parseSpec(block.chartSpec) ?? parseSpec(block.jsonRenderSpec);
   if (spec?.kind === "metric") return "metric";
   if (spec?.kind === "table") return "table";
+  if (spec?.kind === "map") return "map";
   if (spec?.kind === "chart") {
     const encoding = spec.encoding as { chartType?: unknown } | undefined;
     return chartFamily(encoding?.chartType);

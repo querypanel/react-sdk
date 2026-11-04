@@ -16,7 +16,7 @@ export interface StoredChartRef {
   datasourceId?: string;
   sql: string;
   params: Record<string, unknown> | null;
-  presentationKind?: "chart" | "table" | "metric";
+  presentationKind?: "chart" | "table" | "metric" | "map";
   rationale: string | null;
   spec: unknown;
   /** json-render presentation without row data; what dashboard charts are inserted as. */

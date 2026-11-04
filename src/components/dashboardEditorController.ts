@@ -31,7 +31,7 @@ export interface ChartBlockSummary {
   chartId: string;
   type: ChartBlockType;
   title: string;
-  presentationKind: "chart" | "table" | "metric" | null;
+  presentationKind: "chart" | "table" | "metric" | "map" | null;
   sql: string;
   datasourceIds: string[];
   resultId: string;
@@ -157,7 +157,7 @@ function summarizeChartBlock(block: BlockLike): ChartBlockSummary {
     presentationKind = getJsonRenderPresentationKind(spec);
   } else {
     const kind = (spec as { kind?: unknown } | undefined)?.kind;
-    if (kind === "chart" || kind === "table" || kind === "metric") presentationKind = kind;
+    if (kind === "chart" || kind === "table" || kind === "metric" || kind === "map") presentationKind = kind;
   }
 
   const datasourceIds = parseJson(props.datasourceIds);

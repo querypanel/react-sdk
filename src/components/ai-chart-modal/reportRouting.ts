@@ -20,7 +20,7 @@ const EXPLICIT_REPORT =
 const QUESTION_START =
   /^(how many|how much|how often|what(?:'s| is| are| was| were)|which|who|when|where|why|list|count|top \d+|show me (?:the )?(?:top|\d+|all)|average|avg|total|sum|median|compare|give me (?:the )?(?:number|count|total))\b/;
 
-const CHART_WORDS = /\b(bar|line|pie|donut|area|scatter|table|chart|graph|plot|histogram)\b/;
+const CHART_WORDS = /\b(bar|line|pie|donut|area|scatter|table|map|chart|graph|plot|histogram)\b/;
 const TIME_OR_NUMBER =
   /\b(\d+|last|past|previous|this|next|yesterday|today|tonight|week|weekly|day|daily|month|monthly|quarter|quarterly|year|yearly|ytd|q[1-4])\b/;
 const GROUPING = /\b(by|per|grouped|broken down|breakdown of)\b/;
