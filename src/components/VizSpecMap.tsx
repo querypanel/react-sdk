@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThemeColors } from "../types";
 import { useElementWidth } from "./useElementWidth";
+import { buildMapProjection, projectPoint, type MapTopology } from "./vizSpecMapGeometry";
 import {
-  buildMapProjection,
-  extractLatLngPoints,
-  projectPoint,
-  type MapTopology,
-} from "./vizSpecMapGeometry";
+  assignCategoryColors,
+  buildMarkers,
+  categoryOf,
+  donutSlices,
+  groupLatLngRows,
+  legendCategories,
+  markerRadius,
+  type MapMarker,
+} from "./vizSpecMapMarkers";
 import { describeRow, distinctPlaces, placeRows, type ResolvePlaces, type ResolvedPlace } from "./vizSpecMapPlaces";
 
 export type { PlaceInput, ResolvedPlace, ResolvePlaces } from "./vizSpecMapPlaces";
@@ -53,7 +58,35 @@ export interface VizSpecMapProps {
 }
 
 const DEFAULT_HEIGHT = 400;
-const DOT_RADIUS = 5;
+const MAX_MARKER_RADIUS = 16;
+const DONUT_HOLE = 0.55;
+const PANEL_WIDTH = 240;
+
+function markerTitle(marker: MapMarker): string {
+  return marker.name ?? `${marker.lat.toFixed(3)}, ${marker.lng.toFixed(3)}`;
+}
+
+function Swatch({ color }: { color: string | undefined }) {
+  return <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: color, display: "inline-block", flex: "none" }} />;
+}
+
+function overlayStyle(colors: ThemeColors): React.CSSProperties {
+  return {
+    background: colors.background,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: "0.375rem",
+    fontSize: "0.75rem",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+  };
+}
+
+/** Tooltip title: resolved place name, else the first row's label, else coordinates. */
+function tooltipTitle(marker: MapMarker, data: Array<Record<string, unknown>>, labelField: string | null): string {
+  if (marker.name) return marker.name;
+  const first = labelField ? data[marker.rowIndexes[0] ?? -1]?.[labelField] : null;
+  return first != null && String(first) !== "" ? String(first) : markerTitle(marker);
+}
 
 function MapMessage({ colors, children }: { colors: ThemeColors; children: React.ReactNode }) {
   return (
@@ -153,17 +186,32 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
     [topology, width, pixelHeight],
   );
 
-  const dots = useMemo(() => {
-    if (!fitted) return [];
+  const { colorField, labelField, tooltips } = spec.encoding;
+  const markers = useMemo(() => {
     const points =
       location.mode === "latlng"
-        ? extractLatLngPoints(data, location.latField, location.lngField).map((p) => ({ ...p, key: p.rowIndex }))
-        : (placed?.points ?? []).map((p, i) => ({ lat: p.lat, lng: p.lng, key: i }));
-    return points.flatMap((point) => {
-      const xy = projectPoint(fitted.projection, point);
-      return xy ? [{ key: point.key, x: xy[0], y: xy[1] }] : [];
+        ? groupLatLngRows(data, location.latField, location.lngField)
+        : (placed?.points ?? []);
+    return buildMarkers(points, data, colorField);
+  }, [data, location.mode, location.latField, location.lngField, placed, colorField]);
+  const categories = useMemo(() => legendCategories(markers), [markers]);
+  const categoryColors = useMemo(() => assignCategoryColors(categories, colors.range), [categories, colors.range]);
+
+  const drawn = useMemo(() => {
+    if (!fitted) return [];
+    const maxTotal = Math.max(1, ...markers.map((m) => m.total));
+    return markers.flatMap((marker, index) => {
+      const xy = projectPoint(fitted.projection, marker);
+      return xy ? [{ index, marker, x: xy[0], y: xy[1], r: markerRadius(marker.total, maxTotal, MAX_MARKER_RADIUS) }] : [];
     });
-  }, [fitted, data, location.mode, location.latField, location.lngField, placed]);
+  }, [fitted, markers]);
+  // Largest first so small markers stay on top and hoverable.
+  const drawOrder = useMemo(() => [...drawn].sort((a, b) => b.r - a.r), [drawn]);
+
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const hoveredDot = drawn.find((d) => d.index === hovered);
+  const selectedMarker = selected === null ? null : (markers[selected] ?? null);
 
   let body: React.ReactNode;
   if (isPlaceMode && !resolvePlaces) {
@@ -186,17 +234,43 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
         style={{ display: "block" }}
       >
         <path d={fitted.outline} fill={colors.surface} stroke={colors.border} strokeWidth={1} />
-        {dots.map((dot) => (
-          <circle
-            key={dot.key}
-            cx={dot.x}
-            cy={dot.y}
-            r={DOT_RADIUS}
-            fill={colors.primary}
-            fillOpacity={0.85}
-            stroke={colors.background}
-            strokeWidth={1}
-          />
+        {drawOrder.map(({ index, marker, x, y, r }) => (
+          <g
+            key={index}
+            tabIndex={0}
+            role="button"
+            aria-label={`${markerTitle(marker)}: ${marker.total}`}
+            style={{ cursor: "pointer", outline: "none" }}
+            onMouseEnter={() => setHovered(index)}
+            onMouseLeave={() => setHovered((h) => (h === index ? null : h))}
+            onFocus={() => setHovered(index)}
+            onBlur={() => setHovered((h) => (h === index ? null : h))}
+            onClick={() => setSelected((s) => (s === index ? null : index))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelected((s) => (s === index ? null : index));
+              }
+            }}
+          >
+            {colorField ? (
+              donutSlices(marker.counts, x, y, r, r * DONUT_HOLE).map((slice) => (
+                <path
+                  key={slice.category}
+                  d={slice.path}
+                  fillRule="evenodd"
+                  fill={categoryColors.get(slice.category)}
+                  stroke={colors.background}
+                  strokeWidth={1}
+                />
+              ))
+            ) : (
+              <circle cx={x} cy={y} r={r} fill={colors.primary} fillOpacity={0.85} stroke={colors.background} strokeWidth={1} />
+            )}
+            {(hovered === index || selected === index) && (
+              <circle cx={x} cy={y} r={r + 2} fill="none" stroke={colors.text} strokeWidth={1.5} />
+            )}
+          </g>
         ))}
       </svg>
     );
@@ -257,10 +331,100 @@ export function VizSpecMap({ spec, data, colors, height = DEFAULT_HEIGHT, bounda
           backgroundColor: colors.background,
           border: `1px solid ${colors.border}`,
           overflow: "hidden",
+          position: "relative",
         }}
       >
         {body}
+        {hoveredDot && (
+          <div
+            role="tooltip"
+            style={{
+              position: "absolute",
+              left: hoveredDot.x,
+              top: hoveredDot.y - hoveredDot.r - 8,
+              transform: "translate(-50%, -100%)",
+              pointerEvents: "none",
+              zIndex: 2,
+              ...overlayStyle(colors),
+              padding: "0.375rem 0.5rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>{tooltipTitle(hoveredDot.marker, data, labelField)}</div>
+            <div>{hoveredDot.marker.total} {hoveredDot.marker.total === 1 ? "device" : "devices"}</div>
+            {colorField &&
+              hoveredDot.marker.counts.map(({ category, count }) => (
+                <div key={category} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                  <Swatch color={categoryColors.get(category)} />
+                  {category}: {count}
+                </div>
+              ))}
+          </div>
+        )}
+        {selectedMarker && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              bottom: 8,
+              width: PANEL_WIDTH,
+              maxWidth: "calc(100% - 16px)",
+              display: "flex",
+              flexDirection: "column",
+              zIndex: 3,
+              ...overlayStyle(colors),
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", padding: "0.5rem 0.625rem", borderBottom: `1px solid ${colors.border}` }}>
+              <strong>
+                {tooltipTitle(selectedMarker, data, labelField)} ({selectedMarker.total})
+              </strong>
+              <button
+                type="button"
+                aria-label="Close device list"
+                onClick={() => setSelected(null)}
+                style={{ all: "unset", cursor: "pointer", color: colors.muted }}
+              >
+                ×
+              </button>
+            </div>
+            <ul style={{ margin: 0, padding: "0.375rem 0.625rem", listStyle: "none", overflowY: "auto", flex: 1 }}>
+              {selectedMarker.rowIndexes.map((rowIndex) => {
+                const row = data[rowIndex] ?? {};
+                const label = labelField && row[labelField] != null && String(row[labelField]) !== "" ? String(row[labelField]) : `Row ${rowIndex + 1}`;
+                const extras = (tooltips ?? []).filter((f) => row[f] != null && row[f] !== "");
+                return (
+                  <li key={rowIndex} style={{ padding: "0.25rem 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                      {colorField && <Swatch color={categoryColors.get(categoryOf(row[colorField]))} />}
+                      {label}
+                    </div>
+                    {extras.map((f) => (
+                      <div key={f} style={{ color: colors.muted, paddingLeft: colorField ? "1rem" : 0 }}>
+                        {f}: {String(row[f])}
+                      </div>
+                    ))}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
+      {categories.length > 0 && (
+        <ul
+          aria-label="Legend"
+          style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem 0.875rem", margin: 0, padding: "0.375rem 0.25rem 0", listStyle: "none", fontSize: "0.75rem", color: colors.text }}
+        >
+          {categories.map((category) => (
+            <li key={category} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+              <Swatch color={categoryColors.get(category)} />
+              {category}
+            </li>
+          ))}
+        </ul>
+      )}
       {footer}
     </div>
   );

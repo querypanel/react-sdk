@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { VizSpecMap, type MapSpec, type ResolvePlaces } from "./VizSpecMap";
 import type { MapTopology } from "./vizSpecMapGeometry";
 import hungary from "./fixtures/hungary.topo.json";
-import { defaultColors } from "../themes";
+import { defaultColors, getColorsForMode } from "../themes";
 
 const hungaryTopology = hungary as unknown as MapTopology;
 
@@ -108,3 +108,38 @@ export const PlaceMode: Story = {
     resolvePlaces: fakeResolvePlaces,
   },
 };
+
+// Markers: donut per place, split by status. Light/dark use getColorsForMode like the host app does.
+const lightColors = getColorsForMode(defaultColors, false);
+const markerSpec: MapSpec = {
+  ...spec,
+  title: "Devices by status",
+  encoding: { ...spec.encoding, colorField: "status", labelField: "device", tooltips: ["firmware"] },
+};
+const statuses = ["active", "Active", "idle", "offline", "unknown", null];
+const mixedRows = rows.flatMap((r, i) =>
+  Array.from({ length: (i % 4) * 2 + 1 }, (_, j) => ({
+    ...r,
+    device: `${r.city}-${j + 1}`,
+    status: statuses[(i + j) % statuses.length],
+    firmware: `v1.${j}`,
+  })),
+);
+const withData = (data: Array<Record<string, unknown>>, encoding: Partial<MapSpec["encoding"]> = {}) => ({
+  spec: { ...markerSpec, encoding: { ...markerSpec.encoding, ...encoding } },
+  data,
+});
+
+export const MixedStatuses: Story = { args: withData(mixedRows) };
+export const MixedStatusesLight: Story = { args: { ...withData(mixedRows), colors: lightColors } };
+
+const singleStatusRows = mixedRows.map((r) => ({ ...r, status: "Online" }));
+export const SingleStatus: Story = { args: withData(singleStatusRows) };
+export const SingleStatusLight: Story = { args: { ...withData(singleStatusRows), colors: lightColors } };
+
+const plans = ["gold", "silver", "bronze", "trial"];
+const customRows = mixedRows.map((r, i) => ({ ...r, status: plans[i % plans.length] }));
+export const CustomValues: Story = { args: withData(customRows) };
+export const CustomValuesLight: Story = { args: { ...withData(customRows), colors: lightColors } };
+
+export const NoColorColumn: Story = { args: withData(mixedRows, { colorField: null }) };
