@@ -40,6 +40,13 @@ export interface QuerypanelEmbeddedProps {
   /** Whitelabel: override user-visible strings (toolbar, AI modal). Omit fields to keep defaults. */
   branding?: EmbedBranding;
 
+  /**
+   * Where the AI assistant lives while editing. "workspace" (default) docks it beside the
+   * dashboard with streamed answers, tool steps and chart tagging, like the QueryPanel editor.
+   * "modal" opens it in a dialog from the "/" menu.
+   */
+  assistantLayout?: "workspace" | "modal";
+
   /** Callbacks */
   onError?: (error: Error) => void;
   onLoad?: (dashboard: Dashboard) => void;
@@ -62,6 +69,7 @@ export function QuerypanelEmbedded({
   theme,
   darkMode,
   branding,
+  assistantLayout = "workspace",
   onError,
   onLoad,
   onCustomize,
@@ -447,6 +455,14 @@ export function QuerypanelEmbedded({
         tenantFieldName={dashboard.tenant_field_name ?? undefined}
         tenantFieldByDatasource={dashboard.tenant_field_by_datasource ?? undefined}
         hideTenantInputsInAiModal={true}
+        assistantLayout={assistantLayout}
+        // Streamed agent turns; the API rebuilds tenant and datasource rules from the JWT + dashboard.
+        generateChartWithSqlUrl={
+          normalizedApiBaseUrl ? `${normalizedApiBaseUrl}/ai/agent/stream` : undefined
+        }
+        assistantTagIntentUrl={
+          normalizedApiBaseUrl ? `${normalizedApiBaseUrl}/ai/tag-intent` : undefined
+        }
         embedBranding={branding}
         onChartGeneration={onChartGeneration}
         className="min-h-[400px]"

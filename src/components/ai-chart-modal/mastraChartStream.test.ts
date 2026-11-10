@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	consumeMastraChartStream,
 	getMastraChunkErrorMessage,
+	isMastraAgentStreamUrl,
 	MastraStreamTerminalError,
 	normalizeMastraChunk,
 	readHttpErrorMessage,
@@ -100,5 +101,19 @@ describe("consumeMastraChartStream", () => {
 		).rejects.toBeInstanceOf(MastraStreamTerminalError);
 
 		expect(chunks).toHaveLength(0);
+	});
+});
+
+describe("isMastraAgentStreamUrl", () => {
+	it("matches the admin agent proxy and the API embed stream route", () => {
+		expect(isMastraAgentStreamUrl("/api/agents/sql-agent/stream")).toBe(true);
+		expect(isMastraAgentStreamUrl("/api/agents/sql-agent/stream?cache=auto")).toBe(true);
+		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/agent/stream")).toBe(true);
+	});
+
+	it("leaves the classic JSON endpoints on the classic path", () => {
+		expect(isMastraAgentStreamUrl("/api/ai/generate-chart-with-sql")).toBe(false);
+		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/generate-chart-with-sql")).toBe(false);
+		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/agent/streaming")).toBe(false);
 	});
 });

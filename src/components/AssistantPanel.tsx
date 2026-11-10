@@ -38,6 +38,7 @@ import {
 } from "./ai-chart-modal/completeMastraTurn";
 import {
   consumeMastraChartStream,
+  isMastraAgentStreamUrl,
   readHttpErrorMessage,
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
@@ -228,10 +229,6 @@ export interface AssistantPanelProps {
 type Message = MastraChartMessage;
 
 const EMPTY_HEADERS: Record<string, string> = {};
-
-function isMastraAgentStreamUrl(url: string) {
-  return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url);
-}
 
 /** 52rem at the default 16px root; keep in sync with the `@container qp-ai-panel` rules in AIChartModal.css. */
 const AI_PANEL_NARROW_MAX_WIDTH_PX = 832;

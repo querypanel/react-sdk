@@ -313,3 +313,8 @@ export async function consumeMastraChartStream(
 		reader.releaseLock();
 	}
 }
+
+/** Streaming agent endpoints: admin's Mastra proxy, or the API's embed route (`/ai/agent/stream`). */
+export function isMastraAgentStreamUrl(url: string): boolean {
+	return /\/(?:api\/agents\/[^/]+|ai\/agent)\/stream(?:[/?#]|$)/.test(url);
+}
