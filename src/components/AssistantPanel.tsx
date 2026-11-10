@@ -38,7 +38,8 @@ import {
 } from "./ai-chart-modal/completeMastraTurn";
 import {
   consumeMastraChartStream,
-  isMastraAgentStreamUrl,
+  resolveAssistantTransport,
+  type AssistantTransport,
   readHttpErrorMessage,
 } from "./ai-chart-modal/mastraChartStream";
 import { visualizationFromClassicGenerateChartResponse } from "./ai-chart-modal/classicChartResponse";
@@ -164,6 +165,8 @@ export interface AssistantPanelProps {
   dashboardType?: "customer" | "internal";
   /** URL for SQL chart generation (default: /api/ai/generate-chart-with-sql) */
   generateChartWithSqlUrl?: string;
+  /** How that URL answers. Defaults to "stream" for `/api/agents/<id>/stream` URLs, else "json". */
+  assistantTransport?: AssistantTransport;
   /** URL for datasources (default: /api/datasources) */
   datasourcesUrl?: string;
   /** Extra headers for API requests (e.g. x-organization-id is always sent) */
@@ -244,6 +247,7 @@ export function AssistantPanel({
   initialPrompt,
   dashboardType = "customer",
   generateChartWithSqlUrl = "/api/ai/generate-chart-with-sql",
+  assistantTransport,
   datasourcesUrl = "/api/datasources",
   headers = EMPTY_HEADERS,
   queryResultBaseUrl = "/api/query-results",
@@ -270,7 +274,8 @@ export function AssistantPanel({
   onApplyChartChange,
 }: AssistantPanelProps) {
   const createTitle = createTitleProp ?? "Ask about your data";
-  const useMastraStream = isMastraAgentStreamUrl(generateChartWithSqlUrl);
+  const useMastraStream =
+    resolveAssistantTransport(generateChartWithSqlUrl, assistantTransport) === "stream";
   const mapGeo = useMapGeoClient({ geoBaseUrl, headers, organizationId });
   const tenantInputsEnabled =
     !hideTenantInputs && dashboardType === "customer";

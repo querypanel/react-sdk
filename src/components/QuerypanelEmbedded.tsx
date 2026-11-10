@@ -460,6 +460,7 @@ export function QuerypanelEmbedded({
         generateChartWithSqlUrl={
           normalizedApiBaseUrl ? `${normalizedApiBaseUrl}/ai/agent/stream` : undefined
         }
+        assistantTransport={normalizedApiBaseUrl ? "stream" : undefined}
         assistantTagIntentUrl={
           normalizedApiBaseUrl ? `${normalizedApiBaseUrl}/ai/tag-intent` : undefined
         }

@@ -24,6 +24,7 @@ import { MapGeoProvider, resolveGeoBaseUrl } from "./blocks/mapGeo";
 import { AIChartModal, type ChartGenerationEvent } from "./AIChartModal";
 import { AssistantPanel } from "./AssistantPanel";
 import { Workspace, type WorkspaceHandle } from "./Workspace";
+import type { AssistantTransport } from "./ai-chart-modal/mastraChartStream";
 import type { DashboardReportInsertBlock } from "./ai-chart-modal/types";
 import { markdownToSimpleEditorBlocks } from "./ai-chart-modal/markdownToBlocks";
 import { DeploySuccessModal } from "./DeploySuccessModal";
@@ -137,6 +138,8 @@ export interface DashboardAiEditorProps {
   modifyChartUrl?: string;
   /** Override AI chart URL. Pass a Mastra agent stream URL to get the streaming agent UI. */
   generateChartWithSqlUrl?: string;
+  /** How `generateChartWithSqlUrl` answers; see `AssistantPanel`. */
+  assistantTransport?: AssistantTransport;
   /** Override datasources URL */
   datasourcesUrl?: string;
   /** Override query result URL used by json-render previews */
@@ -198,6 +201,7 @@ export function DashboardAiEditor({
   geoBaseUrl,
   modifyChartUrl,
   generateChartWithSqlUrl,
+  assistantTransport,
   datasourcesUrl,
   queryResultBaseUrl,
   darkMode,
@@ -740,6 +744,7 @@ export function DashboardAiEditor({
                 dashboardId={dashboardId}
                 dashboardType={dashboardType}
                 generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
+                assistantTransport={assistantTransport}
                 datasourcesUrl={resolvedDatasourcesUrl}
                 queryResultBaseUrl={resolvedQueryResultBaseUrl}
                 headers={headers}
@@ -778,6 +783,7 @@ export function DashboardAiEditor({
           dashboardId={dashboardId}
           dashboardType={dashboardType}
           generateChartWithSqlUrl={resolvedGenerateChartWithSqlUrl}
+          assistantTransport={assistantTransport}
           datasourcesUrl={resolvedDatasourcesUrl}
           queryResultBaseUrl={resolvedQueryResultBaseUrl}
           headers={headers}

@@ -314,7 +314,14 @@ export async function consumeMastraChartStream(
 	}
 }
 
-/** Streaming agent endpoints: admin's Mastra proxy, or the API's embed route (`/ai/agent/stream`). */
-export function isMastraAgentStreamUrl(url: string): boolean {
-	return /\/(?:api\/agents\/[^/]+|ai\/agent)\/stream(?:[/?#]|$)/.test(url);
+/** How the assistant endpoint answers: Mastra agent SSE frames, or one classic JSON response. */
+export type AssistantTransport = "stream" | "json";
+
+/** The explicit transport, else guessed from the URL (admin's Mastra proxy `/api/agents/<id>/stream`). */
+export function resolveAssistantTransport(
+	url: string,
+	transport?: AssistantTransport,
+): AssistantTransport {
+	if (transport) return transport;
+	return /\/api\/agents\/[^/]+\/stream(?:[/?#]|$)/.test(url) ? "stream" : "json";
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	consumeMastraChartStream,
 	getMastraChunkErrorMessage,
-	isMastraAgentStreamUrl,
+	resolveAssistantTransport,
 	MastraStreamTerminalError,
 	normalizeMastraChunk,
 	readHttpErrorMessage,
@@ -104,16 +104,21 @@ describe("consumeMastraChartStream", () => {
 	});
 });
 
-describe("isMastraAgentStreamUrl", () => {
-	it("matches the admin agent proxy and the API embed stream route", () => {
-		expect(isMastraAgentStreamUrl("/api/agents/sql-agent/stream")).toBe(true);
-		expect(isMastraAgentStreamUrl("/api/agents/sql-agent/stream?cache=auto")).toBe(true);
-		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/agent/stream")).toBe(true);
+describe("resolveAssistantTransport", () => {
+	it("streams for the admin agent proxy URL", () => {
+		expect(resolveAssistantTransport("/api/agents/sql-agent/stream")).toBe("stream");
+		expect(resolveAssistantTransport("/api/agents/sql-agent/stream?cache=auto")).toBe("stream");
 	});
 
 	it("leaves the classic JSON endpoints on the classic path", () => {
-		expect(isMastraAgentStreamUrl("/api/ai/generate-chart-with-sql")).toBe(false);
-		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/generate-chart-with-sql")).toBe(false);
-		expect(isMastraAgentStreamUrl("https://api.querypanel.io/ai/agent/streaming")).toBe(false);
+		expect(resolveAssistantTransport("/api/ai/generate-chart-with-sql")).toBe("json");
+		expect(resolveAssistantTransport("https://api.querypanel.io/ai/agent/stream")).toBe("json");
+	});
+
+	it("uses the explicit transport over the URL", () => {
+		expect(resolveAssistantTransport("https://api.querypanel.io/ai/agent/stream", "stream")).toBe(
+			"stream",
+		);
+		expect(resolveAssistantTransport("/api/agents/sql-agent/stream", "json")).toBe("json");
 	});
 });
