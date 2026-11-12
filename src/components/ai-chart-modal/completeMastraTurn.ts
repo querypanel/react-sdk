@@ -1,3 +1,4 @@
+import { queryIdFor } from "./queryIdFor";
 import type {
 	DashboardReportInsertBlock,
 	MastraChartMessage,
@@ -142,6 +143,7 @@ export function collectDashboardReportBlocks(
 				rationale: block.rationale,
 				sql: block.sql ?? message.sql,
 				sqlParams: block.sqlParams ?? message.sqlParams ?? null,
+				queryId: queryIdFor(block, message),
 				resultId: block.resultId ?? message.resultId,
 				presentationKind: block.presentationKind,
 				...(block.datasourceId ? { datasourceIds: [block.datasourceId] } : {}),
@@ -161,6 +163,7 @@ export function collectDashboardReportBlocks(
 			rationale: message.rationale,
 			sql: message.sql,
 			sqlParams: message.sqlParams ?? null,
+			queryId: message.queryId,
 			resultId: message.resultId,
 			presentationKind: message.presentationKind,
 		};

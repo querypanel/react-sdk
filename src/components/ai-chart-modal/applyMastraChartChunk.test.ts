@@ -262,6 +262,31 @@ describe("createMastraChartChunkHandler", () => {
 		expect(message.jsonRenderSpec).toBeTruthy();
 	});
 
+	it("keeps run_sql's stored query id on the turn and its chart, and drops it for new SQL", () => {
+		const { handler, getMessage } = setup();
+		const QUERY = "55555555-5555-4555-8555-555555555555";
+
+		handler({
+			type: "tool-result",
+			toolName: "run_sql",
+			result: {
+				resultId: "66666666-6666-4666-8666-666666666666",
+				sql: "SELECT 1",
+				queryId: QUERY,
+				fields: ["x"],
+				rows: [{ x: 1 }],
+				rowCount: 1,
+				visualization: { jsonRenderSpec: { element: { type: "Chart" } }, presentationKind: "chart" },
+			},
+		});
+		expect(getMessage().queryId).toBe(QUERY);
+		const viz = getMessage().blocks?.find((b) => b.type === "viz");
+		expect(viz && "queryId" in viz ? viz.queryId : undefined).toBe(QUERY);
+
+		handler({ type: "tool-result", toolName: "generate_sql", result: { sql: "SELECT 2", params: [] } });
+		expect(getMessage().queryId).toBeUndefined();
+	});
+
 	it("renders a map carried by run_sql as a viz block with the map spec and the full rows", () => {
 		const { handler, getMessage } = setup();
 		const spec = {

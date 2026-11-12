@@ -4,7 +4,12 @@ import { getRootElement } from "../generative-ui/specData";
 import { isMapVizSpec } from "../mapKind";
 
 export type PinnedChartModifyRequest = {
-  sql: string;
+  /** Dashboard chart row: the server takes the base SQL and params from it. */
+  chart_id?: string;
+  /** Stored query of a block without a row yet (unsaved): the server takes the base from it. */
+  query_id?: string;
+  /** Only for blocks without a stored id (the admin editor's unsaved chart). */
+  sql?: string;
   question: string;
   params?: Record<string, unknown>;
   datasourceIds: string[];
@@ -20,6 +25,8 @@ export type PinnedChartModifyResponse = {
   error?: string;
   sql?: string;
   params?: Record<string, unknown>;
+  /** Server-stored query for the returned SQL. */
+  queryId?: string;
   rationale?: string;
   rows?: Array<Record<string, unknown>>;
   fields?: string[];

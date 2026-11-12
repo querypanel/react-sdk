@@ -32,6 +32,35 @@ describe("buildBlockSqlPayload", () => {
   });
 });
 
+describe("buildBlockSqlPayload stored ids", () => {
+  const base = { sql: "SELECT 1", datasourceIds: ["ds"], dashboardId: "d1", sqlParams: { "1": "x" } };
+
+  it("sends only the chart id for a block with a row, no SQL or params", () => {
+    expect(buildBlockSqlPayload({ ...base, savedChartId: "row-1", queryId: "q1" })).toEqual({
+      chart_id: "row-1",
+      datasourceIds: ["ds"],
+      dashboardId: "d1",
+    });
+  });
+
+  it("sends only the stored query id for an unsaved block with one", () => {
+    expect(buildBlockSqlPayload({ ...base, queryId: " q1 " })).toEqual({
+      query_id: "q1",
+      datasourceIds: ["ds"],
+      dashboardId: "d1",
+    });
+  });
+
+  it("sends SQL and params only for a block without any stored id", () => {
+    expect(buildBlockSqlPayload({ ...base, queryId: "" })).toEqual({
+      sql: "SELECT 1",
+      params: { "1": "x" },
+      datasourceIds: ["ds"],
+      dashboardId: "d1",
+    });
+  });
+});
+
 describe("runBlockSql", () => {
   it("posts the payload with org and custom headers and returns rows and fields", async () => {
     const fetchMock = mockFetch({ rows: [{ a: 1 }], fields: ["a"] });

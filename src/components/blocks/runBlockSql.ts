@@ -1,19 +1,31 @@
 import { runDedupedRequest } from "../../utils/requestDedup";
 
 export interface BlockSqlPayload {
-  sql: string;
+  /** Only for blocks without a stored id (the admin preview of an unsaved chart). */
+  sql?: string;
   datasourceIds: string[];
   dashboardId?: string;
-  params: Record<string, unknown>;
+  /** Server-stored query (tenant-scoped) behind the block; the API runs it instead of `sql`. */
+  query_id?: string;
+  /** Dashboard chart row; the embed API runs its stored SQL with the tenant from the token. */
+  chart_id?: string;
+  /** Only with `sql`: a stored chart or query runs with its stored params. */
+  params?: Record<string, unknown>;
   tenantFieldName?: string;
   previewTenantId?: string;
 }
 
-/** Run-sql request body; empty/blank optional fields are omitted. */
+/**
+ * Run-sql request body; empty/blank optional fields are omitted. A block with a stored id
+ * (`chart_id`, else `query_id`) sends the id and no SQL or params: the server runs the stored
+ * query. Only a block without one (the admin editor's unsaved chart) sends its SQL.
+ */
 export function buildBlockSqlPayload({
   sql,
   datasourceIds,
   dashboardId,
+  queryId,
+  savedChartId,
   sqlParams,
   tenantFieldName,
   previewTenantId,
@@ -21,17 +33,21 @@ export function buildBlockSqlPayload({
   sql: string;
   datasourceIds: string[];
   dashboardId?: string;
+  queryId?: string;
+  savedChartId?: string;
   sqlParams: Record<string, unknown>;
   tenantFieldName?: string;
   previewTenantId?: string;
 }): BlockSqlPayload {
   const tenantField = tenantFieldName?.trim() || undefined;
   const previewTenant = previewTenantId?.trim() || undefined;
+  const chartId = savedChartId?.trim();
+  const storedQueryId = queryId?.trim();
+  const stored = chartId ? { chart_id: chartId } : storedQueryId ? { query_id: storedQueryId } : null;
   return {
-    sql,
+    ...(stored ?? { sql, params: sqlParams }),
     datasourceIds,
     ...(dashboardId ? { dashboardId } : {}),
-    params: sqlParams,
     ...(tenantField ? { tenantFieldName: tenantField } : {}),
     ...(previewTenant ? { previewTenantId: previewTenant } : {}),
   };

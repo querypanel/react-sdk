@@ -1,5 +1,6 @@
 "use client";
 
+import { queryIdFor } from "./ai-chart-modal/queryIdFor";
 import {
   useState,
   useRef,
@@ -144,17 +145,8 @@ export interface AssistantPanelStatus {
 }
 
 export interface AssistantPanelProps {
-  onAddChart: (
-    chartSpec: unknown,
-    rationale?: string,
-    sql?: string,
-    datasourceIds?: string[],
-    sqlParams?: Record<string, unknown> | null,
-    tenantFieldName?: string,
-    previewTenantId?: string,
-    resultId?: string,
-    question?: string
-  ) => void;
+  /** Insert one chart into the dashboard editor. */
+  onAddChart: (chart: ChartPayload) => void;
   /** Insert a multi-block report (text + viz) into the dashboard editor. */
   onAddReport?: (blocks: DashboardReportInsertBlock[]) => void;
   /** Report mode is available (Workspace): shows the Report toggle and the add-to-dashboard bar. */
@@ -333,10 +325,12 @@ export function AssistantPanel({
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({
-        sql: chart.sql,
+        // A stored query runs by id; only a chart without one sends its SQL (admin preview).
+        ...(chart.queryId
+          ? { query_id: chart.queryId }
+          : { sql: chart.sql, params: chart.sqlParams ?? {} }),
         datasourceIds: [datasourceId],
         dashboardId,
-        params: chart.sqlParams ?? {},
         ...(tenantField ? { tenantFieldName: tenantField } : {}),
         ...(previewTenant ? { previewTenantId: previewTenant } : {}),
       }),
@@ -831,6 +825,7 @@ export function AssistantPanel({
           ...visualization,
           rationale: data.rationale,
           sql: data.sql,
+          ...(typeof data.queryId === "string" ? { queryId: data.queryId } : {}),
           sqlParams: (data.params as Record<string, unknown> | null) ?? null,
           timestamp: new Date(),
         };
@@ -865,32 +860,34 @@ export function AssistantPanel({
   };
 
   const handleAddChartToEditor = (message: Message) => {
-    onAddChart(
-      message.jsonRenderSpec ?? message.chartSpec,
-      getMessageRationale(message),
-      message.sql,
-      selectedDatasourceIds,
-      message.sqlParams,
-      scopedTenantField,
-      scopedPreviewTenant,
-      message.resultId ?? message.queryResult?.resultId,
-      findPrecedingUserQuestion(messages, message)
-    );
+    onAddChart({
+      chartSpec: message.jsonRenderSpec ?? message.chartSpec,
+      rationale: getMessageRationale(message),
+      sql: message.sql,
+      queryId: message.queryId,
+      datasourceIds: selectedDatasourceIds,
+      sqlParams: message.sqlParams,
+      tenantFieldName: scopedTenantField,
+      previewTenantId: scopedPreviewTenant,
+      resultId: message.resultId ?? message.queryResult?.resultId,
+      question: findPrecedingUserQuestion(messages, message),
+    });
   };
 
   const handleAddVizBlock = (block: ReportVizBlock, turn?: Message) => {
     markVizAdded([block.id]);
-    onAddChart(
-      block.jsonRenderSpec ?? block.chartSpec,
-      block.rationale ?? (turn ? getMessageRationale(turn) : undefined),
-      block.sql ?? turn?.sql,
-      block.datasourceId ? [block.datasourceId] : selectedDatasourceIds,
-      block.sqlParams ?? turn?.sqlParams ?? null,
-      scopedTenantField,
-      scopedPreviewTenant,
-      block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
-      turn ? findPrecedingUserQuestion(messages, turn) : undefined
-    );
+    onAddChart({
+      chartSpec: block.jsonRenderSpec ?? block.chartSpec,
+      rationale: block.rationale ?? (turn ? getMessageRationale(turn) : undefined),
+      sql: block.sql ?? turn?.sql,
+      queryId: queryIdFor(block, turn),
+      datasourceIds: block.datasourceId ? [block.datasourceId] : selectedDatasourceIds,
+      sqlParams: block.sqlParams ?? turn?.sqlParams ?? null,
+      tenantFieldName: scopedTenantField,
+      previewTenantId: scopedPreviewTenant,
+      resultId: block.resultId ?? block.queryResult?.resultId ?? turn?.resultId,
+      question: turn ? findPrecedingUserQuestion(messages, turn) : undefined,
+    });
   };
 
   /** Whole report (text + charts), or only `onlyVizIds` charts without text. */
@@ -921,19 +918,20 @@ export function AssistantPanel({
     // Fallback: add first viz only when host did not wire onAddReport.
     const firstViz = blocks.find((b) => b.type === "viz");
     if (firstViz && firstViz.type === "viz") {
-      onAddChart(
-        firstViz.jsonRenderSpec ?? firstViz.chartSpec,
-        firstViz.rationale ?? getMessageRationale(message),
-        firstViz.sql ?? message.sql,
-        firstViz.datasourceIds ?? selectedDatasourceIds,
-        firstViz.sqlParams ?? message.sqlParams ?? null,
-        tenantInputsEnabled
+      onAddChart({
+        chartSpec: firstViz.jsonRenderSpec ?? firstViz.chartSpec,
+        rationale: firstViz.rationale ?? getMessageRationale(message),
+        sql: firstViz.sql ?? message.sql,
+        queryId: firstViz.queryId,
+        datasourceIds: firstViz.datasourceIds ?? selectedDatasourceIds,
+        sqlParams: firstViz.sqlParams ?? message.sqlParams ?? null,
+        tenantFieldName: tenantInputsEnabled
           ? firstViz.tenantFieldName ?? (tenantFieldName.trim() || undefined)
           : undefined,
-        tenantInputsEnabled ? firstViz.previewTenantId : undefined,
-        firstViz.resultId ?? message.resultId,
-        question
-      );
+        previewTenantId: tenantInputsEnabled ? firstViz.previewTenantId : undefined,
+        resultId: firstViz.resultId ?? message.resultId,
+        question,
+      });
     }
   };
 
@@ -1253,6 +1251,7 @@ export function AssistantPanel({
                                 rationale: block.rationale ?? getMessageRationale(message),
                                 sql: block.sql ?? message.sql,
                                 sqlParams: block.sqlParams ?? message.sqlParams ?? null,
+                                queryId: queryIdFor(block, message),
                                 datasourceIds: snapshot?.datasourceId
                                   ? [snapshot.datasourceId]
                                   : block.datasourceId

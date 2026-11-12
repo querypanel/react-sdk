@@ -124,6 +124,14 @@ export function createJsonRenderChartBlockSpec({
         sql: {
           default: "",
         },
+        /** Server-stored query behind `sql` (from generate / modify); empty for older blocks. */
+        queryId: {
+          default: "",
+        },
+        /** Dashboard chart row (sdk_charts) holding this chart's query; set when the dashboard is saved. */
+        savedChartId: {
+          default: "",
+        },
         sqlParams: {
           default: "{}",
           type: "string" as const,
@@ -240,6 +248,8 @@ export function createJsonRenderChartBlockSpec({
           sql: props.block.props.sql,
           datasourceIds,
           dashboardId,
+          queryId: props.block.props.queryId,
+          savedChartId: props.block.props.savedChartId,
           sqlParams,
           tenantFieldName: props.block.props.tenantFieldName,
           previewTenantId: props.block.props.previewTenantId,
@@ -333,19 +343,22 @@ export function createJsonRenderChartBlockSpec({
         const error = modify.error || loadError;
 
         if (!parsedSpec) {
+          // A stored chart's spec comes from its row on load: until then it is loading, not invalid.
+          const awaitingRow =
+            !error && Boolean(props.block.props.savedChartId) && !props.block.props.jsonRenderSpec;
           return (
             <div
               style={{
                 width: "100%",
                 minWidth: 0,
                 padding: "1rem",
-                color: resolvedColors.error,
+                color: awaitingRow ? resolvedColors.muted : resolvedColors.error,
                 background: resolvedColors.surface,
                 border: `1px solid ${resolvedColors.border}`,
                 borderRadius: "0.75rem",
               }}
             >
-              {error ?? "Invalid JSON Render specification"}
+              {awaitingRow ? "Loading visualization data..." : (error ?? "Invalid JSON Render specification")}
             </div>
           );
         }

@@ -6,6 +6,8 @@ import {
 	unwrapMastraToolResult,
 	type MastraStreamChunk,
 } from "./mastraChartStream";
+import { mapGeneratedParams } from "../../utils/sqlParams";
+import { queryIdFor } from "./queryIdFor";
 import { hydrateJsonRenderSpecFromRows } from "../generative-ui/specData";
 import type {
 	MastraChartMessage,
@@ -17,37 +19,6 @@ import type {
 	SqlExecutionArtifact,
 	ToolEvent,
 } from "./types";
-
-/** Same contract as node-sdk mapGeneratedParams: array index → $1, $2, $3. */
-function mapGeneratedParams(params: unknown) {
-	if (!Array.isArray(params)) {
-		return null;
-	}
-
-	return params.reduce<Record<string, unknown>>((acc, param, index) => {
-		if (!param || typeof param !== "object") {
-			return acc;
-		}
-
-		const record = param as Record<string, unknown>;
-		const value = record.value;
-		if (value === undefined) {
-			return acc;
-		}
-
-		acc[String(index + 1)] = value;
-
-		const key =
-			(typeof record.name === "string" && record.name.trim()) ||
-			(typeof record.placeholder === "string" && record.placeholder.trim()) ||
-			(typeof record.position === "number" && String(record.position)) ||
-			String(index + 1);
-
-		acc[key.replace(/[{}]/g, "").replace(/(.+):.*$/, "$1").replace(/^[:$]/, "").trim()] =
-			value;
-		return acc;
-	}, {});
-}
 
 function normalizeSqlParams(params: unknown): Record<string, unknown> | null {
 	if (Array.isArray(params)) {
@@ -247,6 +218,7 @@ export function createMastraChartChunkHandler(
 					sql: result.sql,
 					rationale: result.rationale,
 					params: result.params,
+					queryId: result.queryId,
 				});
 				applyToolResult("execute_sql", result);
 				finishTool("run_sql", { status: "succeeded" });
@@ -256,6 +228,7 @@ export function createMastraChartChunkHandler(
 						resultId: result.resultId,
 						sql: result.sql,
 						params: result.params,
+						queryId: result.queryId,
 						rationale: result.rationale,
 						datasource: result.datasource,
 					});
@@ -278,6 +251,13 @@ export function createMastraChartChunkHandler(
 					...current,
 					kind: "turn",
 					sql: typeof result.sql === "string" ? result.sql : current.sql,
+					// New SQL without a stored query drops the old id (it belongs to the old SQL).
+					queryId:
+						typeof result.queryId === "string"
+							? result.queryId
+							: typeof result.sql === "string"
+								? undefined
+								: current.queryId,
 					rationale:
 						typeof result.rationale === "string" ? result.rationale : current.rationale,
 					sqlParams: mapGeneratedParams(result.params) ?? current.sqlParams ?? null,
@@ -373,6 +353,11 @@ export function createMastraChartChunkHandler(
 					const hydrateFrom = [queryResult, lastResult].find(
 						(candidate) => candidate && candidate.rows.length > 0,
 					);
+					// The stored query of this chart's SQL: its own, else the turn's when the SQL is the same.
+					const queryId = queryIdFor(
+						{ sql, queryId: typeof result.queryId === "string" ? result.queryId : undefined },
+						current,
+					);
 					const hydratedJsonRenderSpec = hydrateJsonRenderSpecFromRows(
 						jsonRenderSpec,
 						hydrateFrom?.rows,
@@ -398,6 +383,7 @@ export function createMastraChartChunkHandler(
 							presentationKind,
 							sql: sql ?? current.sql,
 							sqlParams: sqlParams ?? current.sqlParams ?? null,
+							...(queryId ? { queryId } : {}),
 							queryResult: queryResult ?? lastResult,
 							rationale,
 							// Each chart keeps the datasource its SQL ran on, so adding it later never

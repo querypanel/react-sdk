@@ -46,7 +46,9 @@ import {
   type ChartChangeMode,
   type ChartEditorLike,
 } from "./workspaceState";
-import { stripEmbeddedDataFromBlocks } from "./stripEmbeddedDataFromBlocks";
+import { stripEmbeddedDataFromBlocks, type BlockLike } from "./stripEmbeddedDataFromBlocks";
+import { chartsClientFor, stripStoredChartQueries } from "./dashboardCharts";
+import { useDashboardChartRows } from "./useDashboardChartRows";
 import { isDocumentDark } from "../utils/documentTheme";
 
 const EMPTY_HEADERS: Record<string, string> = {};
@@ -265,6 +267,11 @@ export function DashboardAiEditor({
     override ?? (apiBaseUrl ? `${apiBaseUrl.replace(/\/+$/, "")}${embedPath}` : adminPath);
 
   const resolvedRunSqlUrl = resolveUrl(runSqlUrl, "/query/run-sql", "/api/dashboards/run-sql");
+  // Embedded editors store tenant charts; the admin editor stores org charts.
+  const chartsClient = useMemo(
+    () => chartsClientFor({ apiBaseUrl, dashboardId, headers, organizationId }),
+    [apiBaseUrl, dashboardId, headers, organizationId]
+  );
   const resolvedGeoBaseUrl = resolveGeoBaseUrl(geoBaseUrl, apiBaseUrl);
   const resolvedModifyChartUrl = resolveUrl(
     modifyChartUrl,
@@ -365,6 +372,9 @@ export function DashboardAiEditor({
     dictionary: dashboardBlockNoteDictionary,
   }, [schema, contentSignature]);
 
+  // Chart blocks and their rows stay in step from here: on load, on any query change, on Save.
+  const chartRows = useDashboardChartRows(editor as never, chartsClient);
+
   const insertAIChartItem = useCallback(
     (): DefaultReactSuggestionItem => ({
       title: "AI Chart Assistant",
@@ -386,28 +396,8 @@ export function DashboardAiEditor({
   );
 
   const handleAddChart = useCallback(
-    (
-      chartSpec: unknown,
-      rationale?: string,
-      sql?: string,
-      datasourceIds?: string[],
-      sqlParams?: Record<string, unknown> | null,
-      tenantFieldName?: string,
-      previewTenantId?: string,
-      resultId?: string,
-      question?: string
-    ) => {
-      const input = buildChartBlockInput({
-        chartSpec,
-        rationale,
-        sql,
-        sqlParams,
-        datasourceIds,
-        tenantFieldName,
-        previewTenantId,
-        resultId,
-        question,
-      });
+    (payload: ChartPayload) => {
+      const input = buildChartBlockInput(payload);
       if (!input) return;
       editor.insertBlocks(
         [input as never],
@@ -604,13 +594,15 @@ export function DashboardAiEditor({
     [editor]
   );
 
+  // Saved content keeps chart rows by reference only (see stripStoredChartQueries).
   const stripDataFromChartBlocks = useCallback(() => {
-    return stripEmbeddedDataFromBlocks(editor.document);
+    return stripStoredChartQueries(stripEmbeddedDataFromBlocks(editor.document as unknown as BlockLike[]));
   }, [editor]);
 
   const handleDeploy = async () => {
     setIsDeploying(true);
     try {
+      await chartRows.flush();
       const cleanedDocument = stripDataFromChartBlocks();
       const content = JSON.stringify(cleanedDocument);
       await onSave(content, { deploy: true });
@@ -624,13 +616,14 @@ export function DashboardAiEditor({
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
+      await chartRows.flush();
       const cleanedDocument = stripDataFromChartBlocks();
       const content = JSON.stringify(cleanedDocument);
       await onSave(content);
     } finally {
       setIsSaving(false);
     }
-  }, [stripDataFromChartBlocks, onSave]);
+  }, [chartRows, stripDataFromChartBlocks, onSave]);
 
   useEffect(() => {
     if (saveRef) {

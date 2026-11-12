@@ -44,6 +44,8 @@ export type ReportVizBlock = {
 	presentationKind?: VizSpecKind;
 	sql?: string;
 	sqlParams?: Record<string, unknown> | null;
+	/** Stored query behind `sql`; dashboards save the chart from it. */
+	queryId?: string;
 	queryResult?: SqlExecutionArtifact;
 	rationale?: string;
 	/** Datasource the SQL ran on (restored from a stored Thread). */
@@ -77,6 +79,8 @@ export type DashboardReportInsertBlock =
 			question?: string;
 			sql?: string;
 			sqlParams?: Record<string, unknown> | null;
+			/** Stored query behind `sql`. */
+			queryId?: string;
 			resultId?: string;
 			presentationKind?: VizSpecKind;
 			datasourceIds?: string[];
@@ -111,6 +115,8 @@ export type MastraChartMessage = {
 	queryResult?: SqlExecutionArtifact;
 	rationale?: string;
 	sql?: string;
+	/** Server-stored query behind `sql` (classic generate-chart replies). */
+	queryId?: string;
 	sqlParams?: Record<string, unknown> | null;
 	timestamp: Date;
 	toolEvents?: ToolEvent[];

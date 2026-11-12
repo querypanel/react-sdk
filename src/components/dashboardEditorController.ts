@@ -15,6 +15,8 @@ export interface ChartPayload {
   /** Original NL question, used by pinned chart controls when modifying the chart. */
   question?: string;
   sql?: string;
+  /** Server-stored query behind `sql`, when generation returned one. */
+  queryId?: string;
   sqlParams?: Record<string, unknown> | null;
   datasourceIds?: string[];
   tenantFieldName?: string;
@@ -78,6 +80,7 @@ function metadataProps(type: ChartBlockType, payload: ChartPayload): Record<stri
     rationale: payload.rationale || "",
     question: payload.question || "",
     sql: payload.sql || "",
+    queryId: payload.queryId || "",
     sqlParams: JSON.stringify(payload.sqlParams || {}),
     datasourceIds: JSON.stringify(payload.datasourceIds || []),
     tenantFieldName: payload.tenantFieldName || "",

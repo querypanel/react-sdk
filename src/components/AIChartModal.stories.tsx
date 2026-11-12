@@ -36,8 +36,8 @@ function AIChartModalWrapper(props: {
       <AIChartModal
         isOpen={open}
         onClose={() => setOpen(false)}
-        onAddChart={(spec, _rationale, _sql, _datasourceIds, _params, _tenantField, _previewTenant) => {
-          console.log("Add chart:", spec);
+        onAddChart={(chart) => {
+          console.log("Add chart:", chart.chartSpec ?? chart.jsonRenderSpec);
           setOpen(false);
         }}
         organizationId="org-storybook"

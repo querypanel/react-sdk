@@ -24,6 +24,7 @@ export type PinnedChartApplyOptions = {
 
 type CommonProps = {
   sql: string;
+  queryId: string;
   sqlParams: string;
   rationale: string;
   title: string;
@@ -68,6 +69,8 @@ function buildVizspecProps(
   return {
     chartSpec: JSON.stringify(specWithData),
     sql: result.sql ?? previous.sql,
+    // New SQL without a stored query drops the old id, so the old query never runs for it.
+    queryId: result.queryId ?? (result.sql ? "" : previous.queryId),
     sqlParams: JSON.stringify(result.params ?? JSON.parse(previous.sqlParams || "{}")),
     rationale: result.rationale || previous.rationale,
     title:
@@ -102,6 +105,8 @@ function buildJsonRenderProps(
   return {
     jsonRenderSpec: JSON.stringify(nextSpec),
     sql: result.sql ?? previous.sql,
+    // New SQL without a stored query drops the old id, so the old query never runs for it.
+    queryId: result.queryId ?? (result.sql ? "" : previous.queryId),
     sqlParams: JSON.stringify(result.params ?? JSON.parse(previous.sqlParams || "{}")),
     rationale: result.rationale || previous.rationale,
     resultId: "",
@@ -170,6 +175,7 @@ export function usePinnedChartBlockModify(input: {
 
       const common: CommonProps = {
         sql: String(block.props.sql || ""),
+        queryId: String(block.props.queryId || ""),
         sqlParams: String(block.props.sqlParams || "{}"),
         rationale: String(block.props.rationale || ""),
         title: String(block.props.title || ""),
@@ -248,9 +254,13 @@ export function usePinnedChartBlockModify(input: {
         const result = await callPinnedChartModify(
           modifyChartUrl,
           {
-            sql: common.sql,
+            // A stored chart or query is the base on the server: send the id, not its SQL.
+            ...(typeof block.props.savedChartId === "string" && block.props.savedChartId
+              ? { chart_id: block.props.savedChartId }
+              : typeof block.props.queryId === "string" && block.props.queryId
+                ? { query_id: block.props.queryId }
+                : { sql: common.sql, params: sqlParams }),
             question,
-            params: sqlParams,
             datasourceIds,
             ...(dashboardId ? { dashboardId } : {}),
             ...(tenantFieldName ? { tenantFieldName } : {}),
